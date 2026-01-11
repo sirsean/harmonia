@@ -35,12 +35,11 @@ library DeltaCalculator {
         // If price below range: full exposure to base token
         // delta = L * (1/√Pa - 1/√Pb)
         if (sqrtPriceX96 <= sqrtPriceLowerX96) {
-            uint256 amount0 = _getAmount0ForLiquidity(
+            return int256(_getAmount0ForLiquidity(
                 sqrtPriceLowerX96,
                 sqrtPriceUpperX96,
                 liquidity
-            );
-            return int256(amount0);
+            ));
         }
 
         // If price above range: no exposure to base token
@@ -51,12 +50,11 @@ library DeltaCalculator {
 
         // In range: partial exposure
         // delta = L * (1/√S - 1/√Pb)
-        uint256 amount0 = _getAmount0ForLiquidity(
+        return int256(_getAmount0ForLiquidity(
             sqrtPriceX96,
             sqrtPriceUpperX96,
             liquidity
-        );
-        return int256(amount0);
+        ));
     }
 
     /// @notice Calculate delta as a ratio (0 to 1, scaled by 1e18)
