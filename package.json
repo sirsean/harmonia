@@ -6,9 +6,9 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "test:unit": "hardhat test test/unit/",
+    "test:unit": "hardhat test test/unit/DeltaCalculator.test.ts",
     "test:integration": "hardhat test test/integration/",
-    "test:fork": "hardhat test test/fork/",
+    "test:fork": "hardhat test test/fork/UniswapV3Fork.test.ts test/fork/ChainlinkPriceFeed.test.ts",
     "test:coverage": "hardhat coverage",
     "test:gas": "REPORT_GAS=true hardhat test",
     "clean": "hardhat clean",
