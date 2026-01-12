@@ -27,12 +27,12 @@ export const ARBITRUM_ADDRESSES = {
 
 // Historical blocks for testing different market scenarios
 export const HISTORICAL_BLOCKS = {
-  // Block with typical market conditions - mid 2024
-  STABLE_MARKET: 150000000,
+  // Block with typical market conditions - recent
+  STABLE_MARKET: 420607090,
   // Block during high volatility period
-  HIGH_VOLATILITY: 100000000,
-  // Default block for testing
-  RECENT: 150000000,
+  HIGH_VOLATILITY: 400000000,
+  // Default block for testing - recent block
+  RECENT: 420607090,
 };
 
 const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || "";
