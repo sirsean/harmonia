@@ -101,7 +101,7 @@ describe("YieldMath", function () {
       expect(apy).to.equal(expectedAPY);
 
       // Should be approximately 36.5%
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(36.525, 0.01);
     });
 
@@ -173,7 +173,7 @@ describe("YieldMath", function () {
       const apy = await yieldMath.calculateAPY(startSnapshot, endSnapshot);
 
       // Expected: (200/100000) * (365.25/7) = 0.002 * 52.178... = ~10.4% APY
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(10.435, 0.01);
     });
 
@@ -246,7 +246,7 @@ describe("YieldMath", function () {
     it("should handle large values", async function () {
       // $1B -> $1.1B = 10% gain
       const oneBillion = BigInt(10) ** BigInt(9) * PRECISION;
-      const returnPct = await yieldMath.calculateReturn(oneBillion, oneBillion * 11n / 10n);
+      const returnPct = await yieldMath.calculateReturn(oneBillion, (oneBillion * 11n) / 10n);
       expect(returnPct).to.equal(PRECISION / 10n); // 10%
     });
   });
@@ -273,7 +273,7 @@ describe("YieldMath", function () {
       const apy = await yieldMath.periodReturnToAPY(dailyReturn, SECONDS_PER_DAY);
 
       // Expected: 0.001 * 365.25 = 0.36525 = 36.525%
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(36.525, 0.01);
     });
 
@@ -282,7 +282,7 @@ describe("YieldMath", function () {
       const weeklyReturn = (PRECISION * 7n) / 1000n; // 0.7%
       const apy = await yieldMath.periodReturnToAPY(weeklyReturn, 7n * SECONDS_PER_DAY);
 
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(36.525, 0.01);
     });
 
@@ -292,7 +292,7 @@ describe("YieldMath", function () {
       const apy = await yieldMath.periodReturnToAPY(monthlyReturn, 30n * SECONDS_PER_DAY);
 
       // Expected: 0.01 * 365.25/30 = ~12.175%
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(12.175, 0.01);
     });
 
@@ -301,7 +301,7 @@ describe("YieldMath", function () {
       const tinyReturn = PRECISION / 10000n; // 0.01%
       const apy = await yieldMath.periodReturnToAPY(tinyReturn, SECONDS_PER_DAY);
 
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(3.6525, 0.01);
     });
 
@@ -310,7 +310,7 @@ describe("YieldMath", function () {
       const dailyReturn = PRECISION / 100n; // 1%
       const apy = await yieldMath.periodReturnToAPY(dailyReturn, SECONDS_PER_DAY);
 
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(365.25, 0.1);
     });
   });
@@ -386,12 +386,7 @@ describe("YieldMath", function () {
     });
 
     it("should handle zero fees", async function () {
-      const totalFees = await yieldMath.calculateTotalFees(
-        0n,
-        0n,
-        2000n * PRECISION,
-        6
-      );
+      const totalFees = await yieldMath.calculateTotalFees(0n, 0n, 2000n * PRECISION, 6);
 
       expect(totalFees).to.equal(0n);
     });
@@ -443,7 +438,7 @@ describe("YieldMath", function () {
         SECONDS_PER_DAY
       );
 
-      const apyPercent = Number(fundingAPY) / Number(PRECISION) * 100;
+      const apyPercent = (Number(fundingAPY) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(36.525, 0.01);
     });
 
@@ -458,7 +453,7 @@ describe("YieldMath", function () {
         SECONDS_PER_DAY
       );
 
-      const apyPercent = Number(fundingAPY) / Number(PRECISION) * 100;
+      const apyPercent = (Number(fundingAPY) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(-36.525, 0.01);
     });
 
@@ -474,7 +469,7 @@ describe("YieldMath", function () {
         7n * SECONDS_PER_DAY
       );
 
-      const apyPercent = Number(fundingAPY) / Number(PRECISION) * 100;
+      const apyPercent = (Number(fundingAPY) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(3.6525, 0.01);
     });
 
@@ -489,7 +484,7 @@ describe("YieldMath", function () {
         SECONDS_PER_DAY
       );
 
-      const apyPercent = Number(fundingAPY) / Number(PRECISION) * 100;
+      const apyPercent = (Number(fundingAPY) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(365.25, 0.1);
     });
 
@@ -520,7 +515,7 @@ describe("YieldMath", function () {
 
       const breakevenVol = await yieldMath.calculateBreakevenVolatility(feeAPY, rangeWidth);
 
-      const volPercent = Number(breakevenVol) / Number(PRECISION) * 100;
+      const volPercent = (Number(breakevenVol) / Number(PRECISION)) * 100;
       expect(volPercent).to.be.closeTo(40, 1); // Allow 1% tolerance for sqrt approximation
     });
 
@@ -571,7 +566,7 @@ describe("YieldMath", function () {
 
       const breakevenVol = await yieldMath.calculateBreakevenVolatility(feeAPY, rangeWidth);
 
-      const volPercent = Number(breakevenVol) / Number(PRECISION) * 100;
+      const volPercent = (Number(breakevenVol) / Number(PRECISION)) * 100;
       expect(volPercent).to.be.closeTo(126.5, 2);
     });
 
@@ -582,7 +577,7 @@ describe("YieldMath", function () {
 
       const breakevenVol = await yieldMath.calculateBreakevenVolatility(feeAPY, rangeWidth);
 
-      const volPercent = Number(breakevenVol) / Number(PRECISION) * 100;
+      const volPercent = (Number(breakevenVol) / Number(PRECISION)) * 100;
       expect(volPercent).to.be.closeTo(12.65, 1);
     });
   });
@@ -629,7 +624,7 @@ describe("YieldMath", function () {
       };
 
       const apy = await yieldMath.calculateAPY(startSnapshot, endSnapshot);
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
       expect(apyPercent).to.be.closeTo(36.525, 0.1);
     });
 
@@ -664,7 +659,7 @@ describe("YieldMath", function () {
       };
 
       const apy = await yieldMath.calculateAPY(startSnapshot, endSnapshot);
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
 
       // $9 / $100,000 * 365.25 = ~3.3% APY
       expect(apyPercent).to.be.closeTo(3.287, 0.01);
@@ -689,7 +684,7 @@ describe("YieldMath", function () {
       };
 
       const apy = await yieldMath.calculateAPY(startSnapshot, endSnapshot);
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
 
       // $140 / $50,000 * 52.178 = ~14.6% APY
       expect(apyPercent).to.be.closeTo(14.61, 0.1);
@@ -714,7 +709,7 @@ describe("YieldMath", function () {
       };
 
       const apy = await yieldMath.calculateAPY(startSnapshot, endSnapshot);
-      const apyPercent = Number(apy) / Number(PRECISION) * 100;
+      const apyPercent = (Number(apy) / Number(PRECISION)) * 100;
 
       // $75 / $75,000 * 12.175 = ~1.22% APY
       expect(apyPercent).to.be.closeTo(1.217, 0.01);

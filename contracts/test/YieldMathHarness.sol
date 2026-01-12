@@ -15,10 +15,7 @@ contract YieldMathHarness {
     }
 
     /// @notice Calculate simple return percentage
-    function calculateReturn(
-        uint256 startValue,
-        uint256 endValue
-    ) external pure returns (int256) {
+    function calculateReturn(uint256 startValue, uint256 endValue) external pure returns (int256) {
         return YieldMath.calculateReturn(startValue, endValue);
     }
 
