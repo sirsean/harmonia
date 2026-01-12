@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, network } from "hardhat";
 import { Contract } from "ethers";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { ARBITRUM_ADDRESSES } from "../../hardhat.config";
@@ -21,6 +21,10 @@ describeFork("Chainlink Price Feed Fork Tests", function () {
   ];
 
   before(async function () {
+    // Workaround for "No known hardfork" error on Arbitrum fork
+    // Mining a block bypasses the hardfork lookup issue
+    await network.provider.send("hardhat_mine", ["0x1"]);
+
     [signer] = await ethers.getSigners();
 
     // Connect to Chainlink ETH/USD price feed
