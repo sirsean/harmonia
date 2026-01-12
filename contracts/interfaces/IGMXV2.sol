@@ -45,7 +45,9 @@ interface IExchangeRouter {
     }
 
     /// @notice Creates a new order
-    function createOrder(CreateOrderParams calldata params) external payable returns (bytes32 orderKey);
+    function createOrder(
+        CreateOrderParams calldata params
+    ) external payable returns (bytes32 orderKey);
 
     /// @notice Cancels an existing order
     function cancelOrder(bytes32 key) external payable;
@@ -80,11 +82,7 @@ interface IOrderVault {
     function recordTransferIn(address token) external returns (uint256);
 
     /// @notice Transfers tokens out of the vault
-    function transferOut(
-        address token,
-        address receiver,
-        uint256 amount
-    ) external;
+    function transferOut(address token, address receiver, uint256 amount) external;
 }
 
 /// @title GMX V2 Data Store Interface

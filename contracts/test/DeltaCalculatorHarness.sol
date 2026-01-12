@@ -27,11 +27,7 @@ contract DeltaCalculatorHarness {
         uint160 sqrtPriceUpperX96
     ) external pure returns (uint256) {
         return
-            DeltaCalculator.calculateDeltaRatio(
-                sqrtPriceX96,
-                sqrtPriceLowerX96,
-                sqrtPriceUpperX96
-            );
+            DeltaCalculator.calculateDeltaRatio(sqrtPriceX96, sqrtPriceLowerX96, sqrtPriceUpperX96);
     }
 
     function getBaseTokenAmount(

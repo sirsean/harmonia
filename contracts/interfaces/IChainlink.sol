@@ -14,7 +14,9 @@ interface AggregatorV3Interface {
     function version() external view returns (uint256);
 
     /// @notice Gets data about a specific round
-    function getRoundData(uint80 _roundId)
+    function getRoundData(
+        uint80 _roundId
+    )
         external
         view
         returns (
@@ -45,9 +47,9 @@ interface AutomationCompatibleInterface {
     /// @param checkData Arbitrary bytes passed when the upkeep was registered
     /// @return upkeepNeeded Whether upkeep is needed
     /// @return performData Data to pass to performUpkeep if upkeep is needed
-    function checkUpkeep(bytes calldata checkData)
-        external
-        returns (bool upkeepNeeded, bytes memory performData);
+    function checkUpkeep(
+        bytes calldata checkData
+    ) external returns (bool upkeepNeeded, bytes memory performData);
 
     /// @notice Called by the Chainlink Keeper when upkeep is needed
     /// @param performData Data returned by checkUpkeep
@@ -108,7 +110,5 @@ interface IAutomationRegistrar {
     }
 
     /// @notice Registers a new upkeep
-    function registerUpkeep(RegistrationParams calldata requestParams)
-        external
-        returns (uint256);
+    function registerUpkeep(RegistrationParams calldata requestParams) external returns (uint256);
 }

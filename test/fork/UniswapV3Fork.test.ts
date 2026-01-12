@@ -2,14 +2,10 @@ import { expect } from "chai";
 import { ethers, network } from "hardhat";
 import { Contract } from "ethers";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import {
-  ARBITRUM_ADDRESSES,
-  HISTORICAL_BLOCKS,
-} from "../../hardhat.config";
+import { ARBITRUM_ADDRESSES, HISTORICAL_BLOCKS } from "../../hardhat.config";
 
 // Skip these tests if not running with forking enabled
-const describeFork =
-  process.env.ALCHEMY_API_KEY ? describe : describe.skip;
+const describeFork = process.env.ALCHEMY_API_KEY ? describe : describe.skip;
 
 describeFork("Uniswap V3 Fork Tests", function () {
   let signer: HardhatEthersSigner;
@@ -48,11 +44,7 @@ describeFork("Uniswap V3 Fork Tests", function () {
     [signer] = await ethers.getSigners();
 
     // Connect to Uniswap V3 ETH/USDC pool
-    uniswapPool = new Contract(
-      ARBITRUM_ADDRESSES.UNISWAP_V3_ETH_USDC_005_POOL,
-      POOL_ABI,
-      signer
-    );
+    uniswapPool = new Contract(ARBITRUM_ADDRESSES.UNISWAP_V3_ETH_USDC_005_POOL, POOL_ABI, signer);
 
     // Connect to Position Manager
     positionManager = new Contract(
@@ -105,8 +97,7 @@ describeFork("Uniswap V3 Fork Tests", function () {
 
       // Get token ordering
       const token0 = await uniswapPool.token0();
-      const isWethToken0 =
-        token0.toLowerCase() === ARBITRUM_ADDRESSES.WETH.toLowerCase();
+      const isWethToken0 = token0.toLowerCase() === ARBITRUM_ADDRESSES.WETH.toLowerCase();
 
       // Calculate price
       // price = (sqrtPrice / 2^96)^2
@@ -135,9 +126,7 @@ describeFork("Uniswap V3 Fork Tests", function () {
     let deltaCalculator: Contract;
 
     before(async function () {
-      const DeltaCalculatorHarness = await ethers.getContractFactory(
-        "DeltaCalculatorHarness"
-      );
+      const DeltaCalculatorHarness = await ethers.getContractFactory("DeltaCalculatorHarness");
       deltaCalculator = await DeltaCalculatorHarness.deploy();
       await deltaCalculator.waitForDeployment();
     });
@@ -154,11 +143,9 @@ describeFork("Uniswap V3 Fork Tests", function () {
       const tickRange = 1000; // About ±10%
 
       const tickLower =
-        Math.floor((currentTick - tickRange) / Number(tickSpacing)) *
-        Number(tickSpacing);
+        Math.floor((currentTick - tickRange) / Number(tickSpacing)) * Number(tickSpacing);
       const tickUpper =
-        Math.ceil((currentTick + tickRange) / Number(tickSpacing)) *
-        Number(tickSpacing);
+        Math.ceil((currentTick + tickRange) / Number(tickSpacing)) * Number(tickSpacing);
 
       // Convert ticks to sqrtPriceX96 using the formula:
       // sqrtPrice = 1.0001^(tick/2) * 2^96
@@ -186,11 +173,7 @@ describeFork("Uniswap V3 Fork Tests", function () {
       console.log("  Tick Upper:", tickUpper);
       console.log("  Current Tick:", currentTick);
       console.log("  Delta (base token amount):", delta.toString());
-      console.log(
-        "  Delta Ratio:",
-        (Number(deltaRatio) / 1e18 * 100).toFixed(2),
-        "%"
-      );
+      console.log("  Delta Ratio:", ((Number(deltaRatio) / 1e18) * 100).toFixed(2), "%");
 
       // Position should be in range
       expect(delta).to.be.gt(0);
@@ -207,11 +190,9 @@ describeFork("Uniswap V3 Fork Tests", function () {
       const tickRange = 1000;
 
       const tickLower =
-        Math.floor((currentTick - tickRange) / Number(tickSpacing)) *
-        Number(tickSpacing);
+        Math.floor((currentTick - tickRange) / Number(tickSpacing)) * Number(tickSpacing);
       const tickUpper =
-        Math.ceil((currentTick + tickRange) / Number(tickSpacing)) *
-        Number(tickSpacing);
+        Math.ceil((currentTick + tickRange) / Number(tickSpacing)) * Number(tickSpacing);
 
       const sqrtPriceLower = tickToSqrtPriceX96(tickLower);
       const sqrtPriceUpper = tickToSqrtPriceX96(tickUpper);
@@ -282,9 +263,7 @@ describeFork("Uniswap V3 Fork Tests", function () {
           sqrtPriceUpper
         );
 
-        console.log(
-          `${tick}\t\t${(Number(deltaRatio) / 1e18 * 100).toFixed(2)}%`
-        );
+        console.log(`${tick}\t\t${((Number(deltaRatio) / 1e18) * 100).toFixed(2)}%`);
       }
 
       // Verify delta decreases as price increases

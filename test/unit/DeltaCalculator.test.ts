@@ -31,9 +31,7 @@ describe("DeltaCalculator", function () {
   }
 
   beforeEach(async function () {
-    const DeltaCalculatorHarness = await ethers.getContractFactory(
-      "DeltaCalculatorHarness"
-    );
+    const DeltaCalculatorHarness = await ethers.getContractFactory("DeltaCalculatorHarness");
     deltaCalculator = await DeltaCalculatorHarness.deploy();
     await deltaCalculator.waitForDeployment();
   });
@@ -357,10 +355,7 @@ describe("DeltaCalculator", function () {
       for (const price of testPrices) {
         const priceWei = BigInt(price) * BigInt(10) ** BigInt(priceDecimals);
 
-        const sqrtPriceX96 = await deltaCalculator.priceToSqrtPriceX96(
-          priceWei,
-          priceDecimals
-        );
+        const sqrtPriceX96 = await deltaCalculator.priceToSqrtPriceX96(priceWei, priceDecimals);
 
         const recoveredPrice = await deltaCalculator.sqrtPriceX96ToPrice(
           sqrtPriceX96,
@@ -419,12 +414,7 @@ describe("DeltaCalculator", function () {
       const liquidity = BigInt(10) ** BigInt(18);
 
       await expect(
-        deltaCalculator.calculateDelta(
-          sqrtPriceCurrent,
-          sqrtPriceLower,
-          sqrtPriceUpper,
-          liquidity
-        )
+        deltaCalculator.calculateDelta(sqrtPriceCurrent, sqrtPriceLower, sqrtPriceUpper, liquidity)
       ).to.be.revertedWith("Invalid price range");
     });
 
