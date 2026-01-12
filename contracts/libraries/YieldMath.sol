@@ -44,22 +44,17 @@ library YieldMath {
         if (timeDelta == 0) return 0;
 
         // Calculate net income
-        uint256 feeIncome = endSnapshot.cumulativeFees -
-            startSnapshot.cumulativeFees;
-        int256 fundingIncome = endSnapshot.cumulativeFunding -
-            startSnapshot.cumulativeFunding;
+        uint256 feeIncome = endSnapshot.cumulativeFees - startSnapshot.cumulativeFees;
+        int256 fundingIncome = endSnapshot.cumulativeFunding - startSnapshot.cumulativeFunding;
         uint256 rebalanceCosts = endSnapshot.cumulativeRebalanceCosts -
             startSnapshot.cumulativeRebalanceCosts;
 
-        int256 netIncome = int256(feeIncome) +
-            fundingIncome -
-            int256(rebalanceCosts);
+        int256 netIncome = int256(feeIncome) + fundingIncome - int256(rebalanceCosts);
 
         if (netIncome <= 0) return 0;
 
         // APY = (netIncome / startValue) * (SECONDS_PER_YEAR / timeDelta)
-        uint256 periodReturn = (uint256(netIncome) * PRECISION) /
-            startSnapshot.totalValue;
+        uint256 periodReturn = (uint256(netIncome) * PRECISION) / startSnapshot.totalValue;
         apy = (periodReturn * SECONDS_PER_YEAR) / timeDelta;
     }
 
@@ -74,13 +69,9 @@ library YieldMath {
         if (startValue == 0) return 0;
 
         if (endValue >= startValue) {
-            returnPct = int256(
-                ((endValue - startValue) * PRECISION) / startValue
-            );
+            returnPct = int256(((endValue - startValue) * PRECISION) / startValue);
         } else {
-            returnPct = -int256(
-                ((startValue - endValue) * PRECISION) / startValue
-            );
+            returnPct = -int256(((startValue - endValue) * PRECISION) / startValue);
         }
     }
 
@@ -115,8 +106,7 @@ library YieldMath {
         uint256 token0FeesUSD = (amount0Fees * token0Price) / PRECISION;
 
         // Convert token1 fees to USD (assuming token1 is stablecoin)
-        uint256 token1FeesUSD = (amount1Fees * PRECISION) /
-            (10 ** token1Decimals);
+        uint256 token1FeesUSD = (amount1Fees * PRECISION) / (10 ** token1Decimals);
 
         totalFeesUSD = token0FeesUSD + token1FeesUSD;
     }
@@ -134,8 +124,7 @@ library YieldMath {
         if (positionSize == 0 || timePeriod == 0) return 0;
 
         // fundingAPY = (fundingAmount / positionSize) * (SECONDS_PER_YEAR / timePeriod)
-        int256 periodRate = (fundingAmount * int256(PRECISION)) /
-            int256(positionSize);
+        int256 periodRate = (fundingAmount * int256(PRECISION)) / int256(positionSize);
         fundingAPY = (periodRate * int256(SECONDS_PER_YEAR)) / int256(timePeriod);
     }
 

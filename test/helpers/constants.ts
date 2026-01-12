@@ -96,10 +96,7 @@ export function sqrtPriceX96ToTick(sqrtPriceX96: bigint): number {
  * @param wethIsToken0 Whether WETH is token0 in the pool
  * @returns sqrtPriceX96 as bigint
  */
-export function priceToSqrtPriceX96(
-  priceUsdPerEth: number,
-  wethIsToken0: boolean = true
-): bigint {
+export function priceToSqrtPriceX96(priceUsdPerEth: number, wethIsToken0: boolean = true): bigint {
   // Pool price = token1/token0 with decimal adjustment
   // If WETH is token0: poolPrice = (USDC/10^6) / (WETH/10^18) = USDC_per_ETH * 10^12
   // sqrtPriceX96 = sqrt(poolPrice) * 2^96
@@ -121,10 +118,7 @@ export function priceToSqrtPriceX96(
  * @param wethIsToken0 Whether WETH is token0
  * @returns Price in USD per ETH
  */
-export function sqrtPriceX96ToPrice(
-  sqrtPriceX96: bigint,
-  wethIsToken0: boolean = true
-): number {
+export function sqrtPriceX96ToPrice(sqrtPriceX96: bigint, wethIsToken0: boolean = true): number {
   const sqrtPrice = Number(sqrtPriceX96) / Number(Q96);
   const poolPrice = sqrtPrice * sqrtPrice;
 
@@ -141,10 +135,7 @@ export function sqrtPriceX96ToPrice(
  * @param tickUpper Upper tick
  * @returns Range width as percentage (e.g., 0.1 for 10%)
  */
-export function calculateRangeWidth(
-  tickLower: number,
-  tickUpper: number
-): number {
+export function calculateRangeWidth(tickLower: number, tickUpper: number): number {
   const priceLower = Math.pow(1.0001, tickLower);
   const priceUpper = Math.pow(1.0001, tickUpper);
   return (priceUpper - priceLower) / priceLower;

@@ -5,8 +5,7 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { ARBITRUM_ADDRESSES } from "../../hardhat.config";
 
 // Skip these tests if not running with forking enabled
-const describeFork =
-  process.env.ALCHEMY_API_KEY ? describe : describe.skip;
+const describeFork = process.env.ALCHEMY_API_KEY ? describe : describe.skip;
 
 describeFork("Chainlink Price Feed Fork Tests", function () {
   let signer: HardhatEthersSigner;
@@ -25,11 +24,7 @@ describeFork("Chainlink Price Feed Fork Tests", function () {
     [signer] = await ethers.getSigners();
 
     // Connect to Chainlink ETH/USD price feed
-    ethUsdFeed = new Contract(
-      ARBITRUM_ADDRESSES.CHAINLINK_ETH_USD_FEED,
-      AGGREGATOR_ABI,
-      signer
-    );
+    ethUsdFeed = new Contract(ARBITRUM_ADDRESSES.CHAINLINK_ETH_USD_FEED, AGGREGATOR_ABI, signer);
   });
 
   describe("Price Feed Reading", function () {
@@ -47,10 +42,7 @@ describeFork("Chainlink Price Feed Fork Tests", function () {
         "  Price (USD):",
         (Number(latestRound.answer) / 10 ** Number(decimals)).toFixed(2)
       );
-      console.log(
-        "  Updated At:",
-        new Date(Number(latestRound.updatedAt) * 1000).toISOString()
-      );
+      console.log("  Updated At:", new Date(Number(latestRound.updatedAt) * 1000).toISOString());
 
       // Verify price is reasonable
       const priceUsd = Number(latestRound.answer) / 10 ** Number(decimals);
@@ -97,8 +89,7 @@ describeFork("Chainlink Price Feed Fork Tests", function () {
       // Get Chainlink price
       const decimals = await ethUsdFeed.decimals();
       const latestRound = await ethUsdFeed.latestRoundData();
-      const chainlinkPrice =
-        Number(latestRound.answer) / 10 ** Number(decimals);
+      const chainlinkPrice = Number(latestRound.answer) / 10 ** Number(decimals);
 
       // Get Uniswap pool price
       const POOL_ABI = [
@@ -106,16 +97,11 @@ describeFork("Chainlink Price Feed Fork Tests", function () {
         "function token0() external view returns (address)",
       ];
 
-      const pool = new Contract(
-        ARBITRUM_ADDRESSES.UNISWAP_V3_ETH_USDC_005_POOL,
-        POOL_ABI,
-        signer
-      );
+      const pool = new Contract(ARBITRUM_ADDRESSES.UNISWAP_V3_ETH_USDC_005_POOL, POOL_ABI, signer);
 
       const slot0 = await pool.slot0();
       const token0 = await pool.token0();
-      const isWethToken0 =
-        token0.toLowerCase() === ARBITRUM_ADDRESSES.WETH.toLowerCase();
+      const isWethToken0 = token0.toLowerCase() === ARBITRUM_ADDRESSES.WETH.toLowerCase();
 
       // Calculate Uniswap price
       const Q96 = BigInt(2) ** BigInt(96);

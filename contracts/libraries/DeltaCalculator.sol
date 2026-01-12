@@ -35,11 +35,7 @@ library DeltaCalculator {
         // If price below range: full exposure to base token
         // delta = L * (1/√Pa - 1/√Pb)
         if (sqrtPriceX96 <= sqrtPriceLowerX96) {
-            return int256(_getAmount0ForLiquidity(
-                sqrtPriceLowerX96,
-                sqrtPriceUpperX96,
-                liquidity
-            ));
+            return int256(_getAmount0ForLiquidity(sqrtPriceLowerX96, sqrtPriceUpperX96, liquidity));
         }
 
         // If price above range: no exposure to base token
@@ -50,11 +46,7 @@ library DeltaCalculator {
 
         // In range: partial exposure
         // delta = L * (1/√S - 1/√Pb)
-        return int256(_getAmount0ForLiquidity(
-            sqrtPriceX96,
-            sqrtPriceUpperX96,
-            liquidity
-        ));
+        return int256(_getAmount0ForLiquidity(sqrtPriceX96, sqrtPriceUpperX96, liquidity));
     }
 
     /// @notice Calculate delta as a ratio (0 to 1, scaled by 1e18)
@@ -83,8 +75,7 @@ library DeltaCalculator {
         // In range: calculate ratio
         // deltaRatio = (1/√S - 1/√Pb) / (1/√Pa - 1/√Pb)
         // Simplified: = (√Pb - √S) * √Pa / ((√Pb - √Pa) * √S)
-        uint256 numerator = uint256(sqrtPriceUpperX96 - sqrtPriceX96) *
-            uint256(sqrtPriceLowerX96);
+        uint256 numerator = uint256(sqrtPriceUpperX96 - sqrtPriceX96) * uint256(sqrtPriceLowerX96);
         uint256 denominator = uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96) *
             uint256(sqrtPriceX96);
 
@@ -107,18 +98,10 @@ library DeltaCalculator {
 
         if (sqrtPriceX96 <= sqrtPriceLowerX96) {
             // All base token
-            amount0 = _getAmount0ForLiquidity(
-                sqrtPriceLowerX96,
-                sqrtPriceUpperX96,
-                liquidity
-            );
+            amount0 = _getAmount0ForLiquidity(sqrtPriceLowerX96, sqrtPriceUpperX96, liquidity);
         } else if (sqrtPriceX96 < sqrtPriceUpperX96) {
             // In range - partial base token
-            amount0 = _getAmount0ForLiquidity(
-                sqrtPriceX96,
-                sqrtPriceUpperX96,
-                liquidity
-            );
+            amount0 = _getAmount0ForLiquidity(sqrtPriceX96, sqrtPriceUpperX96, liquidity);
         }
         // else: all quote token, amount0 = 0
     }
@@ -139,18 +122,10 @@ library DeltaCalculator {
 
         if (sqrtPriceX96 >= sqrtPriceUpperX96) {
             // All quote token
-            amount1 = _getAmount1ForLiquidity(
-                sqrtPriceLowerX96,
-                sqrtPriceUpperX96,
-                liquidity
-            );
+            amount1 = _getAmount1ForLiquidity(sqrtPriceLowerX96, sqrtPriceUpperX96, liquidity);
         } else if (sqrtPriceX96 > sqrtPriceLowerX96) {
             // In range - partial quote token
-            amount1 = _getAmount1ForLiquidity(
-                sqrtPriceLowerX96,
-                sqrtPriceX96,
-                liquidity
-            );
+            amount1 = _getAmount1ForLiquidity(sqrtPriceLowerX96, sqrtPriceX96, liquidity);
         }
         // else: all base token, amount1 = 0
     }
@@ -207,10 +182,7 @@ library DeltaCalculator {
         uint128 liquidity
     ) internal pure returns (int256 gamma) {
         // Gamma is 0 outside the range
-        if (
-            sqrtPriceX96 <= sqrtPriceLowerX96 ||
-            sqrtPriceX96 >= sqrtPriceUpperX96
-        ) {
+        if (sqrtPriceX96 <= sqrtPriceLowerX96 || sqrtPriceX96 >= sqrtPriceUpperX96) {
             return 0;
         }
 
@@ -218,22 +190,14 @@ library DeltaCalculator {
         // In Q96 terms: γ = -L * Q96 / (2 * sqrtPrice^3 / Q96^2)
         //                 = -L * Q96^3 / (2 * sqrtPrice^3)
         uint256 sqrtPriceCubed = mulDiv(
-            mulDiv(
-                uint256(sqrtPriceX96),
-                uint256(sqrtPriceX96),
-                Q96
-            ),
+            mulDiv(uint256(sqrtPriceX96), uint256(sqrtPriceX96), Q96),
             uint256(sqrtPriceX96),
             Q96
         );
 
         if (sqrtPriceCubed == 0) return 0;
 
-        uint256 gammaAbs = mulDiv(
-            uint256(liquidity) * PRECISION,
-            Q96,
-            2 * sqrtPriceCubed
-        );
+        uint256 gammaAbs = mulDiv(uint256(liquidity) * PRECISION, Q96, 2 * sqrtPriceCubed);
 
         gamma = -int256(gammaAbs);
     }
@@ -245,13 +209,8 @@ library DeltaCalculator {
         uint160 sqrtPriceUpperX96,
         uint128 liquidity
     ) private pure returns (uint256 amount0) {
-        uint256 numerator = uint256(liquidity) *
-            uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96);
-        uint256 denominator = mulDiv(
-            uint256(sqrtPriceUpperX96),
-            uint256(sqrtPriceLowerX96),
-            Q96
-        );
+        uint256 numerator = uint256(liquidity) * uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96);
+        uint256 denominator = mulDiv(uint256(sqrtPriceUpperX96), uint256(sqrtPriceLowerX96), Q96);
 
         amount0 = mulDiv(numerator, Q96, denominator);
     }
@@ -263,11 +222,7 @@ library DeltaCalculator {
         uint160 sqrtPriceUpperX96,
         uint128 liquidity
     ) private pure returns (uint256 amount1) {
-        amount1 = mulDiv(
-            uint256(liquidity),
-            uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96),
-            Q96
-        );
+        amount1 = mulDiv(uint256(liquidity), uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96), Q96);
     }
 
     /// @notice Convert a regular price to sqrtPriceX96 format

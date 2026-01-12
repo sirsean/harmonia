@@ -41,7 +41,9 @@ interface IUniswapV3Pool {
     function liquidity() external view returns (uint128);
 
     /// @notice Look up information about a specific tick in the pool
-    function ticks(int24 tick)
+    function ticks(
+        int24 tick
+    )
         external
         view
         returns (
@@ -56,10 +58,15 @@ interface IUniswapV3Pool {
         );
 
     /// @notice Returns the cumulative tick and liquidity as of each timestamp `secondsAgo`
-    function observe(uint32[] calldata secondsAgos)
+    function observe(
+        uint32[] calldata secondsAgos
+    )
         external
         view
-        returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s);
+        returns (
+            int56[] memory tickCumulatives,
+            uint160[] memory secondsPerLiquidityCumulativeX128s
+        );
 }
 
 /// @title Nonfungible Position Manager Interface
@@ -104,43 +111,35 @@ interface INonfungiblePositionManager {
     }
 
     /// @notice Creates a new position wrapped in a NFT
-    function mint(MintParams calldata params)
+    function mint(
+        MintParams calldata params
+    )
         external
         payable
-        returns (
-            uint256 tokenId,
-            uint128 liquidity,
-            uint256 amount0,
-            uint256 amount1
-        );
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 
     /// @notice Increases the amount of liquidity in a position
-    function increaseLiquidity(IncreaseLiquidityParams calldata params)
-        external
-        payable
-        returns (
-            uint128 liquidity,
-            uint256 amount0,
-            uint256 amount1
-        );
+    function increaseLiquidity(
+        IncreaseLiquidityParams calldata params
+    ) external payable returns (uint128 liquidity, uint256 amount0, uint256 amount1);
 
     /// @notice Decreases the amount of liquidity in a position and accounts it to the position
-    function decreaseLiquidity(DecreaseLiquidityParams calldata params)
-        external
-        payable
-        returns (uint256 amount0, uint256 amount1);
+    function decreaseLiquidity(
+        DecreaseLiquidityParams calldata params
+    ) external payable returns (uint256 amount0, uint256 amount1);
 
     /// @notice Collects up to a maximum amount of fees owed to a specific position to the recipient
-    function collect(CollectParams calldata params)
-        external
-        payable
-        returns (uint256 amount0, uint256 amount1);
+    function collect(
+        CollectParams calldata params
+    ) external payable returns (uint256 amount0, uint256 amount1);
 
     /// @notice Burns a token ID, which deletes it from the NFT contract
     function burn(uint256 tokenId) external payable;
 
     /// @notice Returns the position information associated with a given token ID
-    function positions(uint256 tokenId)
+    function positions(
+        uint256 tokenId
+    )
         external
         view
         returns (
@@ -180,10 +179,9 @@ interface ISwapRouter {
     }
 
     /// @notice Swaps `amountIn` of one token for as much as possible of another token
-    function exactInputSingle(ExactInputSingleParams calldata params)
-        external
-        payable
-        returns (uint256 amountOut);
+    function exactInputSingle(
+        ExactInputSingleParams calldata params
+    ) external payable returns (uint256 amountOut);
 
     struct ExactOutputSingleParams {
         address tokenIn;
@@ -197,10 +195,9 @@ interface ISwapRouter {
     }
 
     /// @notice Swaps as little as possible of one token for `amountOut` of another token
-    function exactOutputSingle(ExactOutputSingleParams calldata params)
-        external
-        payable
-        returns (uint256 amountIn);
+    function exactOutputSingle(
+        ExactOutputSingleParams calldata params
+    ) external payable returns (uint256 amountIn);
 }
 
 /// @title Uniswap V3 Factory Interface
@@ -213,9 +210,5 @@ interface IUniswapV3Factory {
     ) external view returns (address pool);
 
     /// @notice Creates a pool for the given two tokens and fee
-    function createPool(
-        address tokenA,
-        address tokenB,
-        uint24 fee
-    ) external returns (address pool);
+    function createPool(address tokenA, address tokenB, uint24 fee) external returns (address pool);
 }
