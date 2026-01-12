@@ -43,6 +43,9 @@ const FORK_BLOCK_NUMBER = process.env.FORK_BLOCK_NUMBER
   ? parseInt(process.env.FORK_BLOCK_NUMBER)
   : HISTORICAL_BLOCKS.RECENT;
 
+// Test scope - defaults to 'test' if not specified
+const testDir = process.env.TEST_SCOPE || "test";
+
 const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.19",
@@ -53,6 +56,9 @@ const config: HardhatUserConfig = {
       },
       viaIR: true,
     },
+  },
+  paths: {
+    tests: `./${testDir}`,
   },
   networks: {
     hardhat: {
