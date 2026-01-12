@@ -11,7 +11,7 @@ env:
 
 jobs:
   build:
-    name: Build & Lint
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -31,9 +31,26 @@ jobs:
       - name: Compile contracts
         run: npm run compile
 
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
       - name: Check formatting
         run: npm run lint
-        continue-on-error: true
 
   unit-tests:
     name: Unit Tests
@@ -82,9 +99,6 @@ jobs:
         run: npm run test:fork
         env:
           ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
-          FORK_BLOCK_NUMBER: "150000000"
-        # Continue even if fork tests fail (they require API key)
-        continue-on-error: true
 
   gas-report:
     name: Gas Report
@@ -110,7 +124,6 @@ jobs:
         run: npm run test:gas
         env:
           REPORT_GAS: true
-        continue-on-error: true
 
   slither:
     name: Slither Analysis
@@ -137,4 +150,3 @@ jobs:
         with:
           node-version: "20"
           fail-on: none
-        continue-on-error: true
