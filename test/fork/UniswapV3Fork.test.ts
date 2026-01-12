@@ -40,6 +40,10 @@ describeFork("Uniswap V3 Fork Tests", function () {
   ];
 
   before(async function () {
+    // Workaround for "No known hardfork" error on Arbitrum fork
+    // Mining a block bypasses the hardfork lookup issue
+    await network.provider.send("hardhat_mine", ["0x1"]);
+
     // Get signer
     [signer] = await ethers.getSigners();
 
