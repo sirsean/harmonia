@@ -62,6 +62,9 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {
+      // Force hardfork to bypass Ethereum mainnet block number lookup
+      // (Arbitrum has much higher block numbers than Ethereum mainnet)
+      hardfork: "cancun",
       forking: ALCHEMY_API_KEY ? {
         url: `https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
         blockNumber: FORK_BLOCK_NUMBER,
