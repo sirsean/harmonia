@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+artifacts/
+cache/
+typechain-types/
+dist/
+coverage/
+coverage.json
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Hardhat
+.openzeppelin/
+
+# Test outputs
+gas-report.txt
+
+# Deployment records
+deployments/localhost
+deployments/hardhat
