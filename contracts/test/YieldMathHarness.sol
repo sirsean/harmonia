@@ -65,13 +65,14 @@ contract YieldMathHarness {
         int256 cumulativeFunding,
         uint256 cumulativeRebalanceCosts
     ) external pure returns (YieldMath.YieldSnapshot memory) {
-        return YieldMath.YieldSnapshot({
-            timestamp: timestamp,
-            totalValue: totalValue,
-            cumulativeFees: cumulativeFees,
-            cumulativeFunding: cumulativeFunding,
-            cumulativeRebalanceCosts: cumulativeRebalanceCosts
-        });
+        return
+            YieldMath.YieldSnapshot({
+                timestamp: timestamp,
+                totalValue: totalValue,
+                cumulativeFees: cumulativeFees,
+                cumulativeFunding: cumulativeFunding,
+                cumulativeRebalanceCosts: cumulativeRebalanceCosts
+            });
     }
 
     /// @notice Expose PRECISION constant
