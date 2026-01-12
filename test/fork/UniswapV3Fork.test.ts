@@ -135,17 +135,15 @@ describeFork("Uniswap V3 Fork Tests", function () {
       // Get current price
       const slot0 = await uniswapPool.slot0();
       const currentSqrtPriceX96 = slot0.sqrtPriceX96;
-      const currentTick = slot0.tick;
+      const currentTick = Number(slot0.tick);
 
       // Create a range around current price (±10%)
       // Each tick represents a 0.01% price change
-      const tickSpacing = await uniswapPool.tickSpacing();
+      const tickSpacing = Number(await uniswapPool.tickSpacing());
       const tickRange = 1000; // About ±10%
 
-      const tickLower =
-        Math.floor((currentTick - tickRange) / Number(tickSpacing)) * Number(tickSpacing);
-      const tickUpper =
-        Math.ceil((currentTick + tickRange) / Number(tickSpacing)) * Number(tickSpacing);
+      const tickLower = Math.floor((currentTick - tickRange) / tickSpacing) * tickSpacing;
+      const tickUpper = Math.ceil((currentTick + tickRange) / tickSpacing) * tickSpacing;
 
       // Convert ticks to sqrtPriceX96 using the formula:
       // sqrtPrice = 1.0001^(tick/2) * 2^96
@@ -184,15 +182,13 @@ describeFork("Uniswap V3 Fork Tests", function () {
     it("should calculate gamma for in-range position", async function () {
       const slot0 = await uniswapPool.slot0();
       const currentSqrtPriceX96 = slot0.sqrtPriceX96;
-      const currentTick = slot0.tick;
+      const currentTick = Number(slot0.tick);
 
-      const tickSpacing = await uniswapPool.tickSpacing();
+      const tickSpacing = Number(await uniswapPool.tickSpacing());
       const tickRange = 1000;
 
-      const tickLower =
-        Math.floor((currentTick - tickRange) / Number(tickSpacing)) * Number(tickSpacing);
-      const tickUpper =
-        Math.ceil((currentTick + tickRange) / Number(tickSpacing)) * Number(tickSpacing);
+      const tickLower = Math.floor((currentTick - tickRange) / tickSpacing) * tickSpacing;
+      const tickUpper = Math.ceil((currentTick + tickRange) / tickSpacing) * tickSpacing;
 
       const sqrtPriceLower = tickToSqrtPriceX96(tickLower);
       const sqrtPriceUpper = tickToSqrtPriceX96(tickUpper);
