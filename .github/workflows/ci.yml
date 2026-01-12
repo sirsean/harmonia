@@ -79,10 +79,10 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Run fork tests
-        run: npm run test
+        run: npm run test:fork
         env:
           ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
-          FORK_BLOCK_NUMBER: "290000000"
+          FORK_BLOCK_NUMBER: "150000000"
         # Continue even if fork tests fail (they require API key)
         continue-on-error: true
 
