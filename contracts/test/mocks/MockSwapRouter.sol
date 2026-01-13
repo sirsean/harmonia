@@ -10,19 +10,16 @@ contract MockSwapRouter is ISwapRouter {
     // Fixed exchange rate: 1 ETH = 2000 USDC
     uint256 public ethPrice = 2000e6;
 
-    function exactInputSingle(ExactInputSingleParams calldata params)
-        external
-        payable
-        override
-        returns (uint256 amountOut)
-    {
+    function exactInputSingle(
+        ExactInputSingleParams calldata params
+    ) external payable override returns (uint256 amountOut) {
         // Transfer tokens in
         IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
 
         // Calculate output based on mock price
         // Assuming tokenIn is WETH (18 decimals) and tokenOut is USDC (6 decimals)
         // or vice versa
-        amountOut = params.amountIn * ethPrice / 1e18;
+        amountOut = (params.amountIn * ethPrice) / 1e18;
 
         require(amountOut >= params.amountOutMinimum, "Insufficient output");
 
@@ -30,14 +27,11 @@ contract MockSwapRouter is ISwapRouter {
         IERC20(params.tokenOut).transfer(params.recipient, amountOut);
     }
 
-    function exactOutputSingle(ExactOutputSingleParams calldata params)
-        external
-        payable
-        override
-        returns (uint256 amountIn)
-    {
+    function exactOutputSingle(
+        ExactOutputSingleParams calldata params
+    ) external payable override returns (uint256 amountIn) {
         // Calculate input needed
-        amountIn = params.amountOut * 1e18 / ethPrice;
+        amountIn = (params.amountOut * 1e18) / ethPrice;
 
         require(amountIn <= params.amountInMaximum, "Too much input required");
 

@@ -28,12 +28,9 @@ contract MockExchangeRouter is IExchangeRouter {
         orderVault = _orderVault;
     }
 
-    function createOrder(CreateOrderParams calldata params)
-        external
-        payable
-        override
-        returns (bytes32 orderKey)
-    {
+    function createOrder(
+        CreateOrderParams calldata params
+    ) external payable override returns (bytes32 orderKey) {
         orderKey = bytes32(_nextOrderKey++);
 
         orders[orderKey] = Order({

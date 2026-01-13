@@ -6,7 +6,13 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import {IExchangeRouter, IOrderVault, IDataStore, IReader, GMXPositionUtils} from "./interfaces/IGMXV2.sol";
+import {
+    IExchangeRouter,
+    IOrderVault,
+    IDataStore,
+    IReader,
+    GMXPositionUtils
+} from "./interfaces/IGMXV2.sol";
 import {AggregatorV3Interface} from "./interfaces/IChainlink.sol";
 
 /// @title Hedge Manager
@@ -112,17 +118,9 @@ contract HedgeManager is Ownable, ReentrancyGuard {
         uint256 acceptablePrice
     );
 
-    event HedgeIncreased(
-        bytes32 indexed orderKey,
-        uint256 sizeDeltaUsd,
-        uint256 collateralDelta
-    );
+    event HedgeIncreased(bytes32 indexed orderKey, uint256 sizeDeltaUsd, uint256 collateralDelta);
 
-    event HedgeDecreased(
-        bytes32 indexed orderKey,
-        uint256 sizeDeltaUsd,
-        uint256 collateralDelta
-    );
+    event HedgeDecreased(bytes32 indexed orderKey, uint256 sizeDeltaUsd, uint256 collateralDelta);
 
     event HedgeClosed(bytes32 indexed orderKey, uint256 sizeUsd);
 
@@ -507,7 +505,10 @@ contract HedgeManager is Ownable, ReentrancyGuard {
             false // isLong = false for short
         );
 
-        IReader.PositionInfo memory gmxPosition = reader.getPosition(address(dataStore), positionKey);
+        IReader.PositionInfo memory gmxPosition = reader.getPosition(
+            address(dataStore),
+            positionKey
+        );
 
         position = HedgePosition({
             sizeUsd: gmxPosition.sizeInUsd,
@@ -540,7 +541,8 @@ contract HedgeManager is Ownable, ReentrancyGuard {
         if (price == 0) return 0;
 
         // Convert to token units and negate for short
-        uint256 sizeInTokens = (position.sizeUsd * PRECISION) / (price * GMX_USD_PRECISION / PRECISION);
+        uint256 sizeInTokens = (position.sizeUsd * PRECISION) /
+            ((price * GMX_USD_PRECISION) / PRECISION);
         delta = -int256(sizeInTokens);
     }
 
@@ -569,7 +571,7 @@ contract HedgeManager is Ownable, ReentrancyGuard {
 
         // Get collateral value in USD (assuming collateral is stablecoin)
         // collateral decimals is typically 6 for USDC
-        uint256 collateralUsd = position.collateralAmount * GMX_USD_PRECISION / 1e6;
+        uint256 collateralUsd = (position.collateralAmount * GMX_USD_PRECISION) / 1e6;
 
         if (collateralUsd == 0) return 0;
 
@@ -591,12 +593,8 @@ contract HedgeManager is Ownable, ReentrancyGuard {
     /// @notice Gets the position key for this contract's short position
     /// @return key The position key
     function getPositionKey() external view returns (bytes32 key) {
-        return GMXPositionUtils.getPositionKey(
-            address(this),
-            market,
-            address(collateralToken),
-            false
-        );
+        return
+            GMXPositionUtils.getPositionKey(address(this), market, address(collateralToken), false);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

@@ -75,9 +75,7 @@ describe("LiquidityManager", function () {
 
   describe("Constructor", function () {
     it("should set immutable addresses correctly", async function () {
-      expect(await liquidityManager.positionManager()).to.equal(
-        await positionManager.getAddress()
-      );
+      expect(await liquidityManager.positionManager()).to.equal(await positionManager.getAddress());
       expect(await liquidityManager.pool()).to.equal(await pool.getAddress());
       expect(await liquidityManager.swapRouter()).to.equal(await swapRouter.getAddress());
       expect(await liquidityManager.priceFeed()).to.equal(await priceFeed.getAddress());
@@ -294,11 +292,7 @@ describe("LiquidityManager", function () {
     it("should collect fees successfully", async function () {
       await expect(liquidityManager.connect(vault).collectFees())
         .to.emit(liquidityManager, "FeesCollected")
-        .withArgs(
-          1n,
-          ethers.parseEther("0.01"),
-          ethers.parseUnits("20", 6)
-        );
+        .withArgs(1n, ethers.parseEther("0.01"), ethers.parseUnits("20", 6));
 
       const [fees0, fees1] = await liquidityManager.getCumulativeFees();
       expect(fees0).to.equal(ethers.parseEther("0.01"));
@@ -310,9 +304,10 @@ describe("LiquidityManager", function () {
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
       await liquidityManager.connect(vault).closePosition(0n, 0n, deadline);
 
-      await expect(
-        liquidityManager.connect(vault).collectFees()
-      ).to.be.revertedWithCustomError(liquidityManager, "NoActivePosition");
+      await expect(liquidityManager.connect(vault).collectFees()).to.be.revertedWithCustomError(
+        liquidityManager,
+        "NoActivePosition"
+      );
     });
   });
 

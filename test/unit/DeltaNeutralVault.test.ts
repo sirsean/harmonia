@@ -212,12 +212,7 @@ describe("DeltaNeutralVault", function () {
 
       await expect(vault.connect(user1).deposit(depositAmount, user1.address))
         .to.emit(vault, "Deposit")
-        .withArgs(
-          user1.address,
-          user1.address,
-          depositAmount,
-          (shares: bigint) => shares > 0n
-        );
+        .withArgs(user1.address, user1.address, depositAmount, (shares: bigint) => shares > 0n);
     });
   });
 
@@ -435,13 +430,15 @@ describe("DeltaNeutralVault", function () {
     });
 
     it("should reject non-owner admin calls", async function () {
-      await expect(
-        vault.connect(user1).setKeeper(user2.address)
-      ).to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
+      await expect(vault.connect(user1).setKeeper(user2.address)).to.be.revertedWithCustomError(
+        vault,
+        "OwnableUnauthorizedAccount"
+      );
 
-      await expect(
-        vault.connect(user1).pause()
-      ).to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
+      await expect(vault.connect(user1).pause()).to.be.revertedWithCustomError(
+        vault,
+        "OwnableUnauthorizedAccount"
+      );
     });
   });
 

@@ -260,9 +260,7 @@ describe("HedgeManager", function () {
     });
 
     it("should close entire hedge position", async function () {
-      await expect(
-        hedgeManager.connect(vault).closeHedge({ value: MIN_EXECUTION_FEE })
-      )
+      await expect(hedgeManager.connect(vault).closeHedge({ value: MIN_EXECUTION_FEE }))
         .to.emit(hedgeManager, "HedgeClosed")
         .withArgs((orderKey: string) => orderKey.length > 0, initialSize);
 
@@ -292,8 +290,10 @@ describe("HedgeManager", function () {
 
       expect(await hedgeManager.hasPendingOrder()).to.be.true;
 
-      await expect(hedgeManager.connect(vault).cancelPendingOrder({ value: 0 }))
-        .to.emit(hedgeManager, "OrderCancelled");
+      await expect(hedgeManager.connect(vault).cancelPendingOrder({ value: 0 })).to.emit(
+        hedgeManager,
+        "OrderCancelled"
+      );
 
       expect(await hedgeManager.hasPendingOrder()).to.be.false;
     });

@@ -50,24 +50,36 @@ contract MockUniswapV3Pool is IUniswapV3Pool {
         return 10;
     }
 
-    function ticks(int24) external pure override returns (
-        uint128 liquidityGross,
-        int128 liquidityNet,
-        uint256 feeGrowthOutside0X128,
-        uint256 feeGrowthOutside1X128,
-        int56 tickCumulativeOutside,
-        uint160 secondsPerLiquidityOutsideX128,
-        uint32 secondsOutside,
-        bool initialized
-    ) {
-        return (1000e18, 1000e18, 0, 0, 0, 0, 0, true);
-    }
-
-    function observe(uint32[] calldata)
+    function ticks(
+        int24
+    )
         external
         pure
         override
-        returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s)
+        returns (
+            uint128 liquidityGross,
+            int128 liquidityNet,
+            uint256 feeGrowthOutside0X128,
+            uint256 feeGrowthOutside1X128,
+            int56 tickCumulativeOutside,
+            uint160 secondsPerLiquidityOutsideX128,
+            uint32 secondsOutside,
+            bool initialized
+        )
+    {
+        return (1000e18, 1000e18, 0, 0, 0, 0, 0, true);
+    }
+
+    function observe(
+        uint32[] calldata
+    )
+        external
+        pure
+        override
+        returns (
+            int56[] memory tickCumulatives,
+            uint160[] memory secondsPerLiquidityCumulativeX128s
+        )
     {
         tickCumulatives = new int56[](2);
         secondsPerLiquidityCumulativeX128s = new uint160[](2);
@@ -112,7 +124,9 @@ contract MockNonfungiblePositionManager is INonfungiblePositionManager {
     uint128 public mockFees0;
     uint128 public mockFees1;
 
-    function positions(uint256 tokenId)
+    function positions(
+        uint256 tokenId
+    )
         external
         view
         override
@@ -148,16 +162,13 @@ contract MockNonfungiblePositionManager is INonfungiblePositionManager {
         );
     }
 
-    function mint(MintParams calldata params)
+    function mint(
+        MintParams calldata params
+    )
         external
         payable
         override
-        returns (
-            uint256 tokenId,
-            uint128 liquidity,
-            uint256 amount0,
-            uint256 amount1
-        )
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         tokenId = _nextTokenId++;
 
@@ -190,12 +201,9 @@ contract MockNonfungiblePositionManager is INonfungiblePositionManager {
         positionOwner[tokenId] = params.recipient;
     }
 
-    function increaseLiquidity(IncreaseLiquidityParams calldata params)
-        external
-        payable
-        override
-        returns (uint128 liquidity, uint256 amount0, uint256 amount1)
-    {
+    function increaseLiquidity(
+        IncreaseLiquidityParams calldata params
+    ) external payable override returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
         Position storage pos = positionData[params.tokenId];
 
         // Transfer tokens
@@ -210,12 +218,9 @@ contract MockNonfungiblePositionManager is INonfungiblePositionManager {
         amount1 = params.amount1Desired;
     }
 
-    function decreaseLiquidity(DecreaseLiquidityParams calldata params)
-        external
-        payable
-        override
-        returns (uint256 amount0, uint256 amount1)
-    {
+    function decreaseLiquidity(
+        DecreaseLiquidityParams calldata params
+    ) external payable override returns (uint256 amount0, uint256 amount1) {
         Position storage pos = positionData[params.tokenId];
         require(pos.liquidity >= params.liquidity, "Insufficient liquidity");
 
@@ -223,15 +228,12 @@ contract MockNonfungiblePositionManager is INonfungiblePositionManager {
 
         // Return proportional amounts (simplified)
         amount0 = uint256(params.liquidity) * 1e12;
-        amount1 = uint256(params.liquidity) * 2000e6 / 1e6; // ~2000 USDC per ETH
+        amount1 = (uint256(params.liquidity) * 2000e6) / 1e6; // ~2000 USDC per ETH
     }
 
-    function collect(CollectParams calldata params)
-        external
-        payable
-        override
-        returns (uint256 amount0, uint256 amount1)
-    {
+    function collect(
+        CollectParams calldata params
+    ) external payable override returns (uint256 amount0, uint256 amount1) {
         Position storage pos = positionData[params.tokenId];
 
         amount0 = mockFees0 > 0 ? mockFees0 : pos.tokensOwed0;
@@ -268,5 +270,15 @@ contract MockNonfungiblePositionManager is INonfungiblePositionManager {
     function setTokensOwed(uint256 tokenId, uint128 _owed0, uint128 _owed1) external {
         positionData[tokenId].tokensOwed0 = _owed0;
         positionData[tokenId].tokensOwed1 = _owed1;
+    }
+
+    /// @notice Returns the address of WETH9 (mock)
+    function WETH9() external pure override returns (address) {
+        return address(0);
+    }
+
+    /// @notice Returns the address of the factory (mock)
+    function factory() external pure override returns (address) {
+        return address(0);
     }
 }

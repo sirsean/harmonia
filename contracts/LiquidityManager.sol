@@ -6,7 +6,11 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import {IUniswapV3Pool, INonfungiblePositionManager, ISwapRouter} from "./interfaces/IUniswapV3.sol";
+import {
+    IUniswapV3Pool,
+    INonfungiblePositionManager,
+    ISwapRouter
+} from "./interfaces/IUniswapV3.sol";
 import {AggregatorV3Interface} from "./interfaces/IChainlink.sol";
 import {DeltaCalculator} from "./libraries/DeltaCalculator.sol";
 
@@ -268,7 +272,14 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
         // Refund unused tokens
         _refundUnusedTokens(params.amount0Desired - amount0, params.amount1Desired - amount1);
 
-        emit PositionOpened(tokenId, params.tickLower, params.tickUpper, liquidity, amount0, amount1);
+        emit PositionOpened(
+            tokenId,
+            params.tickLower,
+            params.tickUpper,
+            liquidity,
+            amount0,
+            amount1
+        );
     }
 
     /// @notice Closes the current position and withdraws all liquidity
@@ -443,7 +454,12 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
     /// @notice Collects accumulated fees from the position
     /// @return amount0 Fees collected in token0
     /// @return amount1 Fees collected in token1
-    function collectFees() external onlyVaultOrOwner nonReentrant returns (uint256 amount0, uint256 amount1) {
+    function collectFees()
+        external
+        onlyVaultOrOwner
+        nonReentrant
+        returns (uint256 amount0, uint256 amount1)
+    {
         if (positionTokenId == 0) {
             revert NoActivePosition();
         }

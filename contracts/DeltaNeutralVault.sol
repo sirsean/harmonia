@@ -116,30 +116,13 @@ contract DeltaNeutralVault is ERC4626, Ownable, ReentrancyGuard, Pausable {
     // EVENTS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    event PositionOpened(
-        uint256 lpTokenId,
-        uint256 lpValue,
-        uint256 hedgeSizeUsd
-    );
+    event PositionOpened(uint256 lpTokenId, uint256 lpValue, uint256 hedgeSizeUsd);
 
-    event Rebalanced(
-        int256 oldDelta,
-        int256 newDelta,
-        uint256 lpValue,
-        uint256 hedgeValue
-    );
+    event Rebalanced(int256 oldDelta, int256 newDelta, uint256 lpValue, uint256 hedgeValue);
 
-    event FeesCollected(
-        uint256 managementFee,
-        uint256 performanceFee,
-        address indexed recipient
-    );
+    event FeesCollected(uint256 managementFee, uint256 performanceFee, address indexed recipient);
 
-    event YieldSnapshotTaken(
-        uint256 timestamp,
-        uint256 totalValue,
-        uint256 cumulativeFees
-    );
+    event YieldSnapshotTaken(uint256 timestamp, uint256 totalValue, uint256 cumulativeFees);
 
     event KeeperUpdated(address indexed oldKeeper, address indexed newKeeper);
 
@@ -190,11 +173,7 @@ contract DeltaNeutralVault is ERC4626, Ownable, ReentrancyGuard, Pausable {
         address _priceFeed,
         address _weth,
         address _owner
-    )
-        ERC4626(_asset)
-        ERC20("Delta Neutral Yield Vault", "dnYield")
-        Ownable(_owner)
-    {
+    ) ERC4626(_asset) ERC20("Delta Neutral Yield Vault", "dnYield") Ownable(_owner) {
         if (
             _liquidityManager == address(0) ||
             _hedgeManager == address(0) ||
@@ -205,7 +184,7 @@ contract DeltaNeutralVault is ERC4626, Ownable, ReentrancyGuard, Pausable {
         }
 
         liquidityManager = LiquidityManager(_liquidityManager);
-        hedgeManager = HedgeManager(_hedgeManager);
+        hedgeManager = HedgeManager(payable(_hedgeManager));
         priceFeed = AggregatorV3Interface(_priceFeed);
         weth = _weth;
 
@@ -397,7 +376,11 @@ contract DeltaNeutralVault is ERC4626, Ownable, ReentrancyGuard, Pausable {
 
         // Rebalance LP position if tick range changed
         if (params.newTickLower != 0 || params.newTickUpper != 0) {
-            liquidityManager.rebalance(params.newTickLower, params.newTickUpper, block.timestamp + 1 hours);
+            liquidityManager.rebalance(
+                params.newTickLower,
+                params.newTickUpper,
+                block.timestamp + 1 hours
+            );
         }
 
         // Adjust hedge position
@@ -481,7 +464,7 @@ contract DeltaNeutralVault is ERC4626, Ownable, ReentrancyGuard, Pausable {
         uint256 absDelta = netDelta >= 0 ? uint256(netDelta) : uint256(-netDelta);
         uint256 total = totalAssets();
 
-        bool isBalanced = total == 0 || (absDelta * PRECISION / total) < MAX_DELTA_DEVIATION;
+        bool isBalanced = total == 0 || ((absDelta * PRECISION) / total) < MAX_DELTA_DEVIATION;
 
         state = VaultState({
             totalAssets: total,
@@ -536,8 +519,11 @@ contract DeltaNeutralVault is ERC4626, Ownable, ReentrancyGuard, Pausable {
         YieldMath.YieldSnapshot memory first = yieldSnapshots[0];
         metrics.totalFeeIncome = latest.cumulativeFees - first.cumulativeFees;
         metrics.totalFundingIncome = latest.cumulativeFunding - first.cumulativeFunding;
-        metrics.totalRebalanceCosts = latest.cumulativeRebalanceCosts - first.cumulativeRebalanceCosts;
-        metrics.netYield = int256(metrics.totalFeeIncome) + metrics.totalFundingIncome -
+        metrics.totalRebalanceCosts =
+            latest.cumulativeRebalanceCosts - first.cumulativeRebalanceCosts;
+        metrics.netYield =
+            int256(metrics.totalFeeIncome) +
+            metrics.totalFundingIncome -
             int256(metrics.totalRebalanceCosts);
     }
 
