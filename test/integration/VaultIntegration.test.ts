@@ -371,7 +371,9 @@ describe("Vault Integration Tests", function () {
       await usdc.connect(owner).approve(await hedgeManager.getAddress(), hedgeCollateral);
 
       // Increase hedge directly via hedge manager
-      await hedgeManager.connect(owner).increaseHedge(hedgeSizeUsd, 0, { value: ethers.parseEther("0.01") });
+      await hedgeManager
+        .connect(owner)
+        .increaseHedge(hedgeSizeUsd, 0, { value: ethers.parseEther("0.01") });
       await simulateOrderExecution();
 
       // Try rebalance - should still be within tolerance (delta balanced)
