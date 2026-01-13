@@ -247,10 +247,10 @@ describe("DeltaNeutralVault", function () {
 
   describe("ERC4626 - Mint and Redeem", function () {
     it("should mint exact shares", async function () {
-      const sharesToMint = ethers.parseEther("100");
-      const maxAssets = ethers.parseUnits("200", 6);
+      const sharesToMint = ethers.parseUnits("1000", 6); // Use same decimals as USDC for 1:1 initial ratio
+      const requiredAssets = await vault.previewMint(sharesToMint);
 
-      await usdc.connect(user1).approve(await vault.getAddress(), maxAssets);
+      await usdc.connect(user1).approve(await vault.getAddress(), requiredAssets);
       await vault.connect(user1).mint(sharesToMint, user1.address);
 
       expect(await vault.balanceOf(user1.address)).to.equal(sharesToMint);
@@ -465,7 +465,11 @@ describe("DeltaNeutralVault", function () {
 
   describe("Rebalance authorization", function () {
     it("should allow keeper to call rebalance", async function () {
-      // This will fail due to cooldown but verifies authorization
+      // First deposit to have totalAssets > 0 (required for DeltaWithinTolerance check)
+      const depositAmount = ethers.parseUnits("1000", 6);
+      await usdc.connect(user1).approve(await vault.getAddress(), depositAmount);
+      await vault.connect(user1).deposit(depositAmount, user1.address);
+
       const params = {
         newTickLower: 0,
         newTickUpper: 0,

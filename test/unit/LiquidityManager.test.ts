@@ -25,6 +25,12 @@ describe("LiquidityManager", function () {
   const PRECISION = BigInt(10) ** BigInt(18);
   const POOL_FEE = 500; // 0.05%
 
+  // Helper to get deadline using block timestamp
+  async function getDeadline(secondsFromNow: number = 3600): Promise<bigint> {
+    const block = await ethers.provider.getBlock("latest");
+    return BigInt(block!.timestamp + secondsFromNow);
+  }
+
   beforeEach(async function () {
     [owner, vault, user] = await ethers.getSigners();
 
@@ -127,7 +133,7 @@ describe("LiquidityManager", function () {
         amount1Desired: amount1,
         amount0Min: 0n,
         amount1Min: 0n,
-        deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
+        deadline: await getDeadline(),
       };
 
       await expect(liquidityManager.connect(vault).openPosition(params))
@@ -145,7 +151,7 @@ describe("LiquidityManager", function () {
         amount1Desired: amount1,
         amount0Min: 0n,
         amount1Min: 0n,
-        deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
+        deadline: await getDeadline(),
       };
 
       await liquidityManager.connect(vault).openPosition(params);
@@ -167,7 +173,7 @@ describe("LiquidityManager", function () {
         amount1Desired: amount1,
         amount0Min: 0n,
         amount1Min: 0n,
-        deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
+        deadline: await getDeadline(),
       };
 
       await expect(
@@ -183,7 +189,7 @@ describe("LiquidityManager", function () {
         amount1Desired: amount1,
         amount0Min: 0n,
         amount1Min: 0n,
-        deadline: BigInt(Math.floor(Date.now() / 1000) - 3600), // Past deadline
+        deadline: await getDeadline(-3600), // Past deadline
       };
 
       await expect(
@@ -199,7 +205,7 @@ describe("LiquidityManager", function () {
         amount1Desired: amount1,
         amount0Min: 0n,
         amount1Min: 0n,
-        deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
+        deadline: await getDeadline(),
       };
 
       await expect(
@@ -226,14 +232,14 @@ describe("LiquidityManager", function () {
         amount1Desired: amount1,
         amount0Min: 0n,
         amount1Min: 0n,
-        deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
+        deadline: await getDeadline(),
       };
 
       await liquidityManager.connect(vault).openPosition(params);
     });
 
     it("should close position successfully", async function () {
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+      const deadline = await getDeadline();
 
       await expect(liquidityManager.connect(vault).closePosition(0n, 0n, deadline))
         .to.emit(liquidityManager, "PositionClosed")
@@ -249,7 +255,7 @@ describe("LiquidityManager", function () {
     });
 
     it("should revert if no active position", async function () {
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+      const deadline = await getDeadline();
 
       // Close once
       await liquidityManager.connect(vault).closePosition(0n, 0n, deadline);
@@ -277,7 +283,7 @@ describe("LiquidityManager", function () {
         amount1Desired: amount1,
         amount0Min: 0n,
         amount1Min: 0n,
-        deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
+        deadline: await getDeadline(),
       };
 
       await liquidityManager.connect(vault).openPosition(params);
@@ -301,7 +307,7 @@ describe("LiquidityManager", function () {
 
     it("should revert if no active position", async function () {
       // Close position first
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+      const deadline = await getDeadline();
       await liquidityManager.connect(vault).closePosition(0n, 0n, deadline);
 
       await expect(liquidityManager.connect(vault).collectFees()).to.be.revertedWithCustomError(
@@ -312,6 +318,11 @@ describe("LiquidityManager", function () {
   });
 
   describe("View functions", function () {
+    // Use realistic tick range to avoid overflow in delta ratio calculation
+    // These ticks correspond to ~$1500 to ~$2700 for ETH/USDC
+    const viewTickLower = 72000;
+    const viewTickUpper = 78000;
+
     beforeEach(async function () {
       // Open a position
       const amount0 = ethers.parseEther("1");
@@ -321,13 +332,13 @@ describe("LiquidityManager", function () {
       await usdc.connect(vault).approve(await liquidityManager.getAddress(), amount1);
 
       const params = {
-        tickLower: -887220,
-        tickUpper: 887220,
+        tickLower: viewTickLower,
+        tickUpper: viewTickUpper,
         amount0Desired: amount0,
         amount1Desired: amount1,
         amount0Min: 0n,
         amount1Min: 0n,
-        deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
+        deadline: await getDeadline(),
       };
 
       await liquidityManager.connect(vault).openPosition(params);
@@ -336,8 +347,8 @@ describe("LiquidityManager", function () {
     it("should return position info", async function () {
       const info = await liquidityManager.getPositionInfo();
       expect(info.tokenId).to.equal(1n);
-      expect(info.tickLower).to.equal(-887220);
-      expect(info.tickUpper).to.equal(887220);
+      expect(info.tickLower).to.equal(viewTickLower);
+      expect(info.tickUpper).to.equal(viewTickUpper);
       expect(info.liquidity).to.be.gt(0n);
     });
 
