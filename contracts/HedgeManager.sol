@@ -8,6 +8,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 import {
     IExchangeRouter,
+    IRouter,
     IOrderVault,
     IDataStore,
     IReader,
@@ -43,6 +44,9 @@ contract HedgeManager is Ownable, ReentrancyGuard {
 
     /// @notice GMX V2 Exchange Router
     IExchangeRouter public immutable exchangeRouter;
+
+    /// @notice GMX V2 Router (for token approvals)
+    IRouter public immutable router;
 
     /// @notice GMX V2 Order Vault
     IOrderVault public immutable orderVault;
@@ -171,6 +175,7 @@ contract HedgeManager is Ownable, ReentrancyGuard {
 
     /// @notice Constructs the HedgeManager
     /// @param _exchangeRouter GMX V2 Exchange Router address
+    /// @param _orderVault GMX V2 Order Vault address
     /// @param _reader GMX V2 Reader address
     /// @param _priceFeed Chainlink price feed address
     /// @param _market GMX market address
@@ -179,6 +184,7 @@ contract HedgeManager is Ownable, ReentrancyGuard {
     /// @param _owner Initial owner address
     constructor(
         address _exchangeRouter,
+        address _orderVault,
         address _reader,
         address _priceFeed,
         address _market,
@@ -188,6 +194,7 @@ contract HedgeManager is Ownable, ReentrancyGuard {
     ) Ownable(_owner) {
         if (
             _exchangeRouter == address(0) ||
+            _orderVault == address(0) ||
             _reader == address(0) ||
             _priceFeed == address(0) ||
             _market == address(0) ||
@@ -198,15 +205,16 @@ contract HedgeManager is Ownable, ReentrancyGuard {
         }
 
         exchangeRouter = IExchangeRouter(_exchangeRouter);
+        orderVault = IOrderVault(_orderVault);
         reader = IReader(_reader);
         priceFeed = AggregatorV3Interface(_priceFeed);
         market = _market;
         collateralToken = IERC20(_collateralToken);
         indexToken = _indexToken;
 
-        // Get dependent addresses from exchange router
+        // Get dependent addresses from exchange router (inherited from BaseRouter)
         dataStore = IDataStore(exchangeRouter.dataStore());
-        orderVault = IOrderVault(exchangeRouter.orderVault());
+        router = IRouter(exchangeRouter.router());
 
         // Default settings
         acceptableSlippage = 5e15; // 0.5%
@@ -232,17 +240,15 @@ contract HedgeManager is Ownable, ReentrancyGuard {
             revert InsufficientExecutionFee();
         }
 
-        // Transfer collateral from caller
+        // Transfer collateral from caller to this contract
         collateralToken.safeTransferFrom(msg.sender, address(this), collateralAmount);
 
         // Get acceptable price with slippage (for short, we want lower price)
         uint256 currentPrice = getOraclePrice();
         uint256 acceptablePrice = (currentPrice * (PRECISION - acceptableSlippage)) / PRECISION;
 
-        // Approve and transfer collateral to order vault
-        collateralToken.safeIncreaseAllowance(address(orderVault), collateralAmount);
-        collateralToken.safeTransfer(address(orderVault), collateralAmount);
-        orderVault.recordTransferIn(address(collateralToken));
+        // Approve Router for token transfers (used by ExchangeRouter.sendTokens)
+        collateralToken.safeIncreaseAllowance(address(router), collateralAmount);
 
         // Create order params for short position
         address[] memory swapPath = new address[](0);
@@ -270,7 +276,21 @@ contract HedgeManager is Ownable, ReentrancyGuard {
             referralCode: bytes32(0)
         });
 
-        orderKey = exchangeRouter.createOrder{value: msg.value}(params);
+        // Use multicall to: 1) send execution fee, 2) send collateral, 3) create order
+        bytes[] memory multicallData = new bytes[](3);
+        multicallData[0] = abi.encodeCall(
+            IExchangeRouter.sendWnt,
+            (address(orderVault), msg.value)
+        );
+        multicallData[1] = abi.encodeCall(
+            IExchangeRouter.sendTokens,
+            (address(collateralToken), address(orderVault), collateralAmount)
+        );
+        multicallData[2] = abi.encodeCall(IExchangeRouter.createOrder, (params));
+
+        bytes[] memory results = exchangeRouter.multicall{value: msg.value}(multicallData);
+        orderKey = abi.decode(results[2], (bytes32));
+
         pendingOrderKey = orderKey;
         targetHedgeSizeUsd = sizeUsd;
 
@@ -295,9 +315,7 @@ contract HedgeManager is Ownable, ReentrancyGuard {
         // Transfer collateral if adding
         if (collateralDelta > 0) {
             collateralToken.safeTransferFrom(msg.sender, address(this), collateralDelta);
-            collateralToken.safeIncreaseAllowance(address(orderVault), collateralDelta);
-            collateralToken.safeTransfer(address(orderVault), collateralDelta);
-            orderVault.recordTransferIn(address(collateralToken));
+            collateralToken.safeIncreaseAllowance(address(router), collateralDelta);
         }
 
         uint256 currentPrice = getOraclePrice();
@@ -328,7 +346,28 @@ contract HedgeManager is Ownable, ReentrancyGuard {
             referralCode: bytes32(0)
         });
 
-        orderKey = exchangeRouter.createOrder{value: msg.value}(params);
+        // Use multicall to: 1) send execution fee, 2) optionally send collateral, 3) create order
+        uint256 callCount = collateralDelta > 0 ? 3 : 2;
+        bytes[] memory multicallData = new bytes[](callCount);
+
+        uint256 idx = 0;
+        multicallData[idx++] = abi.encodeCall(
+            IExchangeRouter.sendWnt,
+            (address(orderVault), msg.value)
+        );
+
+        if (collateralDelta > 0) {
+            multicallData[idx++] = abi.encodeCall(
+                IExchangeRouter.sendTokens,
+                (address(collateralToken), address(orderVault), collateralDelta)
+            );
+        }
+
+        multicallData[idx] = abi.encodeCall(IExchangeRouter.createOrder, (params));
+
+        bytes[] memory results = exchangeRouter.multicall{value: msg.value}(multicallData);
+        orderKey = abi.decode(results[idx], (bytes32));
+
         pendingOrderKey = orderKey;
         targetHedgeSizeUsd += sizeDeltaUsd;
 
@@ -379,7 +418,17 @@ contract HedgeManager is Ownable, ReentrancyGuard {
             referralCode: bytes32(0)
         });
 
-        orderKey = exchangeRouter.createOrder{value: msg.value}(params);
+        // Use multicall to: 1) send execution fee, 2) create order
+        bytes[] memory multicallData = new bytes[](2);
+        multicallData[0] = abi.encodeCall(
+            IExchangeRouter.sendWnt,
+            (address(orderVault), msg.value)
+        );
+        multicallData[1] = abi.encodeCall(IExchangeRouter.createOrder, (params));
+
+        bytes[] memory results = exchangeRouter.multicall{value: msg.value}(multicallData);
+        orderKey = abi.decode(results[1], (bytes32));
+
         pendingOrderKey = orderKey;
 
         if (sizeDeltaUsd <= targetHedgeSizeUsd) {
@@ -438,7 +487,17 @@ contract HedgeManager is Ownable, ReentrancyGuard {
             referralCode: bytes32(0)
         });
 
-        orderKey = exchangeRouter.createOrder{value: msg.value}(params);
+        // Use multicall to: 1) send execution fee, 2) create order
+        bytes[] memory multicallData = new bytes[](2);
+        multicallData[0] = abi.encodeCall(
+            IExchangeRouter.sendWnt,
+            (address(orderVault), msg.value)
+        );
+        multicallData[1] = abi.encodeCall(IExchangeRouter.createOrder, (params));
+
+        bytes[] memory results = exchangeRouter.multicall{value: msg.value}(multicallData);
+        orderKey = abi.decode(results[1], (bytes32));
+
         pendingOrderKey = orderKey;
         targetHedgeSizeUsd = 0;
 

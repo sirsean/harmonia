@@ -2,13 +2,38 @@
 pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IExchangeRouter, IOrderVault, IDataStore, IReader} from "../../interfaces/IGMXV2.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {
+    IExchangeRouter,
+    IRouter,
+    IOrderVault,
+    IDataStore,
+    IReader
+} from "../../interfaces/IGMXV2.sol";
+
+/// @title Mock GMX V2 Router
+/// @notice Mock router for testing token transfers
+contract MockRouter is IRouter {
+    using SafeERC20 for IERC20;
+
+    function pluginTransfer(
+        address token,
+        address account,
+        address receiver,
+        uint256 amount
+    ) external override {
+        IERC20(token).safeTransferFrom(account, receiver, amount);
+    }
+}
 
 /// @title Mock GMX V2 Exchange Router
 /// @notice Mock exchange router for testing
 contract MockExchangeRouter is IExchangeRouter {
+    using SafeERC20 for IERC20;
+
     address public override dataStore;
-    address public override orderVault;
+    address public override router;
+    address public orderVault;
 
     uint256 private _nextOrderKey = 1;
 
@@ -23,9 +48,44 @@ contract MockExchangeRouter is IExchangeRouter {
 
     mapping(bytes32 => Order) public orders;
 
-    constructor(address _dataStore, address _orderVault) {
+    constructor(address _dataStore, address _orderVault, address _router) {
         dataStore = _dataStore;
         orderVault = _orderVault;
+        router = _router;
+    }
+
+    // Track the original caller for multicall context
+    address private _multicallCaller;
+
+    /// @notice Wraps native token and sends to receiver
+    function sendWnt(address receiver, uint256 amount) external payable override {
+        // In mock, just track the expected transfer (real GMX wraps and sends)
+        // ETH stays in this contract during order execution
+    }
+
+    /// @notice Sends tokens to receiver using router's pluginTransfer
+    function sendTokens(address token, address receiver, uint256 amount) external payable override {
+        // Get the actual sender (either direct caller or multicall caller)
+        address sender = _multicallCaller != address(0) ? _multicallCaller : msg.sender;
+        IRouter(router).pluginTransfer(token, sender, receiver, amount);
+    }
+
+    /// @notice Executes multiple calls in a single transaction
+    function multicall(
+        bytes[] calldata data
+    ) external payable override returns (bytes[] memory results) {
+        // Store the original caller for internal calls
+        _multicallCaller = msg.sender;
+
+        results = new bytes[](data.length);
+        for (uint256 i = 0; i < data.length; i++) {
+            (bool success, bytes memory result) = address(this).call(data[i]);
+            require(success, "MockExchangeRouter: multicall failed");
+            results[i] = result;
+        }
+
+        // Clear the stored caller
+        _multicallCaller = address(0);
     }
 
     function createOrder(
@@ -71,6 +131,9 @@ contract MockExchangeRouter is IExchangeRouter {
     function executeOrder(bytes32 key) external {
         orders[key].executed = true;
     }
+
+    // Allow receiving ETH
+    receive() external payable {}
 }
 
 /// @title Mock GMX V2 Order Vault

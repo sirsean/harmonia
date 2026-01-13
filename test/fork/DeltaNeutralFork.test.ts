@@ -452,16 +452,101 @@ describeFork("Delta Neutral Fork Tests - Real Contract Integration", function ()
       console.log("Short Token (USDC):", market.shortToken);
     });
 
-    // Note: HedgeManager deployment against real GMX requires matching the exact
-    // GMX V2 interface. The real GMX ExchangeRouter has a different interface than
-    // our mock contracts. Full GMX integration testing would require updating the
-    // HedgeManager to match the actual GMX V2 interface or using a deployment script.
+    it("should deploy HedgeManager with real GMX V2 addresses", async function () {
+      this.timeout(60000);
+
+      const HedgeManagerFactory = await ethers.getContractFactory("HedgeManager");
+      hedgeManager = await HedgeManagerFactory.deploy(
+        ARBITRUM_ADDRESSES.GMX_EXCHANGE_ROUTER,
+        ARBITRUM_ADDRESSES.GMX_ORDER_VAULT,
+        ARBITRUM_ADDRESSES.GMX_READER,
+        ARBITRUM_ADDRESSES.CHAINLINK_ETH_USD_FEED,
+        ARBITRUM_ADDRESSES.GMX_ETH_USD_MARKET,
+        ARBITRUM_ADDRESSES.USDC, // Native USDC as collateral
+        ARBITRUM_ADDRESSES.WETH, // WETH as index token
+        owner.address
+      );
+      await hedgeManager.waitForDeployment();
+
+      const hedgeManagerAddr = await hedgeManager.getAddress();
+      console.log("\n=== HedgeManager Deployment ===");
+      console.log("HedgeManager deployed at:", hedgeManagerAddr);
+      console.log("ExchangeRouter:", await hedgeManager.exchangeRouter());
+      console.log("OrderVault:", await hedgeManager.orderVault());
+      console.log("DataStore:", await hedgeManager.dataStore());
+      console.log("Reader:", await hedgeManager.reader());
+      console.log("Market:", await hedgeManager.market());
+
+      // Verify addresses are correct
+      expect(await hedgeManager.exchangeRouter()).to.equal(ARBITRUM_ADDRESSES.GMX_EXCHANGE_ROUTER);
+      expect(await hedgeManager.orderVault()).to.equal(ARBITRUM_ADDRESSES.GMX_ORDER_VAULT);
+      expect(await hedgeManager.market()).to.equal(ARBITRUM_ADDRESSES.GMX_ETH_USD_MARKET);
+    });
+
+    it("should verify HedgeManager reads dataStore from ExchangeRouter", async function () {
+      this.timeout(60000);
+
+      if (!hedgeManager) {
+        const HedgeManagerFactory = await ethers.getContractFactory("HedgeManager");
+        hedgeManager = await HedgeManagerFactory.deploy(
+          ARBITRUM_ADDRESSES.GMX_EXCHANGE_ROUTER,
+          ARBITRUM_ADDRESSES.GMX_ORDER_VAULT,
+          ARBITRUM_ADDRESSES.GMX_READER,
+          ARBITRUM_ADDRESSES.CHAINLINK_ETH_USD_FEED,
+          ARBITRUM_ADDRESSES.GMX_ETH_USD_MARKET,
+          ARBITRUM_ADDRESSES.USDC,
+          ARBITRUM_ADDRESSES.WETH,
+          owner.address
+        );
+        await hedgeManager.waitForDeployment();
+      }
+
+      // DataStore should be correctly derived from ExchangeRouter
+      const dataStoreFromManager = await hedgeManager.dataStore();
+      console.log("\n=== DataStore Verification ===");
+      console.log("DataStore from HedgeManager:", dataStoreFromManager);
+      console.log("Expected DataStore:", ARBITRUM_ADDRESSES.GMX_DATA_STORE);
+
+      expect(dataStoreFromManager.toLowerCase()).to.equal(
+        ARBITRUM_ADDRESSES.GMX_DATA_STORE.toLowerCase()
+      );
+    });
+
+    it("should verify HedgeManager can read oracle price", async function () {
+      this.timeout(60000);
+
+      if (!hedgeManager) {
+        const HedgeManagerFactory = await ethers.getContractFactory("HedgeManager");
+        hedgeManager = await HedgeManagerFactory.deploy(
+          ARBITRUM_ADDRESSES.GMX_EXCHANGE_ROUTER,
+          ARBITRUM_ADDRESSES.GMX_ORDER_VAULT,
+          ARBITRUM_ADDRESSES.GMX_READER,
+          ARBITRUM_ADDRESSES.CHAINLINK_ETH_USD_FEED,
+          ARBITRUM_ADDRESSES.GMX_ETH_USD_MARKET,
+          ARBITRUM_ADDRESSES.USDC,
+          ARBITRUM_ADDRESSES.WETH,
+          owner.address
+        );
+        await hedgeManager.waitForDeployment();
+      }
+
+      // Get oracle price from HedgeManager (returned with 8 decimals from Chainlink)
+      const oraclePrice = await hedgeManager.getOraclePrice();
+
+      console.log("\n=== HedgeManager Oracle Price ===");
+      console.log("Oracle Price (8 decimals):", oraclePrice.toString());
+      console.log("Oracle Price (USD):", (Number(oraclePrice) / 1e8).toFixed(2));
+
+      // Should be a reasonable ETH price (roughly $1000-$10000)
+      const priceUsd = Number(oraclePrice) / 1e8;
+      expect(priceUsd).to.be.gt(1000);
+      expect(priceUsd).to.be.lt(10000);
+    });
   });
 
   describe("LiquidityManager with Real Uniswap - Extended", function () {
-    // Note: Full vault deployment with GMX requires interface updates.
-    // The real GMX V2 ExchangeRouter has a different interface than our mock.
-    // These tests focus on LiquidityManager which works with real Uniswap V3.
+    // Both LiquidityManager and HedgeManager now work with real Uniswap V3 and GMX V2.
+    // These tests focus on LiquidityManager functionality with real Uniswap.
 
     it("should verify LiquidityManager reads token addresses correctly", async function () {
       // Ensure LiquidityManager is deployed

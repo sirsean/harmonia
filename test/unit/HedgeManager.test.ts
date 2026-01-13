@@ -4,6 +4,7 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import {
   HedgeManager,
   MockERC20,
+  MockRouter,
   MockExchangeRouter,
   MockOrderVault,
   MockDataStore,
@@ -15,6 +16,7 @@ describe("HedgeManager", function () {
   let hedgeManager: HedgeManager;
   let usdc: MockERC20;
   let weth: MockERC20;
+  let router: MockRouter;
   let exchangeRouter: MockExchangeRouter;
   let orderVault: MockOrderVault;
   let dataStore: MockDataStore;
@@ -44,10 +46,14 @@ describe("HedgeManager", function () {
     const MockOrderVaultFactory = await ethers.getContractFactory("MockOrderVault");
     orderVault = await MockOrderVaultFactory.deploy();
 
+    const MockRouterFactory = await ethers.getContractFactory("MockRouter");
+    router = await MockRouterFactory.deploy();
+
     const MockExchangeRouterFactory = await ethers.getContractFactory("MockExchangeRouter");
     exchangeRouter = await MockExchangeRouterFactory.deploy(
       await dataStore.getAddress(),
-      await orderVault.getAddress()
+      await orderVault.getAddress(),
+      await router.getAddress()
     );
 
     const MockReaderFactory = await ethers.getContractFactory("MockReader");
@@ -61,6 +67,7 @@ describe("HedgeManager", function () {
     const HedgeManagerFactory = await ethers.getContractFactory("HedgeManager");
     hedgeManager = await HedgeManagerFactory.deploy(
       await exchangeRouter.getAddress(),
+      await orderVault.getAddress(),
       await reader.getAddress(),
       await priceFeed.getAddress(),
       MARKET_ADDRESS,
@@ -104,6 +111,7 @@ describe("HedgeManager", function () {
       await expect(
         HedgeManagerFactory.deploy(
           ethers.ZeroAddress,
+          await orderVault.getAddress(),
           await reader.getAddress(),
           await priceFeed.getAddress(),
           MARKET_ADDRESS,

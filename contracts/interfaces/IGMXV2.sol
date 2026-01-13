@@ -1,8 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/// @title GMX V2 Router Interface
+/// @notice Base router for token transfers on behalf of users
+interface IRouter {
+    /// @notice Transfers tokens on behalf of users who have approved the router
+    /// @param token The token to transfer
+    /// @param account The account to transfer from
+    /// @param receiver The receiver of the tokens
+    /// @param amount The amount to transfer
+    function pluginTransfer(
+        address token,
+        address account,
+        address receiver,
+        uint256 amount
+    ) external;
+}
+
 /// @title GMX V2 Exchange Router Interface
 /// @notice Interface for creating and managing orders on GMX V2
+/// @dev Inherits from BaseRouter which provides dataStore, router, sendWnt, sendTokens
 interface IExchangeRouter {
     enum OrderType {
         MarketSwap,
@@ -44,6 +61,31 @@ interface IExchangeRouter {
         bytes32 referralCode;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INHERITED FROM BASE ROUTER
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// @notice Returns the address of the data store (from BaseRouter)
+    function dataStore() external view returns (address);
+
+    /// @notice Returns the address of the router (from BaseRouter)
+    function router() external view returns (address);
+
+    /// @notice Wraps native token and sends to receiver (from BaseRouter)
+    /// @param receiver The address to receive the wrapped native token
+    /// @param amount The amount to wrap and send
+    function sendWnt(address receiver, uint256 amount) external payable;
+
+    /// @notice Sends tokens to receiver using router's pluginTransfer (from BaseRouter)
+    /// @param token The token to send
+    /// @param receiver The receiver address
+    /// @param amount The amount to send
+    function sendTokens(address token, address receiver, uint256 amount) external payable;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ORDER MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════════
+
     /// @notice Creates a new order
     function createOrder(
         CreateOrderParams calldata params
@@ -62,6 +104,10 @@ interface IExchangeRouter {
         bool autoCancel
     ) external payable;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FEE CLAIMS
+    // ═══════════════════════════════════════════════════════════════════════════
+
     /// @notice Claims funding fees for a position
     function claimFundingFees(
         address[] memory markets,
@@ -69,11 +115,14 @@ interface IExchangeRouter {
         address receiver
     ) external payable returns (uint256[] memory);
 
-    /// @notice Returns the address of the data store
-    function dataStore() external view returns (address);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MULTICALL
+    // ═══════════════════════════════════════════════════════════════════════════
 
-    /// @notice Returns the address of the order vault
-    function orderVault() external view returns (address);
+    /// @notice Executes multiple calls in a single transaction
+    /// @param data Array of encoded function calls
+    /// @return results Array of results from each call
+    function multicall(bytes[] calldata data) external payable returns (bytes[] memory results);
 }
 
 /// @title GMX V2 Order Vault Interface

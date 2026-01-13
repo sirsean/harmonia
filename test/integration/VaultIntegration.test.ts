@@ -10,6 +10,7 @@ import {
   MockUniswapV3Pool,
   MockNonfungiblePositionManager,
   MockSwapRouter,
+  MockRouter,
   MockExchangeRouter,
   MockOrderVault,
   MockDataStore,
@@ -26,6 +27,7 @@ describe("Vault Integration Tests", function () {
   let pool: MockUniswapV3Pool;
   let positionManager: MockNonfungiblePositionManager;
   let swapRouter: MockSwapRouter;
+  let router: MockRouter;
   let exchangeRouter: MockExchangeRouter;
   let orderVault: MockOrderVault;
   let dataStore: MockDataStore;
@@ -96,10 +98,14 @@ describe("Vault Integration Tests", function () {
     const MockOrderVaultFactory = await ethers.getContractFactory("MockOrderVault");
     orderVault = await MockOrderVaultFactory.deploy();
 
+    const MockRouterFactory = await ethers.getContractFactory("MockRouter");
+    router = await MockRouterFactory.deploy();
+
     const MockExchangeRouterFactory = await ethers.getContractFactory("MockExchangeRouter");
     exchangeRouter = await MockExchangeRouterFactory.deploy(
       await dataStore.getAddress(),
-      await orderVault.getAddress()
+      await orderVault.getAddress(),
+      await router.getAddress()
     );
 
     const MockReaderFactory = await ethers.getContractFactory("MockReader");
@@ -123,6 +129,7 @@ describe("Vault Integration Tests", function () {
     const HedgeManagerFactory = await ethers.getContractFactory("HedgeManager");
     hedgeManager = await HedgeManagerFactory.deploy(
       await exchangeRouter.getAddress(),
+      await orderVault.getAddress(),
       await reader.getAddress(),
       await priceFeed.getAddress(),
       MARKET_ADDRESS,
