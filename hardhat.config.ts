@@ -49,7 +49,7 @@ const testDir = process.env.TEST_SCOPE || "test";
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: "0.8.19",
+    version: "0.8.20",
     settings: {
       optimizer: {
         enabled: true,

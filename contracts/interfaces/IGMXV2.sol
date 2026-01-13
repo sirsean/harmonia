@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 /// @title GMX V2 Exchange Router Interface
 /// @notice Interface for creating and managing orders on GMX V2

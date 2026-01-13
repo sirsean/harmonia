@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 /// @title Delta Calculator Library
 /// @notice Calculates delta and other Greeks for Uniswap V3 LP positions

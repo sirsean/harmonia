@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 /// @title Uniswap V3 Pool Interface
 /// @notice Subset of IUniswapV3Pool for reading pool state
