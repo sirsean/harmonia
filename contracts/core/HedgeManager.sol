@@ -73,35 +73,19 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
     // ============ Events ============
 
     /// @notice Emitted when a short position is opened
-    event ShortOpened(
-        bytes32 indexed orderKey,
-        uint256 sizeDeltaUsd,
-        uint256 collateralAmount
-    );
+    event ShortOpened(bytes32 indexed orderKey, uint256 sizeDeltaUsd, uint256 collateralAmount);
 
     /// @notice Emitted when a short position is increased
-    event ShortIncreased(
-        bytes32 indexed orderKey,
-        uint256 sizeDeltaUsd,
-        uint256 collateralAmount
-    );
+    event ShortIncreased(bytes32 indexed orderKey, uint256 sizeDeltaUsd, uint256 collateralAmount);
 
     /// @notice Emitted when a short position is decreased
-    event ShortDecreased(
-        bytes32 indexed orderKey,
-        uint256 sizeDeltaUsd,
-        uint256 collateralAmount
-    );
+    event ShortDecreased(bytes32 indexed orderKey, uint256 sizeDeltaUsd, uint256 collateralAmount);
 
     /// @notice Emitted when a short position is closed
     event ShortClosed(bytes32 indexed orderKey);
 
     /// @notice Emitted when hedge is adjusted
-    event HedgeAdjusted(
-        bytes32 indexed orderKey,
-        uint256 oldSizeUsd,
-        uint256 newTargetSizeUsd
-    );
+    event HedgeAdjusted(bytes32 indexed orderKey, uint256 oldSizeUsd, uint256 newTargetSizeUsd);
 
     /// @notice Emitted when funding is claimed
     event FundingClaimed(int256 amount);
@@ -299,7 +283,14 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
     }
 
     /// @inheritdoc IHedgeManager
-    function closeShort() external payable override onlyVaultOrOwner nonReentrant returns (bytes32 orderKey) {
+    function closeShort()
+        external
+        payable
+        override
+        onlyVaultOrOwner
+        nonReentrant
+        returns (bytes32 orderKey)
+    {
         if (!hasPosition()) revert NoPosition();
 
         uint256 currentSize = getPositionSizeUsd();
@@ -518,12 +509,13 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
 
     /// @inheritdoc IHedgeManager
     function getPositionKey() public view override returns (bytes32 key) {
-        return GMXPositionUtils.getPositionKey(
-            address(this),
-            market,
-            collateralToken,
-            false // isLong = false for shorts
-        );
+        return
+            GMXPositionUtils.getPositionKey(
+                address(this),
+                market,
+                collateralToken,
+                false // isLong = false for shorts
+            );
     }
 
     /// @inheritdoc IHedgeManager
