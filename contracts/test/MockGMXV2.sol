@@ -353,7 +353,14 @@ contract MockReader is IReader {
         bool usePositionSizeAsSizeDeltaUsd
     ) external view override returns (PositionInfo memory info) {
         // Silence unused warnings
-        (dataStore, referralStorage, prices, sizeDeltaUsd, uiFeeReceiver, usePositionSizeAsSizeDeltaUsd);
+        (
+            dataStore,
+            referralStorage,
+            prices,
+            sizeDeltaUsd,
+            uiFeeReceiver,
+            usePositionSizeAsSizeDeltaUsd
+        );
         // This is a simplified mock
         return info;
     }
@@ -405,7 +412,13 @@ contract MockGMXPriceFeed {
     function latestRoundData()
         external
         view
-        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
+        returns (
+            uint80 roundId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        )
     {
         return (1, _price, block.timestamp, block.timestamp, 1);
     }
