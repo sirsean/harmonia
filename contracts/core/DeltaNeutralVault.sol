@@ -9,6 +9,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
+import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
+
 /// @title Delta Neutral Vault
 /// @notice ERC-4626 vault that deploys capital into delta-neutral yield strategy
 /// @dev Combines Uniswap v3 LP positions with GMX v2 perpetual hedging
@@ -392,11 +394,10 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     }
 
     /// @notice Get LP position value
-    /// @dev To be implemented in Phase 4 with LiquidityManager
+    /// @dev Queries LiquidityManager for position value
     function _getLPValue() internal view returns (uint256) {
-        // Phase 3: Return 0 (no LP position yet)
-        // Phase 4+: Query LiquidityManager for position value
-        return 0;
+        if (liquidityManager == address(0)) return 0;
+        return ILiquidityManager(liquidityManager).getPositionValue();
     }
 
     /// @notice Get hedge position value
@@ -408,11 +409,10 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     }
 
     /// @notice Get LP position delta
-    /// @dev To be implemented in Phase 4 with LiquidityManager
+    /// @dev Queries LiquidityManager for position delta
     function _getLPDelta() internal view returns (int256) {
-        // Phase 3: Return 0 (no LP position yet)
-        // Phase 4+: Calculate using DeltaCalculator
-        return 0;
+        if (liquidityManager == address(0)) return 0;
+        return ILiquidityManager(liquidityManager).getPositionDelta();
     }
 
     /// @notice Get hedge position delta (negative for shorts)
@@ -432,11 +432,10 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     }
 
     /// @notice Collect LP fees
-    /// @dev To be implemented in Phase 4
-    function _collectLPFees() internal returns (uint256, uint256) {
-        // Phase 3: Return 0
-        // Phase 4+: Call LiquidityManager.collectFees()
-        return (0, 0);
+    /// @dev Calls LiquidityManager to collect accumulated fees
+    function _collectLPFees() internal returns (uint256 amount0, uint256 amount1) {
+        if (liquidityManager == address(0)) return (0, 0);
+        return ILiquidityManager(liquidityManager).collectFees();
     }
 
     /// @notice Calculate fees in USD
@@ -464,10 +463,12 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     }
 
     /// @notice Emergency unwind all positions
-    /// @dev To be implemented in Phase 5+6
+    /// @dev Closes all LP and hedge positions
     function _emergencyUnwind() internal {
-        // Phase 3: No-op (no positions to unwind)
-        // Phase 4+: Close LP position
+        // Close LP position if exists
+        if (liquidityManager != address(0)) {
+            try ILiquidityManager(liquidityManager).closePosition() {} catch {}
+        }
         // Phase 5+: Close hedge position
     }
 }
