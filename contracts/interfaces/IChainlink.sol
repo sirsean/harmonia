@@ -93,6 +93,10 @@ interface IAutomationRegistry {
     function withdrawFunds(uint256 id, address to) external;
 }
 
+/// @title Chainlink Price Feed Interface (Alias)
+/// @notice Alias for AggregatorV3Interface for clearer naming
+interface IChainlinkPriceFeed is AggregatorV3Interface {}
+
 /// @title Chainlink Registrar Interface
 /// @notice Interface for registering new upkeeps
 interface IAutomationRegistrar {

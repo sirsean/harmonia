@@ -23,36 +23,38 @@ contracts/
 │   ├── IUniswapV3.sol   # Uniswap v3 pool, position manager, router
 │   ├── IGMXV2.sol       # GMX v2 exchange router, data store, reader
 │   ├── IChainlink.sol   # Price feeds, automation registry
-│   └── ILiquidityManager.sol  # LiquidityManager interface
+│   ├── ILiquidityManager.sol  # LiquidityManager interface
+│   └── IHedgeManager.sol      # HedgeManager interface
 ├── libraries/            # Core calculation libraries (implemented)
 │   ├── DeltaCalculator.sol  # LP delta/gamma calculations
 │   └── YieldMath.sol        # APY and yield calculations
 ├── core/                 # Main contracts (implemented)
 │   ├── DeltaNeutralVault.sol   # ERC-4626 vault
-│   └── LiquidityManager.sol    # Uniswap v3 operations
+│   ├── LiquidityManager.sol    # Uniswap v3 operations
+│   └── HedgeManager.sol        # GMX v2 operations
 ├── periphery/            # Supporting contracts (NOT YET IMPLEMENTED)
-│   ├── HedgeManager.sol        # GMX v2 operations
 │   └── RebalanceController.sol # Chainlink Automation keeper
 └── test/                 # Test harness and mock contracts
     ├── MockERC20.sol
     ├── MockUniswapV3.sol
+    ├── MockGMXV2.sol
     ├── DeltaCalculatorHarness.sol
     └── YieldMathHarness.sol
 ```
 
 ## Implementation Status
 
-**Completed (Phases 1-4):**
+**Completed (Phases 1-5):**
 - `DeltaCalculator` library - Full delta/gamma math for Uniswap v3 positions
 - `YieldMath` library - APY calculations and yield metrics
 - All external protocol interfaces
 - `DeltaNeutralVault` - ERC-4626 vault with deposit/withdraw
 - `LiquidityManager` - Uniswap v3 position management
-- Comprehensive test suite (173+ tests)
+- `HedgeManager` - GMX v2 perpetual short position management
+- Comprehensive test suite (350+ tests)
 - Fork tests against Arbitrum mainnet
 
-**Not Yet Implemented (Phases 5-8):**
-- Hedge management (`HedgeManager` - GMX v2)
+**Not Yet Implemented (Phases 6-8):**
 - Rebalance automation (`RebalanceController`)
 - Security hardening
 - Deployment scripts
@@ -85,10 +87,12 @@ Fork tests use Arbitrum mainnet state:
 - `test/fork/UniswapV3Fork.test.ts` - Real pool interactions
 - `test/fork/ChainlinkPriceFeed.test.ts` - Live price feed testing
 - `test/fork/LiquidityManagerFork.test.ts` - LP position management on mainnet
+- `test/fork/HedgeManagerFork.test.ts` - GMX v2 hedge management on mainnet
 
 Unit tests for core contracts:
 - `test/unit/DeltaNeutralVault.test.ts` - ERC-4626 vault tests (75 tests)
 - `test/unit/LiquidityManager.test.ts` - LP management tests (47 tests)
+- `test/unit/HedgeManager.test.ts` - GMX v2 hedge tests (59 tests)
 
 ## Common Tasks
 
@@ -148,7 +152,7 @@ EMERGENCY_THRESHOLD = 20e16 // Emergency unwind at 20% drift
 
 1. ~~Implement `DeltaNeutralVault` (ERC-4626 vault with deposit/withdraw)~~ ✓ (Phase 3)
 2. ~~Implement `LiquidityManager` (Uniswap v3 position management)~~ ✓ (Phase 4)
-3. Implement `HedgeManager` (GMX v2 short position management) - Phase 5
+3. ~~Implement `HedgeManager` (GMX v2 short position management)~~ ✓ (Phase 5)
 4. Implement `RebalanceController` (Chainlink Automation keeper) - Phase 6
 5. Security hardening and gas optimization - Phase 7
 6. Write deployment scripts - Phase 8
