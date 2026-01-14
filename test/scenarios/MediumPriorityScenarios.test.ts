@@ -61,8 +61,7 @@ describe("Medium Priority Scenarios (P2)", function () {
       const victimDeposit = parseUnits("9999", 18);
 
       // Without protection: victim would get 0 shares due to rounding
-      const victimSharesVulnerable =
-        (victimDeposit * attackerShares) / totalAssetsAfterDonation;
+      const victimSharesVulnerable = (victimDeposit * attackerShares) / totalAssetsAfterDonation;
 
       // This shows the vulnerability
       expect(Number(victimSharesVulnerable)).to.equal(0);
@@ -73,14 +72,11 @@ describe("Medium Priority Scenarios (P2)", function () {
       const protectedTotalAssets = totalAssetsAfterDonation + VIRTUAL_OFFSET;
       const protectedTotalSupply = attackerShares + VIRTUAL_OFFSET;
 
-      const victimSharesProtected =
-        (victimDeposit * protectedTotalSupply) / protectedTotalAssets;
+      const victimSharesProtected = (victimDeposit * protectedTotalSupply) / protectedTotalAssets;
 
       // Victim should get approximately their deposit worth of shares
-      const victimValue =
-        (victimSharesProtected * protectedTotalAssets) / protectedTotalSupply;
-      const lossPercent =
-        Math.abs(Number(victimDeposit - victimValue)) / Number(victimDeposit);
+      const victimValue = (victimSharesProtected * protectedTotalAssets) / protectedTotalSupply;
+      const lossPercent = Math.abs(Number(victimDeposit - victimValue)) / Number(victimDeposit);
 
       // With protection, loss should be minimal (< 1%)
       expect(lossPercent).to.be.lessThan(0.01);
@@ -166,8 +162,7 @@ describe("Medium Priority Scenarios (P2)", function () {
 
       const MIN_REMAINING_ASSETS = parseUnits("500", 18);
 
-      const remainingAssets =
-        totalAssets - (withdrawShares * totalAssets) / totalShares;
+      const remainingAssets = totalAssets - (withdrawShares * totalAssets) / totalShares;
 
       const isBelowMinimum = remainingAssets < MIN_REMAINING_ASSETS;
 
@@ -180,8 +175,7 @@ describe("Medium Priority Scenarios (P2)", function () {
 
       // Closure cost estimation (gas + slippage)
       const closureCost = parseUnits("50", 18); // $50 estimated
-      const closureCostPercent =
-        (Number(closureCost) / Number(remainingAssets)) * 100;
+      const closureCostPercent = (Number(closureCost) / Number(remainingAssets)) * 100;
 
       // High closure cost relative to remaining position
       expect(closureCostPercent).to.be.greaterThan(25);
@@ -210,8 +204,7 @@ describe("Medium Priority Scenarios (P2)", function () {
       const netAssets = assetsOwed - totalDeductions;
 
       // User should receive close to their assets minus fees
-      const lossPercent =
-        (Number(totalDeductions) / Number(assetsOwed)) * 100;
+      const lossPercent = (Number(totalDeductions) / Number(assetsOwed)) * 100;
 
       expect(lossPercent).to.be.lessThan(0.5); // Less than 0.5% total cost
     });
@@ -251,8 +244,7 @@ describe("Medium Priority Scenarios (P2)", function () {
       }
 
       // Accumulated dust should be minimal
-      const dustPercent =
-        (Number(accumulatedDust) / Number(parseUnits("100000", 18))) * 100;
+      const dustPercent = (Number(accumulatedDust) / Number(parseUnits("100000", 18))) * 100;
 
       expect(dustPercent).to.be.lessThan(0.001); // Less than 0.001%
     });
@@ -299,9 +291,7 @@ describe("Medium Priority Scenarios (P2)", function () {
       expect(requiresSplitting).to.equal(true);
 
       // Calculate number of tranches needed
-      const numTranches = Math.ceil(
-        Number(largeDeposit) / Number(MAX_SINGLE_DEPOSIT)
-      );
+      const numTranches = Math.ceil(Number(largeDeposit) / Number(MAX_SINGLE_DEPOSIT));
 
       expect(numTranches).to.equal(4); // Need 4 tranches
     });
@@ -347,8 +337,7 @@ describe("Medium Priority Scenarios (P2)", function () {
 
       // Rebalancing cost estimation
       const rebalancePercent = 0.8; // 80% of positions need adjustment
-      const rebalanceCost =
-        Number(totalAfterDeposit) * rebalancePercent * 0.001; // 0.1% slippage
+      const rebalanceCost = Number(totalAfterDeposit) * rebalancePercent * 0.001; // 0.1% slippage
 
       expect(rebalanceCost).to.be.lessThan(Number(newDeposit) * 0.01); // Less than 1%
     });
@@ -467,10 +456,7 @@ describe("Medium Priority Scenarios (P2)", function () {
       }
 
       // Calculate total fees
-      const totalFees = positions.reduce(
-        (sum, p) => sum + p.feesEarned,
-        BigInt(0)
-      );
+      const totalFees = positions.reduce((sum, p) => sum + p.feesEarned, BigInt(0));
 
       expect(totalFees).to.be.greaterThan(BigInt(0));
 
@@ -545,8 +531,7 @@ describe("Medium Priority Scenarios (P2)", function () {
       const totalCost = gasEstimate + slippageEstimate;
 
       // Calculate breakeven time
-      const breakevenDays =
-        Number(totalCost) / Number(dailyFeeIncome);
+      const breakevenDays = Number(totalCost) / Number(dailyFeeIncome);
 
       expect(breakevenDays).to.be.lessThan(5); // Should recover in < 5 days
 
@@ -754,7 +739,7 @@ describe("Medium Priority Scenarios (P2)", function () {
       expect(needsMarginTopup).to.equal(true);
 
       // Calculate required topup
-      const targetMargin = 0.10; // Target 10% margin
+      const targetMargin = 0.1; // Target 10% margin
       const requiredCollateral = Number(positionSize) * targetMargin;
       const topupNeeded = requiredCollateral - remainingMargin;
 
@@ -844,14 +829,12 @@ describe("Medium Priority Scenarios (P2)", function () {
       totalShares += secondShares;
 
       // First depositor ownership
-      const firstDepositorOwnership =
-        (Number(firstDeposit) / Number(totalShares)) * 100;
+      const firstDepositorOwnership = (Number(firstDeposit) / Number(totalShares)) * 100;
 
       expect(firstDepositorOwnership).to.equal(1); // Owns 1%
 
       // Verify no value extraction
-      const firstDepositorValue =
-        (firstDeposit * totalAssets) / totalShares;
+      const firstDepositorValue = (firstDeposit * totalAssets) / totalShares;
 
       expect(Number(firstDepositorValue)).to.be.closeTo(
         Number(firstDeposit),
@@ -868,21 +851,16 @@ describe("Medium Priority Scenarios (P2)", function () {
       };
 
       // Calculate available for reposition
-      const assetsAfterWithdrawal =
-        vaultState.totalAssets - vaultState.pendingWithdrawal;
+      const assetsAfterWithdrawal = vaultState.totalAssets - vaultState.pendingWithdrawal;
 
       // Reposition should account for pending withdrawal
       const repositionAmount = assetsAfterWithdrawal;
 
-      expect(Number(repositionAmount)).to.equal(
-        Number(parseUnits("400000", 18))
-      );
+      expect(Number(repositionAmount)).to.equal(Number(parseUnits("400000", 18)));
 
       // Should not lock more than available
       const maxLockable = assetsAfterWithdrawal;
-      expect(Number(repositionAmount)).to.be.lessThanOrEqual(
-        Number(maxLockable)
-      );
+      expect(Number(repositionAmount)).to.be.lessThanOrEqual(Number(maxLockable));
     });
 
     it("should handle multiple positions with different reposition needs", function () {
