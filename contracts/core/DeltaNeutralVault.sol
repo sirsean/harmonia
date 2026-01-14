@@ -10,6 +10,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
+import {IHedgeManager} from "../interfaces/IHedgeManager.sol";
 
 /// @title Delta Neutral Vault
 /// @notice ERC-4626 vault that deploys capital into delta-neutral yield strategy
@@ -401,11 +402,10 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     }
 
     /// @notice Get hedge position value
-    /// @dev To be implemented in Phase 5 with HedgeManager
+    /// @dev Queries HedgeManager for position value (collateral + unrealized PnL)
     function _getHedgeValue() internal view returns (uint256) {
-        // Phase 3: Return 0 (no hedge position yet)
-        // Phase 5+: Query HedgeManager for position value
-        return 0;
+        if (hedgeManager == address(0)) return 0;
+        return IHedgeManager(hedgeManager).getPositionValue();
     }
 
     /// @notice Get LP position delta
@@ -416,11 +416,10 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     }
 
     /// @notice Get hedge position delta (negative for shorts)
-    /// @dev To be implemented in Phase 5 with HedgeManager
+    /// @dev Queries HedgeManager for position delta
     function _getHedgeDelta() internal view returns (int256) {
-        // Phase 3: Return 0 (no hedge position yet)
-        // Phase 5+: Query HedgeManager for short position size
-        return 0;
+        if (hedgeManager == address(0)) return 0;
+        return IHedgeManager(hedgeManager).getPositionDelta();
     }
 
     /// @notice Execute rebalance
@@ -448,11 +447,10 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     }
 
     /// @notice Claim hedge funding
-    /// @dev To be implemented in Phase 5
+    /// @dev Calls HedgeManager to claim accumulated funding
     function _claimHedgeFunding() internal returns (int256) {
-        // Phase 3: Return 0
-        // Phase 5+: Call HedgeManager.claimFunding()
-        return 0;
+        if (hedgeManager == address(0)) return 0;
+        return IHedgeManager(hedgeManager).claimFunding();
     }
 
     /// @notice Compound yield
@@ -469,6 +467,9 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         if (liquidityManager != address(0)) {
             try ILiquidityManager(liquidityManager).closePosition() {} catch {}
         }
-        // Phase 5+: Close hedge position
+        // Close hedge position if exists
+        if (hedgeManager != address(0)) {
+            try IHedgeManager(hedgeManager).closeShort() {} catch {}
+        }
     }
 }
