@@ -558,28 +558,53 @@ A TypeScript monitoring script provides redundancy:
 - Access control tests for vault-only functions
 - Slippage and deadline validation tests
 
----
-
-### Next Steps
-
-#### Phase 5: Hedge Management
+#### Phase 5: Hedge Management (COMPLETE)
 
 **Objective:** Integrate with GMX v2 for perpetual hedging.
 
 **Deliverables:**
-- [ ] `HedgeManager.sol` - GMX v2 short position operations
-- [ ] Open market short orders
-- [ ] Increase/decrease position size
-- [ ] Close positions
-- [ ] Read position state and funding accrued
-- [ ] Fork tests against GMX v2
+- [x] `HedgeManager.sol` - GMX v2 short position operations
+- [x] Open market short orders
+- [x] Increase/decrease position size
+- [x] Close positions
+- [x] Read position state and funding accrued
+- [x] Fork tests against GMX v2
+- [x] DeltaNeutralVault integration
 
-**Implementation Order:**
-1. Create HedgeManager contract with GMX integration
-2. Implement `openShort()` with ExchangeRouter
-3. Implement `adjustPosition()` for delta rebalancing
-4. Implement position reading from DataStore
-5. Add funding rate tracking
+**Key Files:**
+- [`contracts/core/HedgeManager.sol`](contracts/core/HedgeManager.sol) - GMX v2 perpetual position management
+- [`contracts/interfaces/IHedgeManager.sol`](contracts/interfaces/IHedgeManager.sol) - Interface definition
+- [`contracts/test/MockGMXV2.sol`](contracts/test/MockGMXV2.sol) - Mock contracts for unit testing
+- [`test/unit/HedgeManager.test.ts`](test/unit/HedgeManager.test.ts) - Comprehensive unit tests (59 tests)
+- [`test/fork/HedgeManagerFork.test.ts`](test/fork/HedgeManagerFork.test.ts) - Fork tests against Arbitrum
+
+**Features Implemented:**
+- Short position lifecycle management (open, increase, decrease, close)
+- Hedge adjustment for delta rebalancing (`adjustHedge`)
+- Position value and delta calculations
+- Funding fee claiming and tracking
+- Leverage validation (max 3x)
+- Slippage protection with configurable tolerance
+- Integration with Chainlink price feeds
+- Comprehensive view functions for position monitoring
+
+**Architecture Decisions:**
+1. HedgeManager holds positions, vault controls operations via interface
+2. Owner and vault can both call position management functions
+3. Uses GMX v2 market orders for reliable execution
+4. Supports execution fee refunds for excess ETH
+5. Integrated with DeltaNeutralVault via IHedgeManager interface
+
+**Test Coverage:**
+- 59 unit tests covering all operations and edge cases
+- Fork tests validate against real Arbitrum GMX v2 contracts
+- Access control tests for vault-only functions
+- Leverage and position size validation tests
+- ETH handling and refund tests
+
+---
+
+### Next Steps
 
 #### Phase 6: Rebalancing Automation
 
