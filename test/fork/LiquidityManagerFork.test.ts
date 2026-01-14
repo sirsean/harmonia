@@ -136,7 +136,9 @@ describeFork("LiquidityManager Fork Tests", function () {
         // Check if whale has balance
         const whaleBalance = await usdc.balanceOf(whaleAddress);
         if (whaleBalance < usdcAmount) {
-          errors.push(`${whaleAddress}: Insufficient balance (${Number(whaleBalance) / 1e6} USDC.e)`);
+          errors.push(
+            `${whaleAddress}: Insufficient balance (${Number(whaleBalance) / 1e6} USDC.e)`
+          );
           continue;
         }
 
@@ -301,8 +303,7 @@ describeFork("LiquidityManager Fork Tests", function () {
       const matchingWethAmount = BigInt(Math.floor((10_000 / ethPrice) * 1e18)); // Matching WETH value
 
       // Use the smaller of available and calculated amounts
-      const wethToDeposit =
-        wethBalance > matchingWethAmount ? matchingWethAmount : wethBalance;
+      const wethToDeposit = wethBalance > matchingWethAmount ? matchingWethAmount : wethBalance;
       const usdcToDeposit = usdcBalance > targetUsdcAmount ? targetUsdcAmount : usdcBalance;
 
       console.log("ETH price:", ethPrice.toFixed(2));
