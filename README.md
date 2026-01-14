@@ -80,8 +80,8 @@ npx hardhat test test/unit/**/*.test.ts
 # Run scenario tests
 npx hardhat test test/scenarios/**/*.test.ts
 
-# Run fork tests (requires ARBITRUM_RPC_URL)
-ARBITRUM_RPC_URL=<your-rpc-url> npx hardhat test test/fork/**/*.test.ts
+# Run fork tests (requires ALCHEMY_API_KEY)
+ALCHEMY_API_KEY=<your-api-key> npx hardhat test test/fork/**/*.test.ts
 ```
 
 ### Code Formatting
@@ -96,14 +96,16 @@ npm run format:check
 
 ## Configuration
 
-Create a `.env` file with the following variables:
+Create a `.env` file based on `.env.example`:
 
 ```env
+# Required for fork tests and deployment
+ALCHEMY_API_KEY=your_alchemy_api_key_here
+
 # Required for deployment
 PRIVATE_KEY=your_private_key
-ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc
 
-# Optional for verification
+# Optional for contract verification
 ARBISCAN_API_KEY=your_api_key
 ```
 

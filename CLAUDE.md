@@ -91,8 +91,8 @@ Fork tests use Arbitrum mainnet state:
 ### Running Fork Tests
 
 ```bash
-# Set your RPC URL
-export ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc
+# Set your Alchemy API key
+export ALCHEMY_API_KEY=your_alchemy_api_key_here
 
 # Run fork tests
 npx hardhat test test/fork/**/*.test.ts
