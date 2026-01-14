@@ -124,13 +124,8 @@ describeFork("HedgeManager Fork Tests", function () {
     await usdc.connect(vault).approve(await hedgeManager.getAddress(), ethers.MaxUint256);
   });
 
-  after(async function () {
-    // Reset network
-    await network.provider.request({
-      method: "hardhat_reset",
-      params: [],
-    });
-  });
+  // Note: Don't reset network in after() hook as it disrupts other fork test suites
+  // Each test file should be self-contained and not affect global state
 
   describe("Deployment Verification", function () {
     it("should be deployed with correct GMX addresses", async function () {
