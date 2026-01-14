@@ -1,0 +1,635 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+import {IExchangeRouter, IDataStore, GMXPositionUtils} from "../interfaces/IGMXV2.sol";
+import {IHedgeManager} from "../interfaces/IHedgeManager.sol";
+import {IChainlinkPriceFeed} from "../interfaces/IChainlink.sol";
+
+/// @title Hedge Manager
+/// @notice Manages GMX v2 perpetual short positions for delta hedging
+/// @dev Handles opening, adjusting, and closing short positions on GMX v2
+contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    // ============ Constants ============
+
+    /// @notice Precision for percentage calculations (1e18 = 100%)
+    uint256 public constant PRECISION = 1e18;
+
+    /// @notice GMX USD precision (30 decimals)
+    uint256 public constant GMX_USD_PRECISION = 1e30;
+
+    /// @notice Maximum leverage allowed (3x = 3e18)
+    uint256 public constant MAX_LEVERAGE = 3e18;
+
+    /// @notice Minimum position size in USD (30 decimals) - $100
+    uint256 public constant MIN_POSITION_SIZE = 100 * GMX_USD_PRECISION;
+
+    /// @notice Default acceptable price slippage (1% = 1e16)
+    uint256 public constant DEFAULT_SLIPPAGE = 1e16;
+
+    // ============ Immutables ============
+
+    /// @notice GMX v2 Exchange Router
+    IExchangeRouter public immutable exchangeRouter;
+
+    /// @notice GMX v2 market address (e.g., ETH/USD market)
+    address public immutable override market;
+
+    /// @notice Collateral token (e.g., USDC)
+    address public immutable override collateralToken;
+
+    /// @notice Index token being hedged (e.g., WETH)
+    address public immutable override indexToken;
+
+    /// @notice Chainlink price feed for index token
+    IChainlinkPriceFeed public immutable priceFeed;
+
+    // ============ State Variables ============
+
+    /// @notice Address of the vault that owns this manager
+    address public override vault;
+
+    /// @notice Total funding received (positive) or paid (negative)
+    int256 public override totalFundingReceived;
+
+    /// @notice Total collateral deposited across all operations
+    uint256 public override totalCollateralDeposited;
+
+    /// @notice Acceptable price slippage for orders
+    uint256 public slippageTolerance;
+
+    /// @notice Execution fee for GMX orders (in ETH)
+    uint256 public executionFeeOverride;
+
+    /// @notice Last order key created
+    bytes32 public lastOrderKey;
+
+    // ============ Events ============
+
+    /// @notice Emitted when a short position is opened
+    event ShortOpened(bytes32 indexed orderKey, uint256 sizeDeltaUsd, uint256 collateralAmount);
+
+    /// @notice Emitted when a short position is increased
+    event ShortIncreased(bytes32 indexed orderKey, uint256 sizeDeltaUsd, uint256 collateralAmount);
+
+    /// @notice Emitted when a short position is decreased
+    event ShortDecreased(bytes32 indexed orderKey, uint256 sizeDeltaUsd, uint256 collateralAmount);
+
+    /// @notice Emitted when a short position is closed
+    event ShortClosed(bytes32 indexed orderKey);
+
+    /// @notice Emitted when hedge is adjusted
+    event HedgeAdjusted(bytes32 indexed orderKey, uint256 oldSizeUsd, uint256 newTargetSizeUsd);
+
+    /// @notice Emitted when funding is claimed
+    event FundingClaimed(int256 amount);
+
+    /// @notice Emitted when vault address is updated
+    event VaultUpdated(address indexed oldVault, address indexed newVault);
+
+    /// @notice Emitted when slippage tolerance is updated
+    event SlippageToleranceUpdated(uint256 oldSlippage, uint256 newSlippage);
+
+    /// @notice Emitted when execution fee override is updated
+    event ExecutionFeeUpdated(uint256 oldFee, uint256 newFee);
+
+    // ============ Errors ============
+
+    /// @notice Thrown when caller is not the vault
+    error OnlyVault();
+
+    /// @notice Thrown when position already exists
+    error PositionExists();
+
+    /// @notice Thrown when no position exists
+    error NoPosition();
+
+    /// @notice Thrown when position size is too small
+    error PositionTooSmall();
+
+    /// @notice Thrown when leverage exceeds maximum
+    error LeverageTooHigh();
+
+    /// @notice Thrown when zero amount provided
+    error ZeroAmount();
+
+    /// @notice Thrown when zero address provided
+    error ZeroAddress();
+
+    /// @notice Thrown when slippage is too high
+    error SlippageTooHigh();
+
+    /// @notice Thrown when insufficient execution fee
+    error InsufficientExecutionFee();
+
+    /// @notice Thrown when ETH transfer fails
+    error ETHTransferFailed();
+
+    // ============ Modifiers ============
+
+    /// @notice Restricts function to vault or owner
+    modifier onlyVaultOrOwner() {
+        if (msg.sender != vault && msg.sender != owner()) {
+            revert OnlyVault();
+        }
+        _;
+    }
+
+    // ============ Constructor ============
+
+    /// @notice Initialize the hedge manager
+    /// @param _exchangeRouter GMX v2 Exchange Router address
+    /// @param _market GMX v2 market address
+    /// @param _collateralToken Collateral token address (e.g., USDC)
+    /// @param _indexToken Index token address (e.g., WETH)
+    /// @param _priceFeed Chainlink price feed for index token
+    /// @param _owner Owner address
+    constructor(
+        address _exchangeRouter,
+        address _market,
+        address _collateralToken,
+        address _indexToken,
+        address _priceFeed,
+        address _owner
+    ) Ownable(_owner) {
+        if (_exchangeRouter == address(0)) revert ZeroAddress();
+        if (_market == address(0)) revert ZeroAddress();
+        if (_collateralToken == address(0)) revert ZeroAddress();
+        if (_indexToken == address(0)) revert ZeroAddress();
+        if (_priceFeed == address(0)) revert ZeroAddress();
+
+        exchangeRouter = IExchangeRouter(_exchangeRouter);
+        market = _market;
+        collateralToken = _collateralToken;
+        indexToken = _indexToken;
+        priceFeed = IChainlinkPriceFeed(_priceFeed);
+        slippageTolerance = DEFAULT_SLIPPAGE;
+    }
+
+    // ============ External Functions ============
+
+    /// @notice Set the vault address
+    /// @param _vault New vault address
+    function setVault(address _vault) external onlyOwner {
+        if (_vault == address(0)) revert ZeroAddress();
+        address oldVault = vault;
+        vault = _vault;
+        emit VaultUpdated(oldVault, _vault);
+    }
+
+    /// @notice Set slippage tolerance
+    /// @param _slippageTolerance New slippage tolerance (scaled by 1e18)
+    function setSlippageTolerance(uint256 _slippageTolerance) external onlyOwner {
+        if (_slippageTolerance > 5e16) revert SlippageTooHigh(); // Max 5%
+        uint256 oldSlippage = slippageTolerance;
+        slippageTolerance = _slippageTolerance;
+        emit SlippageToleranceUpdated(oldSlippage, _slippageTolerance);
+    }
+
+    /// @notice Set execution fee override
+    /// @param _fee New execution fee (0 to use GMX default)
+    function setExecutionFeeOverride(uint256 _fee) external onlyOwner {
+        uint256 oldFee = executionFeeOverride;
+        executionFeeOverride = _fee;
+        emit ExecutionFeeUpdated(oldFee, _fee);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function openShort(
+        uint256 sizeDeltaUsd,
+        uint256 collateralAmount
+    ) external payable override onlyVaultOrOwner nonReentrant returns (bytes32 orderKey) {
+        if (hasPosition()) revert PositionExists();
+        if (sizeDeltaUsd < MIN_POSITION_SIZE) revert PositionTooSmall();
+        if (collateralAmount == 0) revert ZeroAmount();
+
+        // Check leverage
+        _validateLeverage(sizeDeltaUsd, collateralAmount);
+
+        // Transfer collateral from caller
+        IERC20(collateralToken).safeTransferFrom(msg.sender, address(this), collateralAmount);
+
+        // Create the order
+        orderKey = _createOrder(
+            IExchangeRouter.OrderType.MarketIncrease,
+            sizeDeltaUsd,
+            collateralAmount,
+            false // isLong = false for shorts
+        );
+
+        totalCollateralDeposited += collateralAmount;
+
+        emit ShortOpened(orderKey, sizeDeltaUsd, collateralAmount);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function increaseShort(
+        uint256 sizeDeltaUsd,
+        uint256 collateralAmount
+    ) external payable override onlyVaultOrOwner nonReentrant returns (bytes32 orderKey) {
+        if (!hasPosition()) revert NoPosition();
+        if (sizeDeltaUsd == 0 && collateralAmount == 0) revert ZeroAmount();
+
+        uint256 currentSize = getPositionSizeUsd();
+        uint256 currentCollateral = getCollateralAmount();
+        uint256 newSize = currentSize + sizeDeltaUsd;
+        uint256 newCollateral = currentCollateral + collateralAmount;
+
+        // Check leverage after increase
+        _validateLeverage(newSize, newCollateral);
+
+        // Transfer additional collateral if provided
+        if (collateralAmount > 0) {
+            IERC20(collateralToken).safeTransferFrom(msg.sender, address(this), collateralAmount);
+            totalCollateralDeposited += collateralAmount;
+        }
+
+        orderKey = _createOrder(
+            IExchangeRouter.OrderType.MarketIncrease,
+            sizeDeltaUsd,
+            collateralAmount,
+            false
+        );
+
+        emit ShortIncreased(orderKey, sizeDeltaUsd, collateralAmount);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function decreaseShort(
+        uint256 sizeDeltaUsd,
+        uint256 collateralAmount
+    ) external payable override onlyVaultOrOwner nonReentrant returns (bytes32 orderKey) {
+        if (!hasPosition()) revert NoPosition();
+
+        uint256 currentSize = getPositionSizeUsd();
+        if (sizeDeltaUsd > currentSize) {
+            sizeDeltaUsd = currentSize; // Cap at current size
+        }
+
+        orderKey = _createOrder(
+            IExchangeRouter.OrderType.MarketDecrease,
+            sizeDeltaUsd,
+            collateralAmount,
+            false
+        );
+
+        emit ShortDecreased(orderKey, sizeDeltaUsd, collateralAmount);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function closeShort()
+        external
+        payable
+        override
+        onlyVaultOrOwner
+        nonReentrant
+        returns (bytes32 orderKey)
+    {
+        if (!hasPosition()) revert NoPosition();
+
+        uint256 currentSize = getPositionSizeUsd();
+
+        orderKey = _createOrder(
+            IExchangeRouter.OrderType.MarketDecrease,
+            currentSize,
+            0, // Withdraw all collateral
+            false
+        );
+
+        emit ShortClosed(orderKey);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function adjustHedge(
+        uint256 targetDeltaUsd
+    ) external payable override onlyVaultOrOwner nonReentrant returns (bytes32 orderKey) {
+        uint256 currentSize = getPositionSizeUsd();
+
+        emit HedgeAdjusted(orderKey, currentSize, targetDeltaUsd);
+
+        if (targetDeltaUsd > currentSize) {
+            // Need to increase position
+            uint256 sizeDelta = targetDeltaUsd - currentSize;
+
+            // Calculate required collateral for the increase
+            uint256 additionalCollateral = _calculateRequiredCollateral(sizeDelta);
+
+            if (!hasPosition()) {
+                // Open new position
+                if (targetDeltaUsd < MIN_POSITION_SIZE) revert PositionTooSmall();
+
+                IERC20(collateralToken).safeTransferFrom(
+                    msg.sender,
+                    address(this),
+                    additionalCollateral
+                );
+                totalCollateralDeposited += additionalCollateral;
+
+                orderKey = _createOrder(
+                    IExchangeRouter.OrderType.MarketIncrease,
+                    targetDeltaUsd,
+                    additionalCollateral,
+                    false
+                );
+
+                emit ShortOpened(orderKey, targetDeltaUsd, additionalCollateral);
+            } else {
+                // Increase existing position
+                IERC20(collateralToken).safeTransferFrom(
+                    msg.sender,
+                    address(this),
+                    additionalCollateral
+                );
+                totalCollateralDeposited += additionalCollateral;
+
+                orderKey = _createOrder(
+                    IExchangeRouter.OrderType.MarketIncrease,
+                    sizeDelta,
+                    additionalCollateral,
+                    false
+                );
+
+                emit ShortIncreased(orderKey, sizeDelta, additionalCollateral);
+            }
+        } else if (targetDeltaUsd < currentSize) {
+            // Need to decrease position
+            uint256 sizeDelta = currentSize - targetDeltaUsd;
+
+            if (targetDeltaUsd == 0) {
+                // Close position entirely
+                orderKey = _createOrder(
+                    IExchangeRouter.OrderType.MarketDecrease,
+                    currentSize,
+                    0,
+                    false
+                );
+                emit ShortClosed(orderKey);
+            } else {
+                // Partial decrease
+                orderKey = _createOrder(
+                    IExchangeRouter.OrderType.MarketDecrease,
+                    sizeDelta,
+                    0, // Keep collateral ratio
+                    false
+                );
+                emit ShortDecreased(orderKey, sizeDelta, 0);
+            }
+        }
+        // If targetDeltaUsd == currentSize, no action needed
+    }
+
+    /// @inheritdoc IHedgeManager
+    function claimFunding() external override onlyVaultOrOwner returns (int256 fundingAmount) {
+        address[] memory markets = new address[](1);
+        markets[0] = market;
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+
+        uint256[] memory amounts = exchangeRouter.claimFundingFees(markets, tokens, vault);
+
+        fundingAmount = int256(amounts[0]);
+        totalFundingReceived += fundingAmount;
+
+        emit FundingClaimed(fundingAmount);
+    }
+
+    // ============ View Functions ============
+
+    /// @inheritdoc IHedgeManager
+    function getPositionSizeUsd() public view override returns (uint256 sizeUsd) {
+        bytes32 positionKey = getPositionKey();
+        IDataStore dataStore = IDataStore(exchangeRouter.dataStore());
+
+        // GMX stores position size at specific key
+        bytes32 sizeKey = keccak256(abi.encode(positionKey, "sizeInUsd"));
+        sizeUsd = dataStore.getUint(sizeKey);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function getPositionSizeTokens() public view override returns (uint256 sizeTokens) {
+        bytes32 positionKey = getPositionKey();
+        IDataStore dataStore = IDataStore(exchangeRouter.dataStore());
+
+        bytes32 sizeKey = keccak256(abi.encode(positionKey, "sizeInTokens"));
+        sizeTokens = dataStore.getUint(sizeKey);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function getCollateralAmount() public view override returns (uint256 collateral) {
+        bytes32 positionKey = getPositionKey();
+        IDataStore dataStore = IDataStore(exchangeRouter.dataStore());
+
+        bytes32 collateralKey = keccak256(abi.encode(positionKey, "collateralAmount"));
+        collateral = dataStore.getUint(collateralKey);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function getPositionValue() public view override returns (uint256 value) {
+        uint256 collateral = getCollateralAmount();
+        int256 pnl = getUnrealizedPnL();
+
+        // Position value = collateral + unrealized PnL
+        if (pnl >= 0) {
+            value = collateral + uint256(pnl);
+        } else {
+            uint256 loss = uint256(-pnl);
+            value = collateral > loss ? collateral - loss : 0;
+        }
+    }
+
+    /// @inheritdoc IHedgeManager
+    function getPositionDelta() public view override returns (int256 delta) {
+        // Short position delta is negative
+        // Delta = -(size in tokens)
+        uint256 sizeTokens = getPositionSizeTokens();
+        delta = -int256(sizeTokens);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function getUnrealizedPnL() public view override returns (int256 pnl) {
+        if (!hasPosition()) return 0;
+
+        uint256 sizeUsd = getPositionSizeUsd();
+        uint256 sizeTokens = getPositionSizeTokens();
+
+        if (sizeTokens == 0) return 0;
+
+        // Get current price
+        uint256 currentPrice = _getCurrentPrice();
+
+        // Entry price = sizeUsd / sizeTokens (in GMX precision)
+        uint256 entryPrice = (sizeUsd * PRECISION) / sizeTokens;
+
+        // For shorts: PnL = (entryPrice - currentPrice) * sizeTokens / PRECISION
+        // Profit when price goes down, loss when price goes up
+        if (currentPrice < entryPrice) {
+            pnl = int256(((entryPrice - currentPrice) * sizeTokens) / PRECISION);
+        } else {
+            pnl = -int256(((currentPrice - entryPrice) * sizeTokens) / PRECISION);
+        }
+
+        // Convert to collateral token decimals (assuming 6 decimals for USDC)
+        pnl = pnl / int256(1e12); // Convert from 18 to 6 decimals
+    }
+
+    /// @inheritdoc IHedgeManager
+    function getAccumulatedFunding() public view override returns (int256 fundingAmount) {
+        bytes32 positionKey = getPositionKey();
+        IDataStore dataStore = IDataStore(exchangeRouter.dataStore());
+
+        bytes32 fundingKey = keccak256(abi.encode(positionKey, "fundingFeeAmount"));
+        fundingAmount = dataStore.getInt(fundingKey);
+    }
+
+    /// @inheritdoc IHedgeManager
+    function getCurrentLeverage() public view override returns (uint256 leverage) {
+        uint256 sizeUsd = getPositionSizeUsd();
+        uint256 collateral = getCollateralAmount();
+
+        if (collateral == 0) return 0;
+
+        // Convert collateral to USD (30 decimals)
+        // Assuming collateral is in 6 decimals (USDC)
+        uint256 collateralUsd = collateral * 1e24; // 6 -> 30 decimals
+
+        leverage = (sizeUsd * PRECISION) / collateralUsd;
+    }
+
+    /// @inheritdoc IHedgeManager
+    function hasPosition() public view override returns (bool exists) {
+        return getPositionSizeUsd() > 0;
+    }
+
+    /// @inheritdoc IHedgeManager
+    function getPositionKey() public view override returns (bytes32 key) {
+        return
+            GMXPositionUtils.getPositionKey(
+                address(this),
+                market,
+                collateralToken,
+                false // isLong = false for shorts
+            );
+    }
+
+    /// @inheritdoc IHedgeManager
+    function getExecutionFee() public view override returns (uint256 fee) {
+        if (executionFeeOverride > 0) {
+            return executionFeeOverride;
+        }
+        // Default execution fee (can be queried from GMX DataStore in production)
+        return 0.001 ether;
+    }
+
+    // ============ Internal Functions ============
+
+    /// @notice Create an order on GMX v2
+    function _createOrder(
+        IExchangeRouter.OrderType orderType,
+        uint256 sizeDeltaUsd,
+        uint256 collateralDeltaAmount,
+        bool isLong
+    ) internal returns (bytes32 orderKey) {
+        uint256 execFee = getExecutionFee();
+        if (msg.value < execFee) revert InsufficientExecutionFee();
+
+        // Approve collateral to order vault
+        address orderVault = exchangeRouter.orderVault();
+        if (collateralDeltaAmount > 0) {
+            IERC20(collateralToken).safeIncreaseAllowance(orderVault, collateralDeltaAmount);
+            IERC20(collateralToken).safeTransfer(orderVault, collateralDeltaAmount);
+        }
+
+        // Calculate acceptable price with slippage
+        uint256 currentPrice = _getCurrentPrice();
+        uint256 acceptablePrice;
+
+        if (orderType == IExchangeRouter.OrderType.MarketIncrease && !isLong) {
+            // Opening/increasing short: accept higher price (worse for us)
+            acceptablePrice = (currentPrice * (PRECISION + slippageTolerance)) / PRECISION;
+        } else if (orderType == IExchangeRouter.OrderType.MarketDecrease && !isLong) {
+            // Closing/decreasing short: accept lower price (worse for us)
+            acceptablePrice = (currentPrice * (PRECISION - slippageTolerance)) / PRECISION;
+        } else {
+            acceptablePrice = currentPrice;
+        }
+
+        // Create order params
+        IExchangeRouter.CreateOrderParams memory params = IExchangeRouter.CreateOrderParams({
+            receiver: vault != address(0) ? vault : msg.sender,
+            cancellationReceiver: address(this),
+            callbackContract: address(0),
+            uiFeeReceiver: address(0),
+            market: market,
+            initialCollateralToken: collateralToken,
+            swapPath: new address[](0),
+            orderType: orderType,
+            decreasePositionSwapType: IExchangeRouter.DecreasePositionSwapType.NoSwap,
+            sizeDeltaUsd: sizeDeltaUsd,
+            initialCollateralDeltaAmount: collateralDeltaAmount,
+            triggerPrice: 0,
+            acceptablePrice: acceptablePrice,
+            executionFee: execFee,
+            callbackGasLimit: 0,
+            minOutputAmount: 0,
+            isLong: isLong,
+            shouldUnwrapNativeToken: false,
+            autoCancel: false,
+            referralCode: bytes32(0)
+        });
+
+        // Create the order
+        orderKey = exchangeRouter.createOrder{value: execFee}(params);
+        lastOrderKey = orderKey;
+
+        // Refund excess ETH
+        if (msg.value > execFee) {
+            (bool success, ) = msg.sender.call{value: msg.value - execFee}("");
+            if (!success) revert ETHTransferFailed();
+        }
+    }
+
+    /// @notice Validate leverage is within limits
+    function _validateLeverage(uint256 sizeUsd, uint256 collateralAmount) internal pure {
+        if (collateralAmount == 0) revert ZeroAmount();
+
+        // Convert collateral to USD (30 decimals)
+        // Assuming collateral is in 6 decimals (USDC)
+        uint256 collateralUsd = collateralAmount * 1e24;
+
+        uint256 leverage = (sizeUsd * PRECISION) / collateralUsd;
+
+        if (leverage > MAX_LEVERAGE) revert LeverageTooHigh();
+    }
+
+    /// @notice Calculate required collateral for a position size
+    function _calculateRequiredCollateral(uint256 sizeDeltaUsd) internal pure returns (uint256) {
+        // Target 2x leverage by default
+        uint256 targetLeverage = 2e18;
+
+        // collateral (in USD 30 decimals) = size / leverage
+        uint256 collateralUsd = (sizeDeltaUsd * PRECISION) / targetLeverage;
+
+        // Convert from 30 decimals to 6 decimals (USDC)
+        return collateralUsd / 1e24;
+    }
+
+    /// @notice Get current price from price feed
+    function _getCurrentPrice() internal view returns (uint256) {
+        (, int256 answer, , , ) = priceFeed.latestRoundData();
+        require(answer > 0, "Invalid price");
+
+        // Convert to 18 decimals
+        // Chainlink ETH/USD has 8 decimals
+        return uint256(answer) * 1e10;
+    }
+
+    /// @notice Receive ETH for execution fee refunds
+    receive() external payable {}
+}

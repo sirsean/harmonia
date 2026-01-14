@@ -118,14 +118,13 @@ describeFork("LiquidityManager Fork Tests", function () {
     await wethContract.deposit({ value: wethAmount });
 
     // For USDC.e, try multiple whale addresses
-    // Exchange hot wallets are EOAs that can transfer tokens when impersonated
-    // Protocol contracts (Uniswap pools, GMX vaults) won't work as they have custom transfer logic
+    // These are known USDC.e holders on Arbitrum with substantial balances
     const usdcWhales = [
-      "0xf977814e90da44bfa03b6295a0616a897441acec", // Binance: Hot Wallet 20 (EOA)
-      "0xB38e8c17e38363aF6EbdCb3dAE12e0243582891D", // Binance 54 (EOA)
-      "0xa180Fe01B906A1bE37BE6c534a3300785b20d947", // Binance: Hot Wallet 16 (EOA)
-      "0x515b72ed8a97f42c568d6a143232775018f133c8", // Binance: Hot Wallet 12 (EOA)
-      "0x631fc1ea2270e98fbd9d92658ece0f5a269aa161", // Binance: Hot Wallet (EOA)
+      "0x62383739D68Dd0F844103Db8dFb05a7EdED5BBE6", // Stargate USDC pool
+      "0x489ee077994B6658eAfA855C308275EAd8097C4A", // GMX vault (holds USDC.e)
+      "0xf89d7b9c864f589bbF53a82105107622B35EaA40", // Bybit hot wallet
+      "0x1714400FF23dB4aF24F9fd64e7039e6597f18C2b", // Aave pool
+      "0xB38e8c17e38363aF6EbdCb3dAE12e0243582891D", // Another holder
     ];
 
     let funded = false;
