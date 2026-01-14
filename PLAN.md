@@ -611,11 +611,11 @@ A TypeScript monitoring script provides redundancy:
 **Objective:** Automated delta monitoring and rebalancing.
 
 **Deliverables:**
-- [ ] `RebalanceController.sol` - Chainlink Automation keeper
-- [ ] `checkUpkeep()` - Off-chain delta monitoring
-- [ ] `performUpkeep()` - On-chain rebalance execution
-- [ ] Yield snapshot recording
-- [ ] Compound functionality
+- [x] `RebalanceController.sol` - Chainlink Automation keeper
+- [x] `checkUpkeep()` - Off-chain delta monitoring
+- [x] `performUpkeep()` - On-chain rebalance/maintenance execution
+- [x] Yield snapshot recording (event-based via `SnapshotRecorded`)
+- [x] Compound functionality (time-based keeper calls to `vault.compound()`)
 
 **Implementation Order:**
 1. Create RebalanceController with Chainlink interface
