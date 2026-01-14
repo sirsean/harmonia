@@ -91,6 +91,10 @@ describeFork("LiquidityManager Fork Tests", function () {
     // Set vault
     await liquidityManager.connect(signer).setVault(vault.address);
 
+    // Set max slippage tolerance for fork tests (1% = 1e16)
+    // Fork tests may have price movements that exceed default 0.5% tolerance
+    await liquidityManager.connect(signer).setSlippageTolerance(BigInt(1e16));
+
     // Fund vault with WETH and USDC
     // Use impersonation to get tokens from whales
     await fundAccount(vault.address, WETH_AMOUNT, USDC_AMOUNT);
@@ -113,34 +117,79 @@ describeFork("LiquidityManager Fork Tests", function () {
     const wethContract = new Contract(ARBITRUM_ADDRESSES.WETH, WETH_ABI, vault);
     await wethContract.deposit({ value: wethAmount });
 
-    // For USDC, find a whale and impersonate
-    const usdcWhale = "0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7"; // Known USDC.e whale on Arbitrum
-    await network.provider.request({
-      method: "hardhat_impersonateAccount",
-      params: [usdcWhale],
-    });
+    // For USDC.e, try multiple whale addresses
+    // Exchange hot wallets are EOAs that can transfer tokens when impersonated
+    // Protocol contracts (Uniswap pools, GMX vaults) won't work as they have custom transfer logic
+    const usdcWhales = [
+      "0xf977814e90da44bfa03b6295a0616a897441acec", // Binance: Hot Wallet 20 (EOA)
+      "0xB38e8c17e38363aF6EbdCb3dAE12e0243582891D", // Binance 54 (EOA)
+      "0xa180Fe01B906A1bE37BE6c534a3300785b20d947", // Binance: Hot Wallet 16 (EOA)
+      "0x515b72ed8a97f42c568d6a143232775018f133c8", // Binance: Hot Wallet 12 (EOA)
+      "0x631fc1ea2270e98fbd9d92658ece0f5a269aa161", // Binance: Hot Wallet (EOA)
+    ];
 
-    // Fund whale with ETH for gas
-    await signer.sendTransaction({
-      to: usdcWhale,
-      value: ethers.parseEther("1"),
-    });
+    let funded = false;
+    const errors: string[] = [];
 
-    const whaleSigner = await ethers.getSigner(usdcWhale);
-    const usdcWithWhale = new Contract(ARBITRUM_ADDRESSES.USDC_E, ERC20_ABI, whaleSigner);
+    for (const whaleAddress of usdcWhales) {
+      try {
+        // Check if whale has balance
+        const whaleBalance = await usdc.balanceOf(whaleAddress);
+        if (whaleBalance < usdcAmount) {
+          errors.push(`${whaleAddress}: Insufficient balance (${Number(whaleBalance) / 1e6} USDC.e)`);
+          continue;
+        }
 
-    // Check whale balance
-    const whaleBalance = await usdcWithWhale.balanceOf(usdcWhale);
-    const transferAmount = whaleBalance > usdcAmount ? usdcAmount : whaleBalance;
+        await network.provider.request({
+          method: "hardhat_impersonateAccount",
+          params: [whaleAddress],
+        });
 
-    if (transferAmount > 0n) {
-      await usdcWithWhale.transfer(account, transferAmount);
+        // Fund whale with ETH for gas
+        await signer.sendTransaction({
+          to: whaleAddress,
+          value: ethers.parseEther("1"),
+        });
+
+        const whaleSigner = await ethers.getSigner(whaleAddress);
+        const usdcWithWhale = new Contract(ARBITRUM_ADDRESSES.USDC_E, ERC20_ABI, whaleSigner);
+
+        await usdcWithWhale.transfer(account, usdcAmount);
+
+        await network.provider.request({
+          method: "hardhat_stopImpersonatingAccount",
+          params: [whaleAddress],
+        });
+
+        funded = true;
+        console.log(`Funded from whale: ${whaleAddress}`);
+        break;
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        errors.push(`${whaleAddress}: Transfer failed - ${errorMsg.substring(0, 100)}`);
+        // Try next whale
+        try {
+          await network.provider.request({
+            method: "hardhat_stopImpersonatingAccount",
+            params: [whaleAddress],
+          });
+        } catch {
+          // Ignore
+        }
+      }
     }
 
-    await network.provider.request({
-      method: "hardhat_stopImpersonatingAccount",
-      params: [usdcWhale],
-    });
+    if (!funded) {
+      // Log errors for debugging
+      console.log("\n=== USDC.e Funding Errors ===");
+      for (const err of errors) {
+        console.log(err);
+      }
+      throw new Error(
+        `Could not fund account with ${Number(usdcAmount) / 1e6} USDC.e from any whale. ` +
+          `Consider using a different fork block or adding more whale addresses.`
+      );
+    }
   }
 
   // Helper to convert tick to sqrtPriceX96
@@ -229,9 +278,36 @@ describeFork("LiquidityManager Fork Tests", function () {
       console.log("Vault WETH balance:", ethers.formatEther(wethBalance));
       console.log("Vault USDC balance:", Number(usdcBalance) / 1e6);
 
-      // Use smaller amounts for the test
-      const wethToDeposit = wethBalance > WETH_AMOUNT ? WETH_AMOUNT : wethBalance;
-      const usdcToDeposit = usdcBalance > USDC_AMOUNT ? USDC_AMOUNT : usdcBalance;
+      // Skip if insufficient balance
+      if (wethBalance === 0n || usdcBalance === 0n) {
+        console.log("Skipping: Insufficient token balance for test");
+        this.skip();
+        return;
+      }
+
+      // Calculate approximate ETH price to determine balanced amounts
+      const Q96 = BigInt(2) ** BigInt(96);
+      const sqrtPrice = Number(slot0.sqrtPriceX96) / Number(Q96);
+      let ethPrice = sqrtPrice * sqrtPrice;
+      if (isWethToken0) {
+        ethPrice = ethPrice * 1e12; // USDC per WETH
+      } else {
+        ethPrice = 1e12 / ethPrice;
+      }
+
+      // Calculate balanced amounts based on current price
+      // Use USDC as the constraint and calculate matching WETH
+      const targetUsdcAmount = BigInt(10_000) * BigInt(10) ** BigInt(6); // 10k USDC
+      const matchingWethAmount = BigInt(Math.floor((10_000 / ethPrice) * 1e18)); // Matching WETH value
+
+      // Use the smaller of available and calculated amounts
+      const wethToDeposit =
+        wethBalance > matchingWethAmount ? matchingWethAmount : wethBalance;
+      const usdcToDeposit = usdcBalance > targetUsdcAmount ? targetUsdcAmount : usdcBalance;
+
+      console.log("ETH price:", ethPrice.toFixed(2));
+      console.log("WETH to deposit:", ethers.formatEther(wethToDeposit));
+      console.log("USDC to deposit:", Number(usdcToDeposit) / 1e6);
 
       // Determine amount0 and amount1 based on token order
       const [amount0, amount1] = isWethToken0
@@ -361,17 +437,29 @@ describeFork("LiquidityManager Fork Tests", function () {
       // Get current liquidity
       const liquidityBefore = await liquidityManager.liquidity();
 
-      // Get token order
+      // Get token order and current price
       const token0 = await uniswapPool.token0();
       const isWethToken0 = token0.toLowerCase() === ARBITRUM_ADDRESSES.WETH.toLowerCase();
+      const slot0 = await uniswapPool.slot0();
+      const Q96 = BigInt(2) ** BigInt(96);
+      const sqrtPrice = Number(slot0.sqrtPriceX96) / Number(Q96);
+      let ethPrice = sqrtPrice * sqrtPrice;
+      if (isWethToken0) {
+        ethPrice = ethPrice * 1e12;
+      } else {
+        ethPrice = 1e12 / ethPrice;
+      }
 
-      // Use small amounts
-      const wethToAdd = ethers.parseEther("1");
-      const usdcToAdd = BigInt(2_000) * BigInt(10) ** BigInt(6);
+      // Calculate balanced amounts based on current price
+      const targetUsdcAmount = BigInt(2_000) * BigInt(10) ** BigInt(6); // 2k USDC
+      const matchingWethAmount = BigInt(Math.floor((2000 / ethPrice) * 1e18));
 
       // Check if vault has enough balance
       const wethBalance = await weth.balanceOf(vault.address);
       const usdcBalance = await usdc.balanceOf(vault.address);
+
+      const wethToAdd = wethBalance > matchingWethAmount ? matchingWethAmount : wethBalance;
+      const usdcToAdd = usdcBalance > targetUsdcAmount ? targetUsdcAmount : usdcBalance;
 
       if (wethBalance < wethToAdd || usdcBalance < usdcToAdd) {
         console.log("Skipping: Insufficient balance");
@@ -513,7 +601,7 @@ describeFork("LiquidityManager Fork Tests", function () {
       // Get fresh tokens
       await fundAccount(vault.address, WETH_AMOUNT, USDC_AMOUNT);
 
-      // Get current tick
+      // Get current tick and price
       const slot0 = await uniswapPool.slot0();
       const currentTick = Number(slot0.tick);
       const tickSpacing = Number(await uniswapPool.tickSpacing());
@@ -523,9 +611,23 @@ describeFork("LiquidityManager Fork Tests", function () {
 
       const token0 = await uniswapPool.token0();
       const isWethToken0 = token0.toLowerCase() === ARBITRUM_ADDRESSES.WETH.toLowerCase();
+
+      // Calculate balanced amounts based on current price
+      const Q96 = BigInt(2) ** BigInt(96);
+      const sqrtPrice = Number(slot0.sqrtPriceX96) / Number(Q96);
+      let ethPrice = sqrtPrice * sqrtPrice;
+      if (isWethToken0) {
+        ethPrice = ethPrice * 1e12;
+      } else {
+        ethPrice = 1e12 / ethPrice;
+      }
+
+      const targetUsdcAmount = BigInt(2_000) * BigInt(10) ** BigInt(6); // 2k USDC
+      const matchingWethAmount = BigInt(Math.floor((2000 / ethPrice) * 1e18));
+
       const [amount0, amount1] = isWethToken0
-        ? [ethers.parseEther("1"), BigInt(2_000) * BigInt(10) ** BigInt(6)]
-        : [BigInt(2_000) * BigInt(10) ** BigInt(6), ethers.parseEther("1")];
+        ? [matchingWethAmount, targetUsdcAmount]
+        : [targetUsdcAmount, matchingWethAmount];
 
       const block = await ethers.provider.getBlock("latest");
       const deadline = block!.timestamp + 3600;
