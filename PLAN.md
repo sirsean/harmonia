@@ -1070,28 +1070,167 @@ Monitoring:
 
 ---
 
+## Part 10: Multi-Market Configuration
+
+The system is designed to support multiple token pairs beyond ETH/USDC, enabling deployment of specialized vaults like harmonia-ETH, harmonia-BTC, harmonia-ARB with different yield/risk characteristics.
+
+### 10.1 Supported Markets
+
+| Market | Base Token | Uniswap Pool | GMX Market | Expected APY | Risk Level |
+|--------|------------|--------------|------------|--------------|------------|
+| **ETH** | WETH (18 dec) | ETH/USDC 0.05% | ETH/USD | 5-20% | Moderate |
+| **BTC** | WBTC (8 dec) | WBTC/USDC 0.3% | BTC/USD | 3-15% | Moderate |
+| **ARB** | ARB (18 dec) | ARB/USDC 0.3% | ARB/USD | 10-40% | Aggressive |
+| **LINK** | LINK (18 dec) | LINK/USDC 0.3% | LINK/USD | 8-30% | Aggressive |
+
+### 10.2 Market Configuration Structure
+
+Each market requires:
+1. **Uniswap V3 Pool** - For LP position
+2. **GMX V2 Market** - For perpetual hedge
+3. **Chainlink Price Feed** - For price verification
+4. **Matching tokens** - Base token must match across all components
+
+```typescript
+interface MarketConfig {
+  id: string;                    // "ETH", "BTC", "ARB"
+  baseToken: TokenConfig;        // Volatile token (what we hedge)
+  quoteToken: TokenConfig;       // Stable token (USDC)
+  uniswapPool: UniswapPoolConfig;
+  gmxMarket: GMXMarketConfig;
+  chainlinkFeed: ChainlinkFeedConfig;
+  baseTokenIsToken0: boolean;    // Token ordering in pool
+  strategyParams: StrategyParams;
+}
+```
+
+### 10.3 Scripts
+
+```bash
+# Validate a market configuration
+MARKET=ETH npx hardhat run scripts/validate-market.ts --network hardhat
+
+# Discover viable markets for a token
+TOKEN=GMX npx hardhat run scripts/discover-markets.ts --network hardhat
+
+# Evaluate custom contract addresses
+UNISWAP_POOL=0x... GMX_MARKET=0x... CHAINLINK_FEED=0x... \
+  npx hardhat run scripts/evaluate-custom-market.ts --network hardhat
+
+# Deploy a vault for a market
+MARKET=ETH npx hardhat run scripts/deploy-vault.ts --network arbitrum
+```
+
+### 10.4 Deployment Process
+
+1. **Select Market**: Choose from pre-configured markets or create new config
+2. **Validate**: Run `validate-market.ts` to verify all components
+3. **Deploy**: Run `deploy-vault.ts` with appropriate market
+4. **Configure**: Set strategy parameters and keeper
+5. **Seed**: Provide initial liquidity
+6. **Enable**: Open deposits
+
+### 10.5 Adding New Markets
+
+To add support for a new token pair:
+
+1. **Discover components**:
+   ```bash
+   TOKEN=NEW_TOKEN npx hardhat run scripts/discover-markets.ts
+   ```
+
+2. **Add to registry** (`src/markets/registry.ts`):
+   ```typescript
+   export const NEW_MARKET: MarketConfig = {
+     id: "NEW",
+     name: "Harmonia NEW",
+     // ... configuration from discovery output
+   };
+   ```
+
+3. **Validate configuration**:
+   ```bash
+   MARKET=NEW npx hardhat run scripts/validate-market.ts
+   ```
+
+4. **Deploy**:
+   ```bash
+   MARKET=NEW npx hardhat run scripts/deploy-vault.ts --network arbitrum
+   ```
+
+### 10.6 Token Decimal Handling
+
+Different tokens have different decimal places, which affects price calculations:
+
+| Token | Decimals | Decimal Adjustment vs USDC |
+|-------|----------|---------------------------|
+| WETH | 18 | 10^12 |
+| ARB | 18 | 10^12 |
+| LINK | 18 | 10^12 |
+| WBTC | 8 | 10^2 |
+| USDC | 6 | - |
+
+The `MarketConfig.decimalAdjustment` field handles this automatically.
+
+---
+
 ## Appendix A: Key Contract Addresses (Arbitrum)
+
+### Protocol Infrastructure (shared across all markets)
 
 ```
 Uniswap v3:
+- Factory: 0x1F98431c8aD98523631AE4a59f267346ea31F984
 - NonfungiblePositionManager: 0xC36442b4a4522E871399CD717aBDD847Ab11FE88
 - SwapRouter: 0xE592427A0AEce92De3Edee1F18E0157C05861564
-- Factory: 0x1F98431c8aD98523631AE4a59f267346ea31F984
-- ETH/USDC 0.05% Pool: 0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443
+- Quoter: 0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6
 
 GMX v2:
 - ExchangeRouter: 0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8
 - OrderVault: 0x31eF83a530Fde1B38EE9A18093A333D8Bbbc40D5
 - DataStore: 0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8
-- ETH/USD Market: 0x70d95587d40A2caf56bd97485aB3Eec10Bee6336
+- Reader: 0xf60becbba223EEA9495Da3f606753867eC10d139
 
 Chainlink:
-- ETH/USD Feed: 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612
 - Automation Registry: 0x37D9dC70bfcd8BC77Ec2858836B923c560E891D1
+```
 
-Tokens:
-- USDC: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831
+### Market-Specific Addresses
+
+```
+ETH Market:
+- Uniswap Pool (ETH/USDC 0.05%): 0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443
+- GMX Market (ETH/USD): 0x70d95587d40A2caf56bd97485aB3Eec10Bee6336
+- Chainlink Feed (ETH/USD): 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612
+
+BTC Market:
+- Uniswap Pool (WBTC/USDC 0.3%): 0xac70bD92F89e6739B3a08Db9B6081a923912f73D
+- GMX Market (BTC/USD): 0x47c031236e19d024b42f8AE6780E44A573170703
+- Chainlink Feed (BTC/USD): 0x6ce185860a4963106506C203335A2910525d22AD
+
+ARB Market:
+- Uniswap Pool (ARB/USDC 0.3%): 0xC6F780497A95e246EB9449f5e4770916DCd6396A
+- GMX Market (ARB/USD): 0xC25cEf6061Cf5dE5eb761b50E4743c1F5D7E5407
+- Chainlink Feed (ARB/USD): 0xb2A824043730FE05F3DA2efaFa1CBbe83fa548D6
+
+LINK Market:
+- Uniswap Pool (LINK/USDC 0.3%): 0x655B739E0b3BB00D6b74BBCd5C9169aEb0aa2e68
+- GMX Market (LINK/USD): 0x7f1fa204bb700853D36994DA19F830b6Ad18455C
+- Chainlink Feed (LINK/USD): 0x86E53CF1B870786351Da77A57575e79CB55812CB
+```
+
+### Tokens
+
+```
+Stablecoins:
+- USDC (Native): 0xaf88d065e77c8cC2239327C5EDb3A432268e5831
+- USDC.e (Bridged): 0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8
+
+Base Tokens:
 - WETH: 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1
+- WBTC: 0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f
+- ARB: 0x912CE59144191C1204E64559FE8253a0e49E6548
+- LINK: 0xf97f4df75117a78c1A5a0DBb814Af92458539FB4
 ```
 
 ---
