@@ -11,6 +11,7 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
 import {IHedgeManager} from "../interfaces/IHedgeManager.sol";
+import {SecurityModule} from "../libraries/SecurityModule.sol";
 
 /// @title Delta Neutral Vault
 /// @notice ERC-4626 vault that deploys capital into delta-neutral yield strategy
@@ -34,6 +35,15 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Emergency threshold for circuit breaker (20%)
     uint256 public constant EMERGENCY_THRESHOLD = 20e16;
+
+    /// @notice Maximum single withdrawal percentage (25%)
+    uint256 public constant MAX_SINGLE_WITHDRAWAL = 25e16;
+
+    /// @notice Minimum interval between large withdrawals (1 hour)
+    uint256 public constant LARGE_WITHDRAWAL_COOLDOWN = 1 hours;
+
+    /// @notice Large withdrawal threshold (10% of total assets)
+    uint256 public constant LARGE_WITHDRAWAL_THRESHOLD = 10e16;
 
     // ============ State Variables ============
 
@@ -60,6 +70,15 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Deposit cap (0 means no cap)
     uint256 public depositCap;
+
+    /// @notice Circuit breaker: is the vault in lockdown mode
+    bool public circuitBreakerTriggered;
+
+    /// @notice Timestamp of last large withdrawal
+    uint256 public lastLargeWithdrawalTime;
+
+    /// @notice Guardian address for emergency operations
+    address public guardian;
 
     // ============ Events ============
 
@@ -88,6 +107,18 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         address rebalanceController
     );
 
+    /// @notice Emitted when circuit breaker is triggered
+    event CircuitBreakerTriggered(int256 deltaRatio, uint256 timestamp);
+
+    /// @notice Emitted when circuit breaker is reset
+    event CircuitBreakerReset(uint256 timestamp);
+
+    /// @notice Emitted when guardian is updated
+    event GuardianUpdated(address indexed oldGuardian, address indexed newGuardian);
+
+    /// @notice Emitted when large withdrawal cooldown is enforced
+    event LargeWithdrawalCooldownEnforced(uint256 requestedAmount, uint256 cooldownEnd);
+
     // ============ Errors ============
 
     /// @notice Thrown when deposit would exceed cap
@@ -104,6 +135,18 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Thrown when address is zero
     error ZeroAddress();
+
+    /// @notice Thrown when circuit breaker is active
+    error CircuitBreakerActive();
+
+    /// @notice Thrown when withdrawal is too large
+    error WithdrawalTooLarge(uint256 requested, uint256 maxAllowed);
+
+    /// @notice Thrown when withdrawal cooldown is active
+    error WithdrawalCooldownActive(uint256 cooldownEnd);
+
+    /// @notice Thrown when caller is not guardian
+    error OnlyGuardian();
 
     // ============ Constructor ============
 
@@ -190,43 +233,59 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     }
 
     /// @notice Withdraw exact assets by burning shares
-    /// @dev Overridden to add reentrancy protection and capital unwinding
+    /// @dev Overridden to add reentrancy protection, circuit breaker, and capital unwinding
     /// @param assets Amount of assets to withdraw
     /// @param receiver Address to receive assets
-    /// @param owner Address of share owner
+    /// @param shareOwner Address of share owner
     /// @return shares Amount of shares burned
     function withdraw(
         uint256 assets,
         address receiver,
-        address owner
+        address shareOwner
     ) public override nonReentrant returns (uint256 shares) {
         if (assets == 0) revert ZeroAmount();
+
+        // Circuit breaker check - block new withdrawals during emergency (except owner/guardian)
+        if (circuitBreakerTriggered && msg.sender != owner() && msg.sender != guardian) {
+            revert CircuitBreakerActive();
+        }
+
+        // Large withdrawal protection
+        _validateWithdrawalSize(assets);
 
         // Unwind capital from strategy before withdrawal
         _unwindCapital(assets);
 
-        shares = super.withdraw(assets, receiver, owner);
+        shares = super.withdraw(assets, receiver, shareOwner);
     }
 
     /// @notice Redeem exact shares for assets
-    /// @dev Overridden to add reentrancy protection and capital unwinding
+    /// @dev Overridden to add reentrancy protection, circuit breaker, and capital unwinding
     /// @param shares Amount of shares to redeem
     /// @param receiver Address to receive assets
-    /// @param owner Address of share owner
+    /// @param shareOwner Address of share owner
     /// @return assets Amount of assets received
     function redeem(
         uint256 shares,
         address receiver,
-        address owner
+        address shareOwner
     ) public override nonReentrant returns (uint256 assets) {
         if (shares == 0) revert ZeroAmount();
 
+        // Circuit breaker check - block new redemptions during emergency (except owner/guardian)
+        if (circuitBreakerTriggered && msg.sender != owner() && msg.sender != guardian) {
+            revert CircuitBreakerActive();
+        }
+
         assets = previewRedeem(shares);
+
+        // Large withdrawal protection
+        _validateWithdrawalSize(assets);
 
         // Unwind capital from strategy before redemption
         _unwindCapital(assets);
 
-        assets = super.redeem(shares, receiver, owner);
+        assets = super.redeem(shares, receiver, shareOwner);
     }
 
     // ============ Strategy Functions ============
@@ -238,6 +297,9 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         if (msg.sender != rebalanceController && msg.sender != owner()) {
             revert Unauthorized(msg.sender);
         }
+
+        // Check for emergency condition and trigger circuit breaker if needed
+        _checkAndTriggerCircuitBreaker();
 
         int256 deltaBefore = getNetDelta();
 
@@ -365,9 +427,47 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Emergency unwind all positions
     /// @dev Closes LP and hedge positions, converts everything to USDC
-    function emergencyUnwind() external onlyOwner {
+    function emergencyUnwind() external {
+        if (msg.sender != owner() && msg.sender != guardian) {
+            revert Unauthorized(msg.sender);
+        }
         _pause();
+        circuitBreakerTriggered = true;
+        emit CircuitBreakerTriggered(this.getDeltaRatio(), block.timestamp);
         _emergencyUnwind();
+    }
+
+    /// @notice Set the guardian address
+    /// @param _guardian New guardian address
+    function setGuardian(address _guardian) external onlyOwner {
+        address oldGuardian = guardian;
+        guardian = _guardian;
+        emit GuardianUpdated(oldGuardian, _guardian);
+    }
+
+    /// @notice Trigger circuit breaker manually
+    /// @dev Can be called by owner or guardian in emergency situations
+    function triggerCircuitBreaker() external {
+        if (msg.sender != owner() && msg.sender != guardian) {
+            revert Unauthorized(msg.sender);
+        }
+        circuitBreakerTriggered = true;
+        _pause();
+        emit CircuitBreakerTriggered(this.getDeltaRatio(), block.timestamp);
+    }
+
+    /// @notice Reset circuit breaker after emergency is resolved
+    /// @dev Only owner can reset after verifying conditions are safe
+    function resetCircuitBreaker() external onlyOwner {
+        // Verify delta is within acceptable range before resetting
+        int256 deltaRatio = this.getDeltaRatio();
+        int256 absRatio = deltaRatio >= 0 ? deltaRatio : -deltaRatio;
+
+        // Only allow reset if delta is below rebalance threshold
+        require(uint256(absRatio) <= DELTA_THRESHOLD, "Delta still too high");
+
+        circuitBreakerTriggered = false;
+        emit CircuitBreakerReset(block.timestamp);
     }
 
     // ============ Internal Functions ============
@@ -470,6 +570,46 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         // Close hedge position if exists
         if (hedgeManager != address(0)) {
             try IHedgeManager(hedgeManager).closeShort() {} catch {}
+        }
+    }
+
+    /// @notice Check and potentially trigger circuit breaker based on delta
+    function _checkAndTriggerCircuitBreaker() internal {
+        if (circuitBreakerTriggered) return; // Already triggered
+
+        int256 deltaRatio = this.getDeltaRatio();
+
+        if (SecurityModule.checkEmergencyDelta(deltaRatio, EMERGENCY_THRESHOLD)) {
+            circuitBreakerTriggered = true;
+            _pause();
+            emit CircuitBreakerTriggered(deltaRatio, block.timestamp);
+        }
+    }
+
+    /// @notice Validate withdrawal size against limits
+    /// @param assets Amount of assets to withdraw
+    function _validateWithdrawalSize(uint256 assets) internal {
+        uint256 total = totalAssets();
+        if (total == 0) return;
+
+        uint256 withdrawPercent = (assets * PRECISION) / total;
+
+        // Check maximum single withdrawal
+        if (withdrawPercent > MAX_SINGLE_WITHDRAWAL) {
+            uint256 maxAllowed = (total * MAX_SINGLE_WITHDRAWAL) / PRECISION;
+            revert WithdrawalTooLarge(assets, maxAllowed);
+        }
+
+        // Check large withdrawal cooldown
+        if (withdrawPercent > LARGE_WITHDRAWAL_THRESHOLD) {
+            if (
+                !SecurityModule.checkRateLimit(lastLargeWithdrawalTime, LARGE_WITHDRAWAL_COOLDOWN)
+            ) {
+                uint256 cooldownEnd = lastLargeWithdrawalTime + LARGE_WITHDRAWAL_COOLDOWN;
+                emit LargeWithdrawalCooldownEnforced(assets, cooldownEnd);
+                revert WithdrawalCooldownActive(cooldownEnd);
+            }
+            lastLargeWithdrawalTime = block.timestamp;
         }
     }
 }

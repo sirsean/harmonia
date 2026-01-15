@@ -9,6 +9,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IExchangeRouter, IDataStore, GMXPositionUtils} from "../interfaces/IGMXV2.sol";
 import {IHedgeManager} from "../interfaces/IHedgeManager.sol";
 import {IChainlinkPriceFeed} from "../interfaces/IChainlink.sol";
+import {SecurityModule} from "../libraries/SecurityModule.sol";
 
 /// @title Hedge Manager
 /// @notice Manages GMX v2 perpetual short positions for delta hedging
@@ -32,6 +33,12 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
 
     /// @notice Default acceptable price slippage (1% = 1e16)
     uint256 public constant DEFAULT_SLIPPAGE = 1e16;
+
+    /// @notice Maximum oracle staleness for price feeds (1 hour)
+    uint256 public constant MAX_ORACLE_STALENESS = 1 hours;
+
+    /// @notice Emergency leverage threshold (2.8x) - triggers warning
+    uint256 public constant EMERGENCY_LEVERAGE_THRESHOLD = 28e17;
 
     // ============ Immutables ============
 
@@ -130,6 +137,15 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
 
     /// @notice Thrown when ETH transfer fails
     error ETHTransferFailed();
+
+    /// @notice Thrown when oracle price is stale
+    error OracleStale(uint256 lastUpdate, uint256 maxAge);
+
+    /// @notice Thrown when oracle returns invalid price
+    error InvalidOraclePrice(int256 price);
+
+    /// @notice Thrown when leverage approaches liquidation threshold
+    error LeverageApproachingLiquidation(uint256 currentLeverage);
 
     // ============ Modifiers ============
 
@@ -461,8 +477,8 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
 
         if (sizeTokens == 0) return 0;
 
-        // Get current price
-        uint256 currentPrice = _getCurrentPrice();
+        // Get current price (use unchecked for view function)
+        uint256 currentPrice = _getCurrentPriceUnchecked();
 
         // Entry price = sizeUsd / sizeTokens (in GMX precision)
         uint256 entryPrice = (sizeUsd * PRECISION) / sizeTokens;
@@ -620,14 +636,74 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
         return collateralUsd / 1e24;
     }
 
-    /// @notice Get current price from price feed
+    /// @notice Get current price from price feed with full validation
     function _getCurrentPrice() internal view returns (uint256) {
+        // Use SecurityModule for comprehensive oracle validation
+        uint256 price = SecurityModule.getOraclePriceWithStalenessCheck(
+            priceFeed,
+            MAX_ORACLE_STALENESS
+        );
+
+        // Convert to 18 decimals
+        // Chainlink ETH/USD has 8 decimals
+        return price * 1e10;
+    }
+
+    /// @notice Get current price without staleness check (for view functions)
+    /// @dev Used in view functions where we want to return a value even if stale
+    function _getCurrentPriceUnchecked() internal view returns (uint256) {
         (, int256 answer, , , ) = priceFeed.latestRoundData();
-        require(answer > 0, "Invalid price");
+        if (answer <= 0) {
+            revert InvalidOraclePrice(answer);
+        }
 
         // Convert to 18 decimals
         // Chainlink ETH/USD has 8 decimals
         return uint256(answer) * 1e10;
+    }
+
+    /// @notice Check if oracle price is stale
+    /// @return isStale True if price is older than MAX_ORACLE_STALENESS
+    function isOracleStale() external view returns (bool isStale) {
+        (, , , uint256 updatedAt, ) = priceFeed.latestRoundData();
+        return block.timestamp - updatedAt > MAX_ORACLE_STALENESS;
+    }
+
+    /// @notice Get oracle last update timestamp
+    /// @return timestamp Last update time
+    function getOracleLastUpdate() external view returns (uint256 timestamp) {
+        (, , , timestamp, ) = priceFeed.latestRoundData();
+    }
+
+    /// @notice Check if leverage is approaching liquidation threshold
+    /// @return isApproaching True if leverage is above emergency threshold
+    function isLeverageApproachingLiquidation() external view returns (bool isApproaching) {
+        uint256 currentLeverage = getCurrentLeverage();
+        return currentLeverage > EMERGENCY_LEVERAGE_THRESHOLD;
+    }
+
+    /// @notice Get the distance to liquidation as a percentage
+    /// @return margin Remaining margin percentage (scaled by 1e18)
+    function getLiquidationMargin() external view returns (uint256 margin) {
+        uint256 currentLeverage = getCurrentLeverage();
+        if (currentLeverage == 0) return PRECISION; // 100% margin if no position
+
+        // Liquidation happens around 100x leverage for GMX
+        // Return how far we are from max leverage as a percentage
+        if (currentLeverage >= MAX_LEVERAGE) return 0;
+
+        margin = ((MAX_LEVERAGE - currentLeverage) * PRECISION) / MAX_LEVERAGE;
+    }
+
+    /// @notice Validate position health before operations
+    /// @dev Reverts if leverage is too close to liquidation
+    function _validatePositionHealth() internal view {
+        if (!hasPosition()) return;
+
+        uint256 currentLeverage = getCurrentLeverage();
+        if (currentLeverage > EMERGENCY_LEVERAGE_THRESHOLD) {
+            revert LeverageApproachingLiquidation(currentLeverage);
+        }
     }
 
     /// @notice Receive ETH for execution fee refunds
