@@ -391,10 +391,7 @@ export function getMarketDecimals(market: MarketTestConfig): {
 /**
  * Convert price to sqrtPriceX96 using a market configuration
  */
-export function priceToSqrtPriceX96ForMarket(
-  price: number,
-  market: MarketTestConfig
-): bigint {
+export function priceToSqrtPriceX96ForMarket(price: number, market: MarketTestConfig): bigint {
   const { token0Decimals, token1Decimals } = getMarketDecimals(market);
   return priceToSqrtPriceX96Generic(
     price,
