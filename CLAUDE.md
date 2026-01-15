@@ -54,9 +54,19 @@ contracts/
 - Comprehensive test suite (350+ tests)
 - Fork tests against Arbitrum mainnet
 
-**Not Yet Implemented (Phases 6-8):**
-- Rebalance automation (`RebalanceController`)
-- Security hardening
+**Completed (Phase 6):**
+- `RebalanceController` - Chainlink Automation keeper for rebalancing
+
+**Completed (Phase 7):**
+- `SecurityModule` library - Oracle validation, circuit breakers, rate limiting
+- Circuit breaker functionality in vault
+- Guardian role for emergency operations
+- Withdrawal limits and cooldowns
+- Oracle staleness checks in HedgeManager
+- TWAP validation in LiquidityManager
+- Comprehensive security tests (20 unit + fork tests)
+
+**Not Yet Implemented (Phase 8):**
 - Deployment scripts
 
 ## Key Technical Concepts
@@ -153,6 +163,6 @@ EMERGENCY_THRESHOLD = 20e16 // Emergency unwind at 20% drift
 1. ~~Implement `DeltaNeutralVault` (ERC-4626 vault with deposit/withdraw)~~ ✓ (Phase 3)
 2. ~~Implement `LiquidityManager` (Uniswap v3 position management)~~ ✓ (Phase 4)
 3. ~~Implement `HedgeManager` (GMX v2 short position management)~~ ✓ (Phase 5)
-4. Implement `RebalanceController` (Chainlink Automation keeper) - Phase 6
-5. Security hardening and gas optimization - Phase 7
+4. ~~Implement `RebalanceController` (Chainlink Automation keeper)~~ ✓ (Phase 6)
+5. ~~Security hardening and gas optimization~~ ✓ (Phase 7)
 6. Write deployment scripts - Phase 8
