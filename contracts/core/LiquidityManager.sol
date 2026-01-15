@@ -813,7 +813,9 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
             int24 arithmeticMeanTick = int24(tickCumulativesDelta / int56(int32(TWAP_PERIOD)));
 
             // Round to negative infinity
-            if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(TWAP_PERIOD)) != 0)) {
+            if (
+                tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(TWAP_PERIOD)) != 0)
+            ) {
                 arithmeticMeanTick--;
             }
 
