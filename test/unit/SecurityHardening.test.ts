@@ -234,9 +234,11 @@ describe("Security Hardening - Phase 7", function () {
     it("should allow owner to set guardian", async function () {
       const { owner, user2, vault } = await loadFixture(deployVaultFixture);
 
+      const oldGuardian = await vault.guardian();
+
       await expect(vault.connect(owner).setGuardian(user2.address))
         .to.emit(vault, "GuardianUpdated")
-        .withArgs(await vault.guardian(), user2.address);
+        .withArgs(oldGuardian, user2.address);
     });
 
     it("should not allow non-owner to set guardian", async function () {
