@@ -49,13 +49,8 @@ library SecurityModule {
     function validateOraclePrice(
         IChainlinkPriceFeed priceFeed
     ) internal view returns (uint256 price) {
-        (
-            uint80 roundId,
-            int256 answer,
-            ,
-            uint256 updatedAt,
-            uint80 answeredInRound
-        ) = priceFeed.latestRoundData();
+        (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = priceFeed
+            .latestRoundData();
 
         // Check for stale price
         if (block.timestamp - updatedAt > MAX_ORACLE_STALENESS) {
@@ -112,13 +107,8 @@ library SecurityModule {
         IChainlinkPriceFeed priceFeed,
         uint256 maxStaleness
     ) internal view returns (uint256 price) {
-        (
-            uint80 roundId,
-            int256 answer,
-            ,
-            uint256 updatedAt,
-            uint80 answeredInRound
-        ) = priceFeed.latestRoundData();
+        (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = priceFeed
+            .latestRoundData();
 
         // Check for stale price
         if (block.timestamp - updatedAt > maxStaleness) {

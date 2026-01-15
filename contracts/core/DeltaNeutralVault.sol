@@ -602,7 +602,9 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
 
         // Check large withdrawal cooldown
         if (withdrawPercent > LARGE_WITHDRAWAL_THRESHOLD) {
-            if (!SecurityModule.checkRateLimit(lastLargeWithdrawalTime, LARGE_WITHDRAWAL_COOLDOWN)) {
+            if (
+                !SecurityModule.checkRateLimit(lastLargeWithdrawalTime, LARGE_WITHDRAWAL_COOLDOWN)
+            ) {
                 uint256 cooldownEnd = lastLargeWithdrawalTime + LARGE_WITHDRAWAL_COOLDOWN;
                 emit LargeWithdrawalCooldownEnforced(assets, cooldownEnd);
                 revert WithdrawalCooldownActive(cooldownEnd);

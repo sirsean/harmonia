@@ -8,7 +8,14 @@ const describeFork = process.env.ALCHEMY_API_KEY ? describe : describe.skip;
 
 describeFork("Security Hardening Fork Tests", function () {
   const USDC_DECIMALS = 6;
-  const USDC_WHALE = "0x47c031236e19d024b42f8AE6780E44A573170703"; // Large USDC holder on Arbitrum
+  // Multiple whale addresses for fallback
+  const USDC_WHALES = [
+    "0x489ee077994B6658eAfA855C308275EAd8097C4A", // Aave treasury
+    "0xF977814e90dA44bFA03b6295A0616a897441aceC", // Binance
+    "0x62383739D68Dd0F844103Db8dFb05a7EdED5BBE6", // Arbitrum bridge
+    "0x8eb8a3b98659cce290402893d0123abb75e3ab28", // Avalanche bridge
+    "0x47c031236e19d024b42f8AE6780E44A573170703", // Known holder
+  ];
 
   async function deploySecurityFixture() {
     const [owner, guardian, user1, attacker] = await ethers.getSigners();
@@ -29,28 +36,46 @@ describeFork("Security Hardening Fork Tests", function () {
     // Set guardian
     await vault.setGuardian(guardian.address);
 
-    // Impersonate USDC whale to fund test accounts
-    await ethers.provider.send("hardhat_impersonateAccount", [USDC_WHALE]);
-    const whale = await ethers.getSigner(USDC_WHALE);
-
-    // Fund whale with ETH for gas
-    await owner.sendTransaction({ to: USDC_WHALE, value: ethers.parseEther("1") });
-
-    // Transfer USDC to test accounts
+    // Find a working whale with sufficient balance
     const fundAmount = BigInt(100000) * BigInt(10 ** USDC_DECIMALS); // 100k USDC
-    await usdc.connect(whale).transfer(user1.address, fundAmount);
-    await usdc.connect(whale).transfer(attacker.address, fundAmount);
+    let whaleSigner: any = null;
+
+    for (const whaleAddress of USDC_WHALES) {
+      try {
+        const balance = await usdc.balanceOf(whaleAddress);
+        if (balance >= fundAmount * 3n) {
+          // Need enough for multiple users
+          await ethers.provider.send("hardhat_impersonateAccount", [whaleAddress]);
+          whaleSigner = await ethers.getSigner(whaleAddress);
+          await owner.sendTransaction({ to: whaleAddress, value: ethers.parseEther("1") });
+
+          // Try a transfer to verify it works
+          await usdc.connect(whaleSigner).transfer(user1.address, fundAmount);
+          await usdc.connect(whaleSigner).transfer(attacker.address, fundAmount);
+
+          console.log(`Using whale: ${whaleAddress}`);
+          break;
+        }
+      } catch {
+        // Try next whale
+        continue;
+      }
+    }
+
+    if (!whaleSigner) {
+      throw new Error("Could not find a working USDC whale");
+    }
 
     // Approve vault
     await usdc.connect(user1).approve(await vault.getAddress(), ethers.MaxUint256);
     await usdc.connect(attacker).approve(await vault.getAddress(), ethers.MaxUint256);
 
-    return { owner, guardian, user1, attacker, usdc, vault, whale };
+    return { owner, guardian, user1, attacker, usdc, vault, whale: whaleSigner };
   }
 
   describe("Circuit Breaker with Real Oracle", function () {
     it("should trigger circuit breaker and block operations", async function () {
-      const { owner, user1, vault, usdc } = await loadFixture(deploySecurityFixture);
+      const { owner, user1, vault } = await loadFixture(deploySecurityFixture);
 
       // User deposits
       const depositAmount = BigInt(50000) * BigInt(10 ** USDC_DECIMALS);
@@ -69,31 +94,31 @@ describeFork("Security Hardening Fork Tests", function () {
 
       // Withdrawals by regular users should fail (circuit breaker)
       await expect(
-        vault.connect(user1).withdraw(
-          BigInt(1000) * BigInt(10 ** USDC_DECIMALS),
-          user1.address,
-          user1.address
-        )
+        vault
+          .connect(user1)
+          .withdraw(BigInt(1000) * BigInt(10 ** USDC_DECIMALS), user1.address, user1.address)
       ).to.be.revertedWithCustomError(vault, "CircuitBreakerActive");
     });
 
     it("should allow owner/guardian to withdraw during circuit breaker", async function () {
-      const { owner, guardian, vault, usdc } = await loadFixture(deploySecurityFixture);
+      const { owner, vault, usdc, whale } = await loadFixture(deploySecurityFixture);
 
       // Fund and deposit as owner
-      const whale = await ethers.getSigner(USDC_WHALE);
-      await usdc.connect(whale).transfer(owner.address, BigInt(10000) * BigInt(10 ** USDC_DECIMALS));
+      await usdc
+        .connect(whale)
+        .transfer(owner.address, BigInt(10000) * BigInt(10 ** USDC_DECIMALS));
       await usdc.connect(owner).approve(await vault.getAddress(), ethers.MaxUint256);
-      await vault.connect(owner).deposit(BigInt(10000) * BigInt(10 ** USDC_DECIMALS), owner.address);
+      await vault
+        .connect(owner)
+        .deposit(BigInt(10000) * BigInt(10 ** USDC_DECIMALS), owner.address);
 
       // Trigger circuit breaker
       await vault.connect(owner).triggerCircuitBreaker();
 
       // Owner can still withdraw (within limits)
       const smallWithdraw = BigInt(1000) * BigInt(10 ** USDC_DECIMALS);
-      await expect(
-        vault.connect(owner).withdraw(smallWithdraw, owner.address, owner.address)
-      ).to.not.be.reverted;
+      await expect(vault.connect(owner).withdraw(smallWithdraw, owner.address, owner.address)).to
+        .not.be.reverted;
     });
   });
 
@@ -113,9 +138,8 @@ describeFork("Security Hardening Fork Tests", function () {
 
       // Withdraw 20% should succeed
       const safeWithdraw = BigInt(10000) * BigInt(10 ** USDC_DECIMALS);
-      await expect(
-        vault.connect(user1).withdraw(safeWithdraw, user1.address, user1.address)
-      ).to.not.be.reverted;
+      await expect(vault.connect(user1).withdraw(safeWithdraw, user1.address, user1.address)).to.not
+        .be.reverted;
     });
 
     it("should enforce cooldown between large withdrawals", async function () {
@@ -137,7 +161,9 @@ describeFork("Security Hardening Fork Tests", function () {
       // After 1 hour, should succeed
       await time.increase(3601); // 1 hour + 1 second
       await expect(
-        vault.connect(user1).withdraw(BigInt(5000) * BigInt(10 ** USDC_DECIMALS), user1.address, user1.address)
+        vault
+          .connect(user1)
+          .withdraw(BigInt(5000) * BigInt(10 ** USDC_DECIMALS), user1.address, user1.address)
       ).to.not.be.reverted;
     });
   });
@@ -170,17 +196,18 @@ describeFork("Security Hardening Fork Tests", function () {
         ADDRESSES.CHAINLINK_ETH_USD_FEED
       );
 
-      const [roundId, answer, startedAt, updatedAt, answeredInRound] =
-        await priceFeed.latestRoundData();
+      const [roundId, answer, , updatedAt, answeredInRound] = await priceFeed.latestRoundData();
 
       // Verify price is reasonable (ETH should be between $500 and $50,000)
       const price = Number(answer) / 1e8;
       expect(price).to.be.gt(500);
       expect(price).to.be.lt(50000);
 
-      // Verify data is not stale (within 1 hour)
-      const now = Math.floor(Date.now() / 1000);
-      expect(Number(updatedAt)).to.be.gt(now - 3600);
+      // Get block timestamp instead of Date.now() for fork context
+      const blockTimestamp = await time.latest();
+
+      // Verify data is not stale (within 1 hour of fork block time)
+      expect(Number(updatedAt)).to.be.gt(blockTimestamp - 3600);
 
       // Verify round is complete
       expect(answeredInRound).to.be.gte(roundId);
@@ -227,7 +254,7 @@ describeFork("Security Hardening Fork Tests", function () {
       try {
         const twapPrice = await liquidityManager.getTWAPSqrtPriceX96();
         expect(twapPrice).to.be.gt(0n);
-      } catch (e) {
+      } catch {
         // TWAP might not be available if pool doesn't have enough observations
         // This is expected behavior
         console.log("TWAP not available - pool may lack observations");
@@ -254,21 +281,23 @@ describeFork("Security Hardening Fork Tests", function () {
 
       // Deviation should be small under normal conditions (< 5%)
       // If TWAP is not available, deviation will be 0
-      expect(deviation).to.be.lte(5n * PRECISION / 100n);
+      expect(deviation).to.be.lte((5n * PRECISION) / 100n);
     });
   });
 
   describe("Emergency Unwind Simulation", function () {
     it("should execute emergency unwind and pause vault", async function () {
-      const { owner, user1, vault, usdc } = await loadFixture(deploySecurityFixture);
+      const { owner, user1, vault } = await loadFixture(deploySecurityFixture);
 
       // User deposits
       const depositAmount = BigInt(10000) * BigInt(10 ** USDC_DECIMALS);
       await vault.connect(user1).deposit(depositAmount, user1.address);
 
       // Emergency unwind
-      await expect(vault.connect(owner).emergencyUnwind())
-        .to.emit(vault, "CircuitBreakerTriggered");
+      await expect(vault.connect(owner).emergencyUnwind()).to.emit(
+        vault,
+        "CircuitBreakerTriggered"
+      );
 
       expect(await vault.paused()).to.equal(true);
       expect(await vault.circuitBreakerTriggered()).to.equal(true);
@@ -282,8 +311,10 @@ describeFork("Security Hardening Fork Tests", function () {
       await vault.connect(user1).deposit(depositAmount, user1.address);
 
       // Guardian triggers emergency unwind
-      await expect(vault.connect(guardian).emergencyUnwind())
-        .to.emit(vault, "CircuitBreakerTriggered");
+      await expect(vault.connect(guardian).emergencyUnwind()).to.emit(
+        vault,
+        "CircuitBreakerTriggered"
+      );
 
       expect(await vault.circuitBreakerTriggered()).to.equal(true);
     });
@@ -293,15 +324,18 @@ describeFork("Security Hardening Fork Tests", function () {
     it("should reject unauthorized guardian changes", async function () {
       const { attacker, vault } = await loadFixture(deploySecurityFixture);
 
-      await expect(vault.connect(attacker).setGuardian(attacker.address))
-        .to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
+      await expect(
+        vault.connect(attacker).setGuardian(attacker.address)
+      ).to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
     });
 
     it("should reject unauthorized circuit breaker trigger", async function () {
       const { attacker, vault } = await loadFixture(deploySecurityFixture);
 
-      await expect(vault.connect(attacker).triggerCircuitBreaker())
-        .to.be.revertedWithCustomError(vault, "Unauthorized");
+      await expect(vault.connect(attacker).triggerCircuitBreaker()).to.be.revertedWithCustomError(
+        vault,
+        "Unauthorized"
+      );
     });
 
     it("should reject unauthorized circuit breaker reset", async function () {
@@ -311,12 +345,16 @@ describeFork("Security Hardening Fork Tests", function () {
       await vault.connect(owner).triggerCircuitBreaker();
 
       // Guardian cannot reset
-      await expect(vault.connect(guardian).resetCircuitBreaker())
-        .to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
+      await expect(vault.connect(guardian).resetCircuitBreaker()).to.be.revertedWithCustomError(
+        vault,
+        "OwnableUnauthorizedAccount"
+      );
 
       // Attacker cannot reset
-      await expect(vault.connect(attacker).resetCircuitBreaker())
-        .to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
+      await expect(vault.connect(attacker).resetCircuitBreaker()).to.be.revertedWithCustomError(
+        vault,
+        "OwnableUnauthorizedAccount"
+      );
     });
   });
 
@@ -341,11 +379,7 @@ describeFork("Security Hardening Fork Tests", function () {
 
       // Measure withdrawal gas
       const withdrawAmount = BigInt(5000) * BigInt(10 ** USDC_DECIMALS);
-      const tx = await vault.connect(user1).withdraw(
-        withdrawAmount,
-        user1.address,
-        user1.address
-      );
+      const tx = await vault.connect(user1).withdraw(withdrawAmount, user1.address, user1.address);
       const receipt = await tx.wait();
 
       // Withdrawal should be under 200k gas (includes security checks)

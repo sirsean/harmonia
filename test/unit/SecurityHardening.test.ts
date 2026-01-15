@@ -58,8 +58,10 @@ describe("Security Hardening - Phase 7", function () {
     it("should allow owner to trigger circuit breaker", async function () {
       const { owner, vault } = await loadFixture(deployVaultFixture);
 
-      await expect(vault.connect(owner).triggerCircuitBreaker())
-        .to.emit(vault, "CircuitBreakerTriggered");
+      await expect(vault.connect(owner).triggerCircuitBreaker()).to.emit(
+        vault,
+        "CircuitBreakerTriggered"
+      );
 
       expect(await vault.circuitBreakerTriggered()).to.equal(true);
       expect(await vault.paused()).to.equal(true);
@@ -68,8 +70,10 @@ describe("Security Hardening - Phase 7", function () {
     it("should allow guardian to trigger circuit breaker", async function () {
       const { guardian, vault } = await loadFixture(deployVaultFixture);
 
-      await expect(vault.connect(guardian).triggerCircuitBreaker())
-        .to.emit(vault, "CircuitBreakerTriggered");
+      await expect(vault.connect(guardian).triggerCircuitBreaker()).to.emit(
+        vault,
+        "CircuitBreakerTriggered"
+      );
 
       expect(await vault.circuitBreakerTriggered()).to.equal(true);
     });
@@ -77,8 +81,10 @@ describe("Security Hardening - Phase 7", function () {
     it("should not allow non-authorized to trigger circuit breaker", async function () {
       const { attacker, vault } = await loadFixture(deployVaultFixture);
 
-      await expect(vault.connect(attacker).triggerCircuitBreaker())
-        .to.be.revertedWithCustomError(vault, "Unauthorized");
+      await expect(vault.connect(attacker).triggerCircuitBreaker()).to.be.revertedWithCustomError(
+        vault,
+        "Unauthorized"
+      );
     });
 
     it("should block withdrawals when circuit breaker is active", async function () {
@@ -111,9 +117,8 @@ describe("Security Hardening - Phase 7", function () {
 
       // Owner can still withdraw (small amount to pass withdrawal limits)
       const withdrawAmount = BigInt(100) * BigInt(10 ** USDC_DECIMALS);
-      await expect(
-        vault.connect(owner).withdraw(withdrawAmount, owner.address, owner.address)
-      ).to.not.be.reverted;
+      await expect(vault.connect(owner).withdraw(withdrawAmount, owner.address, owner.address)).to
+        .not.be.reverted;
     });
 
     it("should allow guardian to withdraw during circuit breaker", async function () {
@@ -142,12 +147,16 @@ describe("Security Hardening - Phase 7", function () {
       await vault.triggerCircuitBreaker();
 
       // Guardian cannot reset
-      await expect(vault.connect(guardian).resetCircuitBreaker())
-        .to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
+      await expect(vault.connect(guardian).resetCircuitBreaker()).to.be.revertedWithCustomError(
+        vault,
+        "OwnableUnauthorizedAccount"
+      );
 
       // Owner can reset (delta is 0, so it's safe)
-      await expect(vault.connect(owner).resetCircuitBreaker())
-        .to.emit(vault, "CircuitBreakerReset");
+      await expect(vault.connect(owner).resetCircuitBreaker()).to.emit(
+        vault,
+        "CircuitBreakerReset"
+      );
 
       expect(await vault.circuitBreakerTriggered()).to.equal(false);
     });
@@ -177,9 +186,8 @@ describe("Security Hardening - Phase 7", function () {
 
       // Withdraw 5% - should succeed
       const withdrawAmount = BigInt(5000) * BigInt(10 ** USDC_DECIMALS);
-      await expect(
-        vault.connect(user1).withdraw(withdrawAmount, user1.address, user1.address)
-      ).to.not.be.reverted;
+      await expect(vault.connect(user1).withdraw(withdrawAmount, user1.address, user1.address)).to
+        .not.be.reverted;
     });
 
     it("should enforce cooldown for large withdrawals", async function () {
@@ -201,9 +209,8 @@ describe("Security Hardening - Phase 7", function () {
 
       // After cooldown, should succeed
       await time.increase(LARGE_WITHDRAWAL_COOLDOWN + 1);
-      await expect(
-        vault.connect(user1).withdraw(secondWithdraw, user1.address, user1.address)
-      ).to.not.be.reverted;
+      await expect(vault.connect(user1).withdraw(secondWithdraw, user1.address, user1.address)).to
+        .not.be.reverted;
     });
 
     it("should not enforce cooldown for small withdrawals", async function () {
@@ -235,15 +242,19 @@ describe("Security Hardening - Phase 7", function () {
     it("should not allow non-owner to set guardian", async function () {
       const { user1, user2, vault } = await loadFixture(deployVaultFixture);
 
-      await expect(vault.connect(user1).setGuardian(user2.address))
-        .to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
+      await expect(vault.connect(user1).setGuardian(user2.address)).to.be.revertedWithCustomError(
+        vault,
+        "OwnableUnauthorizedAccount"
+      );
     });
 
     it("should allow guardian to call emergencyUnwind", async function () {
       const { guardian, vault } = await loadFixture(deployVaultFixture);
 
-      await expect(vault.connect(guardian).emergencyUnwind())
-        .to.emit(vault, "CircuitBreakerTriggered");
+      await expect(vault.connect(guardian).emergencyUnwind()).to.emit(
+        vault,
+        "CircuitBreakerTriggered"
+      );
 
       expect(await vault.paused()).to.equal(true);
     });
@@ -253,8 +264,10 @@ describe("Security Hardening - Phase 7", function () {
     it("should trigger circuit breaker and pause on emergency unwind", async function () {
       const { owner, vault } = await loadFixture(deployVaultFixture);
 
-      await expect(vault.connect(owner).emergencyUnwind())
-        .to.emit(vault, "CircuitBreakerTriggered");
+      await expect(vault.connect(owner).emergencyUnwind()).to.emit(
+        vault,
+        "CircuitBreakerTriggered"
+      );
 
       expect(await vault.circuitBreakerTriggered()).to.equal(true);
       expect(await vault.paused()).to.equal(true);
@@ -263,8 +276,10 @@ describe("Security Hardening - Phase 7", function () {
     it("should not allow non-authorized to call emergencyUnwind", async function () {
       const { attacker, vault } = await loadFixture(deployVaultFixture);
 
-      await expect(vault.connect(attacker).emergencyUnwind())
-        .to.be.revertedWithCustomError(vault, "Unauthorized");
+      await expect(vault.connect(attacker).emergencyUnwind()).to.be.revertedWithCustomError(
+        vault,
+        "Unauthorized"
+      );
     });
   });
 
