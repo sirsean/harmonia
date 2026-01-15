@@ -104,7 +104,9 @@ describeFork("Security Hardening Fork Tests", function () {
 
       // New deposits should fail (paused)
       await expect(
-        vault.connect(attacker).deposit(BigInt(1000) * BigInt(10 ** USDC_DECIMALS), attacker.address)
+        vault
+          .connect(attacker)
+          .deposit(BigInt(1000) * BigInt(10 ** USDC_DECIMALS), attacker.address)
       ).to.be.revertedWithCustomError(vault, "EnforcedPause");
 
       // Reset for other tests
@@ -114,16 +116,20 @@ describeFork("Security Hardening Fork Tests", function () {
 
     it("should allow owner to withdraw during circuit breaker", async function () {
       // Fund and deposit as owner
-      await usdc.connect(whale).transfer(owner.address, BigInt(10000) * BigInt(10 ** USDC_DECIMALS));
-      await vault.connect(owner).deposit(BigInt(10000) * BigInt(10 ** USDC_DECIMALS), owner.address);
+      await usdc
+        .connect(whale)
+        .transfer(owner.address, BigInt(10000) * BigInt(10 ** USDC_DECIMALS));
+      await vault
+        .connect(owner)
+        .deposit(BigInt(10000) * BigInt(10 ** USDC_DECIMALS), owner.address);
 
       // Trigger circuit breaker
       await vault.connect(owner).triggerCircuitBreaker();
 
       // Owner can still withdraw (within limits)
       const smallWithdraw = BigInt(1000) * BigInt(10 ** USDC_DECIMALS);
-      await expect(vault.connect(owner).withdraw(smallWithdraw, owner.address, owner.address)).to.not
-        .be.reverted;
+      await expect(vault.connect(owner).withdraw(smallWithdraw, owner.address, owner.address)).to
+        .not.be.reverted;
 
       // Reset for other tests
       await vault.connect(owner).unpause();
@@ -139,7 +145,9 @@ describeFork("Security Hardening Fork Tests", function () {
         // Deposit if needed
         const bal = await usdc.balanceOf(user1.address);
         if (bal >= BigInt(50000) * BigInt(10 ** USDC_DECIMALS)) {
-          await vault.connect(user1).deposit(BigInt(50000) * BigInt(10 ** USDC_DECIMALS), user1.address);
+          await vault
+            .connect(user1)
+            .deposit(BigInt(50000) * BigInt(10 ** USDC_DECIMALS), user1.address);
         }
       }
 
@@ -176,9 +184,8 @@ describeFork("Security Hardening Fork Tests", function () {
 
       // After 1 hour, should succeed
       await time.increase(3601);
-      await expect(
-        vault.connect(user1).withdraw(secondWithdraw, user1.address, user1.address)
-      ).to.not.be.reverted;
+      await expect(vault.connect(user1).withdraw(secondWithdraw, user1.address, user1.address)).to
+        .not.be.reverted;
     });
   });
 
@@ -270,7 +277,10 @@ describeFork("Security Hardening Fork Tests", function () {
         await vault.connect(owner).resetCircuitBreaker();
       }
 
-      await expect(vault.connect(owner).emergencyUnwind()).to.emit(vault, "CircuitBreakerTriggered");
+      await expect(vault.connect(owner).emergencyUnwind()).to.emit(
+        vault,
+        "CircuitBreakerTriggered"
+      );
 
       expect(await vault.paused()).to.equal(true);
       expect(await vault.circuitBreakerTriggered()).to.equal(true);
