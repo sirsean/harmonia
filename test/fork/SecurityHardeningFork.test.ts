@@ -10,14 +10,13 @@ const describeFork = process.env.ALCHEMY_API_KEY ? describe : describe.skip;
 
 describeFork("Security Hardening Fork Tests", function () {
   const USDC_DECIMALS = 6;
-  // Multiple whale addresses for fallback
+  // Native USDC whale addresses for impersonation on Arbitrum
   const USDC_WHALES = [
-    "0x489ee077994B6658eAfA855C308275EAd8097C4A", // Aave treasury
-    "0xF977814e90dA44bFA03b6295A0616a897441aceC", // Binance
-    "0x62383739D68Dd0F844103Db8dFb05a7EdED5BBE6", // Arbitrum bridge
-    "0x47c031236e19d024b42f8AE6780E44A573170703", // Known holder
-    "0xF89d7b9c864f589bbF53a82105107622B35EaA40", // Bybit
-    "0x0B0A5886664376F59C351ba3f598C8A8B4D0A6f3", // USDC holder
+    "0x47c031236e19d024b42f8AE6780E44A573170703", // GMX GLP Manager
+    "0xF89d7b9c864f589bbF53a82105107622B35EaA40", // Bybit hot wallet
+    "0x0B0A5886664376F59C351ba3f598C8A8B4D0A6f3", // Native USDC holder
+    "0x62383739D68Dd0F844103Db8dFb05a7EdED5BBE6", // Stargate/bridge pool
+    "0x1714400FF23dB4aF24F9fd64e7039e6597f18C2b", // Aave USDC pool
   ];
 
   let owner: HardhatEthersSigner;
@@ -66,7 +65,7 @@ describeFork("Security Hardening Fork Tests", function () {
     }
 
     if (!whaleFound) {
-      console.log("No suitable USDC whale found, skipping security fork tests");
+      console.log("No suitable native USDC whale found, skipping security fork tests");
       this.skip();
       return;
     }
