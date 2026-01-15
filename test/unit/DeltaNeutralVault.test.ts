@@ -195,35 +195,40 @@ describe("DeltaNeutralVault", function () {
   });
 
   describe("Withdraw", function () {
-    it("should allow withdrawal of deposited assets", async function () {
+    it("should allow withdrawal of deposited assets within limits", async function () {
       const { vault, usdc, user1 } = await loadFixture(deployVaultFixture);
       const depositAmount = BigInt(10_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
+      // Withdraw 20% which is within the 25% max single withdrawal limit
+      const withdrawAmount = BigInt(2_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
 
       await vault.connect(user1).deposit(depositAmount, user1.address);
 
       const balanceBefore = await usdc.balanceOf(user1.address);
-      await vault.connect(user1).withdraw(depositAmount, user1.address, user1.address);
+      await vault.connect(user1).withdraw(withdrawAmount, user1.address, user1.address);
       const balanceAfter = await usdc.balanceOf(user1.address);
 
-      expect(balanceAfter - balanceBefore).to.equal(depositAmount);
-      expect(await vault.balanceOf(user1.address)).to.equal(0n);
+      expect(balanceAfter - balanceBefore).to.equal(withdrawAmount);
+      expect(await vault.balanceOf(user1.address)).to.be.gt(0n);
     });
 
     it("should emit CapitalWithdrawn event", async function () {
       const { vault, user1 } = await loadFixture(deployVaultFixture);
       const depositAmount = BigInt(10_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
+      // Withdraw 20% which is within the 25% max single withdrawal limit
+      const withdrawAmount = BigInt(2_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
 
       await vault.connect(user1).deposit(depositAmount, user1.address);
 
-      await expect(vault.connect(user1).withdraw(depositAmount, user1.address, user1.address))
+      await expect(vault.connect(user1).withdraw(withdrawAmount, user1.address, user1.address))
         .to.emit(vault, "CapitalWithdrawn")
-        .withArgs(depositAmount, 0n, 0n);
+        .withArgs(withdrawAmount, 0n, 0n);
     });
 
-    it("should allow partial withdrawal", async function () {
+    it("should allow partial withdrawal within security limits", async function () {
       const { vault, user1 } = await loadFixture(deployVaultFixture);
       const depositAmount = BigInt(10_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
-      const withdrawAmount = BigInt(5_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
+      // Withdraw 20% which is within the 25% max single withdrawal limit
+      const withdrawAmount = BigInt(2_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
 
       await vault.connect(user1).deposit(depositAmount, user1.address);
       await vault.connect(user1).withdraw(withdrawAmount, user1.address, user1.address);
@@ -255,18 +260,21 @@ describe("DeltaNeutralVault", function () {
   });
 
   describe("Redeem", function () {
-    it("should redeem shares for assets", async function () {
+    it("should redeem shares for assets within security limits", async function () {
       const { vault, usdc, user1 } = await loadFixture(deployVaultFixture);
       const depositAmount = BigInt(10_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
 
       await vault.connect(user1).deposit(depositAmount, user1.address);
       const shares = await vault.balanceOf(user1.address);
+      // Redeem 20% of shares which is within the 25% max single withdrawal limit
+      const redeemShares = (shares * 20n) / 100n;
 
       const balanceBefore = await usdc.balanceOf(user1.address);
-      await vault.connect(user1).redeem(shares, user1.address, user1.address);
+      await vault.connect(user1).redeem(redeemShares, user1.address, user1.address);
       const balanceAfter = await usdc.balanceOf(user1.address);
 
-      expect(balanceAfter - balanceBefore).to.equal(depositAmount);
+      // Expect to receive 20% of deposited amount
+      expect(balanceAfter - balanceBefore).to.equal((depositAmount * 20n) / 100n);
     });
 
     it("should revert on zero shares redeem", async function () {
@@ -327,7 +335,8 @@ describe("DeltaNeutralVault", function () {
     it("should return correct total assets after withdrawals", async function () {
       const { vault, user1 } = await loadFixture(deployVaultFixture);
       const depositAmount = BigInt(10_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
-      const withdrawAmount = BigInt(3_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
+      // Withdraw 20% which is within the 25% max single withdrawal limit
+      const withdrawAmount = BigInt(2_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
 
       await vault.connect(user1).deposit(depositAmount, user1.address);
       await vault.connect(user1).withdraw(withdrawAmount, user1.address, user1.address);
@@ -502,12 +511,13 @@ describe("DeltaNeutralVault", function () {
         expect(await vault.paused()).to.equal(true);
       });
 
-      it("should reject non-owner emergency unwind", async function () {
+      it("should reject non-owner/non-guardian emergency unwind", async function () {
         const { vault, user1 } = await loadFixture(deployVaultFixture);
 
+        // Now uses Unauthorized error since guardian is also allowed
         await expect(vault.connect(user1).emergencyUnwind()).to.be.revertedWithCustomError(
           vault,
-          "OwnableUnauthorizedAccount"
+          "Unauthorized"
         );
       });
     });

@@ -13,6 +13,8 @@ import {
     IUniswapV3Factory
 } from "../interfaces/IUniswapV3.sol";
 import {DeltaCalculator} from "../libraries/DeltaCalculator.sol";
+import {SecurityModule} from "../libraries/SecurityModule.sol";
+import {IChainlinkPriceFeed} from "../interfaces/IChainlink.sol";
 
 /// @title Liquidity Manager
 /// @notice Manages Uniswap V3 LP positions for the delta-neutral vault
@@ -30,6 +32,12 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
 
     /// @notice Default slippage tolerance (0.5% = 5e15)
     uint256 public constant DEFAULT_SLIPPAGE = 5e15;
+
+    /// @notice TWAP observation period for price validation (30 minutes)
+    uint32 public constant TWAP_PERIOD = 30 minutes;
+
+    /// @notice Maximum acceptable TWAP deviation from spot (3%)
+    uint256 public constant MAX_TWAP_DEVIATION = 3e16;
 
     // ============ Immutables ============
 
@@ -76,6 +84,12 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
 
     /// @notice Total fees collected in token1
     uint256 public totalFeesCollected1;
+
+    /// @notice Optional Chainlink price feed for validation
+    IChainlinkPriceFeed public priceFeed;
+
+    /// @notice Enable/disable TWAP validation
+    bool public twapValidationEnabled;
 
     // ============ Events ============
 
@@ -127,6 +141,12 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
     /// @notice Emitted when slippage tolerance is updated
     event SlippageToleranceUpdated(uint256 oldSlippage, uint256 newSlippage);
 
+    /// @notice Emitted when TWAP validation status changes
+    event TWAPValidationUpdated(bool enabled);
+
+    /// @notice Emitted when price feed is set
+    event PriceFeedUpdated(address indexed oldFeed, address indexed newFeed);
+
     // ============ Errors ============
 
     /// @notice Thrown when caller is not the vault
@@ -155,6 +175,12 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
 
     /// @notice Thrown when deadline expired
     error DeadlineExpired();
+
+    /// @notice Thrown when spot price deviates too much from TWAP
+    error TWAPDeviationTooHigh(uint256 spotPrice, uint256 twapPrice, uint256 deviation);
+
+    /// @notice Thrown when TWAP observation is not available
+    error TWAPNotAvailable();
 
     // ============ Modifiers ============
 
@@ -218,6 +244,21 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
         uint256 oldSlippage = slippageTolerance;
         slippageTolerance = _slippageTolerance;
         emit SlippageToleranceUpdated(oldSlippage, _slippageTolerance);
+    }
+
+    /// @notice Set the Chainlink price feed for validation
+    /// @param _priceFeed New price feed address (address(0) to disable)
+    function setPriceFeed(address _priceFeed) external onlyOwner {
+        address oldFeed = address(priceFeed);
+        priceFeed = IChainlinkPriceFeed(_priceFeed);
+        emit PriceFeedUpdated(oldFeed, _priceFeed);
+    }
+
+    /// @notice Enable or disable TWAP validation
+    /// @param _enabled Whether to enable TWAP validation
+    function setTWAPValidation(bool _enabled) external onlyOwner {
+        twapValidationEnabled = _enabled;
+        emit TWAPValidationUpdated(_enabled);
     }
 
     /// @notice Mint a new LP position
@@ -749,5 +790,126 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
         if (refund1 > 0) {
             IERC20(token1).safeTransfer(vault, refund1);
         }
+    }
+
+    // ============ TWAP Validation Functions ============
+
+    /// @notice Get the TWAP price from Uniswap pool observations
+    /// @return twapSqrtPriceX96 The TWAP sqrt price in X96 format
+    function getTWAPSqrtPriceX96() public view returns (uint160 twapSqrtPriceX96) {
+        address pool = getPool();
+        if (pool == address(0)) revert TWAPNotAvailable();
+
+        uint32[] memory secondsAgos = new uint32[](2);
+        secondsAgos[0] = TWAP_PERIOD;
+        secondsAgos[1] = 0;
+
+        try IUniswapV3Pool(pool).observe(secondsAgos) returns (
+            int56[] memory tickCumulatives,
+            uint160[] memory
+        ) {
+            // Calculate time-weighted average tick
+            int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
+            int24 arithmeticMeanTick = int24(tickCumulativesDelta / int56(int32(TWAP_PERIOD)));
+
+            // Round to negative infinity
+            if (tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(TWAP_PERIOD)) != 0)) {
+                arithmeticMeanTick--;
+            }
+
+            // Convert tick to sqrtPriceX96
+            twapSqrtPriceX96 = _tickToSqrtPriceX96(arithmeticMeanTick);
+        } catch {
+            revert TWAPNotAvailable();
+        }
+    }
+
+    /// @notice Validate current spot price against TWAP
+    /// @dev Reverts if spot deviates too much from TWAP
+    function validatePriceAgainstTWAP() public view {
+        if (!twapValidationEnabled) return;
+
+        uint160 spotSqrtPriceX96 = _getCurrentSqrtPrice();
+        uint160 twapSqrtPriceX96 = getTWAPSqrtPriceX96();
+
+        // Calculate price deviation
+        uint256 spotPrice = uint256(spotSqrtPriceX96);
+        uint256 twapPrice = uint256(twapSqrtPriceX96);
+
+        uint256 deviation;
+        if (spotPrice > twapPrice) {
+            deviation = ((spotPrice - twapPrice) * PRECISION) / twapPrice;
+        } else {
+            deviation = ((twapPrice - spotPrice) * PRECISION) / twapPrice;
+        }
+
+        if (deviation > MAX_TWAP_DEVIATION) {
+            revert TWAPDeviationTooHigh(spotPrice, twapPrice, deviation);
+        }
+    }
+
+    /// @notice Get current spot to TWAP deviation percentage
+    /// @return deviation The deviation as percentage (scaled by 1e18)
+    function getSpotTWAPDeviation() external view returns (uint256 deviation) {
+        address pool = getPool();
+        if (pool == address(0)) return 0;
+
+        try this.getTWAPSqrtPriceX96() returns (uint160 twapSqrtPriceX96) {
+            uint160 spotSqrtPriceX96 = _getCurrentSqrtPrice();
+
+            uint256 spotPrice = uint256(spotSqrtPriceX96);
+            uint256 twapPrice = uint256(twapSqrtPriceX96);
+
+            if (spotPrice > twapPrice) {
+                deviation = ((spotPrice - twapPrice) * PRECISION) / twapPrice;
+            } else {
+                deviation = ((twapPrice - spotPrice) * PRECISION) / twapPrice;
+            }
+        } catch {
+            return 0;
+        }
+    }
+
+    /// @notice Check if oracle price is consistent with pool price
+    /// @dev Requires price feed to be set
+    /// @return isConsistent True if prices are within tolerance
+    function validateOracleAgainstPool() external view returns (bool isConsistent) {
+        if (address(priceFeed) == address(0)) return true;
+
+        // Get Chainlink price (8 decimals for ETH/USD)
+        (, int256 oracleAnswer, , , ) = priceFeed.latestRoundData();
+        if (oracleAnswer <= 0) return false;
+
+        uint256 oraclePrice = uint256(oracleAnswer);
+
+        // Get pool price and convert to comparable format
+        uint160 sqrtPriceX96 = _getCurrentSqrtPrice();
+        uint256 poolPrice = DeltaCalculator.sqrtPriceX96ToPrice(sqrtPriceX96, 18);
+
+        // Convert pool price to 8 decimals to match Chainlink
+        // Pool price is typically in quote/base format
+        // Adjust based on token order
+        (address token0, ) = _getTokenOrder();
+        uint256 poolPrice8Decimals;
+
+        if (token0 == baseToken) {
+            // Price is quote/base (USDC per WETH), need to convert
+            poolPrice8Decimals = poolPrice / 1e10; // Assuming 18 decimals to 8
+        } else {
+            // Price is base/quote (WETH per USDC), invert
+            if (poolPrice > 0) {
+                poolPrice8Decimals = (1e18 * 1e8) / poolPrice;
+            }
+        }
+
+        // Check deviation
+        uint256 deviation;
+        if (oraclePrice > poolPrice8Decimals) {
+            deviation = ((oraclePrice - poolPrice8Decimals) * PRECISION) / oraclePrice;
+        } else {
+            deviation = ((poolPrice8Decimals - oraclePrice) * PRECISION) / poolPrice8Decimals;
+        }
+
+        return deviation <= MAX_TWAP_DEVIATION;
     }
 }
