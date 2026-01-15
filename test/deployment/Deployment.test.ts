@@ -10,6 +10,9 @@
  *
  * Run with:
  *   ALCHEMY_API_KEY=your_key npx hardhat test test/deployment/Deployment.test.ts
+ *
+ * NOTE: These tests require a forked Arbitrum mainnet environment.
+ * They will be skipped if ALCHEMY_API_KEY is not set.
  */
 
 import { expect } from "chai";
@@ -24,6 +27,27 @@ import {
 describe("Deployment", function () {
   // Increase timeout for fork tests
   this.timeout(120_000);
+
+  // Check if we're running on a fork with real external contracts
+  let isForked = false;
+
+  before(async function () {
+    // Check if external contracts have code (indicates fork)
+    const usdcCode = await ethers.provider.getCode(ARBITRUM_MAINNET.usdc);
+    isForked = usdcCode !== "0x";
+
+    if (!isForked) {
+      console.log(
+        "    ⚠ Skipping deployment tests: requires forked Arbitrum (set ALCHEMY_API_KEY)"
+      );
+    }
+  });
+
+  beforeEach(function () {
+    if (!isForked) {
+      this.skip();
+    }
+  });
 
   /**
    * Fixture that deploys all contracts as they would be in production
