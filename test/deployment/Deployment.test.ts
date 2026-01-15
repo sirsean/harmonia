@@ -147,10 +147,19 @@ describe("Deployment", function () {
     });
 
     it("should deploy LiquidityManager with correct parameters", async function () {
-      const { liquidityManager, mockPositionManager, mockSwapRouter, mockFactory, weth, usdc, deployer } =
-        await loadFixture(deployWithMocksFixture);
+      const {
+        liquidityManager,
+        mockPositionManager,
+        mockSwapRouter,
+        mockFactory,
+        weth,
+        usdc,
+        deployer,
+      } = await loadFixture(deployWithMocksFixture);
 
-      expect(await liquidityManager.positionManager()).to.equal(await mockPositionManager.getAddress());
+      expect(await liquidityManager.positionManager()).to.equal(
+        await mockPositionManager.getAddress()
+      );
       expect(await liquidityManager.swapRouter()).to.equal(await mockSwapRouter.getAddress());
       expect(await liquidityManager.factory()).to.equal(await mockFactory.getAddress());
       expect(await liquidityManager.baseToken()).to.equal(await weth.getAddress());
