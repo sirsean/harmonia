@@ -542,11 +542,11 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         // 2. Deposit to LP
         address baseToken = ILiquidityManager(liquidityManager).baseToken();
         address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
-        
+
         // We need to know balances of this contract
         uint256 bal0 = IERC20(baseToken).balanceOf(address(this));
         uint256 bal1 = IERC20(quoteToken).balanceOf(address(this));
-        
+
         // Reserve collateral if it is one of the tokens (usually asset() which is quoteToken)
         if (baseToken == asset()) {
             if (bal0 > collateralAmount) bal0 -= collateralAmount;
@@ -560,11 +560,18 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         if (bal0 > 0 || bal1 > 0) {
             // Check if position exists
             if (ILiquidityManager(liquidityManager).tokenId() != 0) {
-                 ILiquidityManager(liquidityManager).increaseLiquidity(bal0, bal1, block.timestamp);
+                ILiquidityManager(liquidityManager).increaseLiquidity(bal0, bal1, block.timestamp);
             } else {
-                 // Get ticks
-                 (int24 tickLower, int24 tickUpper) = ILiquidityManager(liquidityManager).getRebalanceTicks(rangeWidthMultiplier);
-                 ILiquidityManager(liquidityManager).mintPosition(tickLower, tickUpper, bal0, bal1, block.timestamp);
+                // Get ticks
+                (int24 tickLower, int24 tickUpper) = ILiquidityManager(liquidityManager)
+                    .getRebalanceTicks(rangeWidthMultiplier);
+                ILiquidityManager(liquidityManager).mintPosition(
+                    tickLower,
+                    tickUpper,
+                    bal0,
+                    bal1,
+                    block.timestamp
+                );
             }
         }
 
@@ -581,48 +588,64 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     /// @param amountIn Amount of asset() to potentially swap
     function _swapForLP(uint256 amountIn) internal {
         if (amountIn == 0) return;
-        
+
         address liquidityMgr = liquidityManager;
         address pool = ILiquidityManager(liquidityMgr).getPool();
         (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(pool).slot0();
-        
+
         // Determine range
         int24 tickLower;
         int24 tickUpper;
         if (ILiquidityManager(liquidityMgr).tokenId() != 0) {
-             (, tickLower, tickUpper, ) = ILiquidityManager(liquidityMgr).getPositionInfo();
+            (, tickLower, tickUpper, ) = ILiquidityManager(liquidityMgr).getPositionInfo();
         } else {
-             (tickLower, tickUpper) = ILiquidityManager(liquidityMgr).getRebalanceTicks(rangeWidthMultiplier);
+            (tickLower, tickUpper) = ILiquidityManager(liquidityMgr).getRebalanceTicks(
+                rangeWidthMultiplier
+            );
         }
-        
+
         uint160 sqrtPriceLowerX96 = DeltaCalculator.getSqrtRatioAtTick(tickLower);
         uint160 sqrtPriceUpperX96 = DeltaCalculator.getSqrtRatioAtTick(tickUpper);
-        
+
         // Simulate ratio
         uint128 dummyLiquidity = 1e18;
-        uint256 amt0 = DeltaCalculator.getBaseTokenAmount(sqrtPriceX96, sqrtPriceLowerX96, sqrtPriceUpperX96, dummyLiquidity);
-        uint256 amt1 = DeltaCalculator.getQuoteTokenAmount(sqrtPriceX96, sqrtPriceLowerX96, sqrtPriceUpperX96, dummyLiquidity);
-        
+        uint256 amt0 = DeltaCalculator.getBaseTokenAmount(
+            sqrtPriceX96,
+            sqrtPriceLowerX96,
+            sqrtPriceUpperX96,
+            dummyLiquidity
+        );
+        uint256 amt1 = DeltaCalculator.getQuoteTokenAmount(
+            sqrtPriceX96,
+            sqrtPriceLowerX96,
+            sqrtPriceUpperX96,
+            dummyLiquidity
+        );
+
         // Convert amt0 to quote value for ratio calculation
         // price = sqrtPrice^2 / 2^192
         // val0 = amt0 * price
-        uint256 val0 = DeltaCalculator.mulDiv(amt0, uint256(sqrtPriceX96) * uint256(sqrtPriceX96), uint256(1) << 192);
+        uint256 val0 = DeltaCalculator.mulDiv(
+            amt0,
+            uint256(sqrtPriceX96) * uint256(sqrtPriceX96),
+            uint256(1) << 192
+        );
         uint256 totalVal = val0 + amt1;
-        
+
         if (totalVal == 0) return;
-        
+
         // Calculate swap amount
         // If asset() is Quote Token (token1), we need to swap portion to Base Token (token0)
         // If asset() is Base Token (token0), we need to swap portion to Quote Token (token1)
-        
+
         address assetToken = asset();
         address baseToken = ILiquidityManager(liquidityMgr).baseToken();
         address quoteToken = ILiquidityManager(liquidityMgr).quoteToken();
-        
+
         uint256 swapAmount;
         address tokenIn = assetToken;
         address tokenOut;
-        
+
         if (assetToken == quoteToken) {
             // We hold Quote, need Base
             // Portion needed in Base value is val0 / totalVal
@@ -635,12 +658,12 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
             swapAmount = (amountIn * amt1) / totalVal;
             tokenOut = quoteToken;
         }
-        
+
         if (swapAmount > 0) {
             ISwapRouter router = ILiquidityManager(liquidityMgr).swapRouter();
-            
+
             IERC20(tokenIn).safeIncreaseAllowance(address(router), swapAmount);
-            
+
             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
                 tokenIn: tokenIn,
                 tokenOut: tokenOut,
@@ -651,7 +674,7 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
                 amountOutMinimum: 0,
                 sqrtPriceLimitX96: 0
             });
-            
+
             router.exactInputSingle(params);
         }
     }
@@ -676,40 +699,46 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         if (currentLiquidity > 0) {
             uint128 liquidityToRemove = uint128((uint256(currentLiquidity) * ratio) / PRECISION);
             if (liquidityToRemove > 0) {
-                ILiquidityManager(liquidityManager).decreaseLiquidity(liquidityToRemove, block.timestamp);
+                ILiquidityManager(liquidityManager).decreaseLiquidity(
+                    liquidityToRemove,
+                    block.timestamp
+                );
                 ILiquidityManager(liquidityManager).collectFees(); // Collect to vault
             }
         }
-        
+
         // 2. Decrease Hedge
         // We need to reduce hedge size and collateral by `ratio`.
         uint256 sizeUsd = IHedgeManager(hedgeManager).getPositionSizeUsd();
         uint256 collateral = IHedgeManager(hedgeManager).getCollateralAmount();
-        
+
         uint256 sizeDecrease = (sizeUsd * ratio) / PRECISION;
         uint256 collateralDecrease = (collateral * ratio) / PRECISION;
-        
+
         if (sizeDecrease > 0) {
-             uint256 execFee = IHedgeManager(hedgeManager).getExecutionFee();
-             // Ensure we have enough ETH for execution fee
-             if (address(this).balance >= execFee) {
-                 IHedgeManager(hedgeManager).decreaseShort{value: execFee}(sizeDecrease, collateralDecrease);
-             }
+            uint256 execFee = IHedgeManager(hedgeManager).getExecutionFee();
+            // Ensure we have enough ETH for execution fee
+            if (address(this).balance >= execFee) {
+                IHedgeManager(hedgeManager).decreaseShort{value: execFee}(
+                    sizeDecrease,
+                    collateralDecrease
+                );
+            }
         }
-        
+
         // 3. Swap Base Token to Asset
         address baseToken = ILiquidityManager(liquidityManager).baseToken();
         address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
         address assetToken = asset();
-        
+
         address tokenToSell = (baseToken == assetToken) ? quoteToken : baseToken;
         uint256 balanceToSell = IERC20(tokenToSell).balanceOf(address(this));
-        
+
         if (balanceToSell > 0) {
-             ISwapRouter router = ILiquidityManager(liquidityManager).swapRouter();
-             IERC20(tokenToSell).safeIncreaseAllowance(address(router), balanceToSell);
-             
-             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            ISwapRouter router = ILiquidityManager(liquidityManager).swapRouter();
+            IERC20(tokenToSell).safeIncreaseAllowance(address(router), balanceToSell);
+
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
                 tokenIn: tokenToSell,
                 tokenOut: assetToken,
                 fee: ILiquidityManager(liquidityManager).poolFee(),
@@ -719,7 +748,7 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
                 amountOutMinimum: 0,
                 sqrtPriceLimitX96: 0
             });
-            
+
             router.exactInputSingle(params);
         }
 
@@ -837,31 +866,32 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     /// @dev To be implemented in Phase 4
     function _calculateFeesInUSD(uint256 amount0, uint256 amount1) internal view returns (uint256) {
         if (liquidityManager == address(0)) return 0;
-        
+
         // Assume price is 18 decimals, Base/USD (or Quote/USD if Quote is volatile, but here Quote is USDC)
         // Usually Oracle is for Base Token (ETH). Quote is USDC ($1).
         // Check tokens
         address baseToken = ILiquidityManager(liquidityManager).baseToken();
         address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
-        
+
         // Get decimals
         uint8 d0 = IERC20Metadata(baseToken).decimals();
         uint8 d1 = IERC20Metadata(quoteToken).decimals();
-        
+
         uint256 price = ILiquidityManager(liquidityManager).getOraclePrice(); // 18 decimals
-        
+
         uint256 value0;
         uint256 value1;
-        
+
         // We need to know which one is Base.
         address token0;
-        if (baseToken < quoteToken) token0 = baseToken; else token0 = quoteToken;
-        
+        if (baseToken < quoteToken) token0 = baseToken;
+        else token0 = quoteToken;
+
         if (token0 == baseToken) {
             // amount0 is Base
             // Value0 = amount0 * price / 10^d0
             value0 = (amount0 * price) / (10 ** d0);
-            
+
             // Value1 = amount1 (USDC)
             // Scale to 18 decimals: amount1 * 10^(18-d1)
             if (d1 <= 18) value1 = amount1 * (10 ** (18 - d1));
@@ -870,11 +900,11 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
             // amount0 is Quote
             if (d0 <= 18) value0 = amount0 * (10 ** (18 - d0));
             else value0 = amount0 / (10 ** (d0 - 18));
-            
+
             // amount1 is Base
             value1 = (amount1 * price) / (10 ** d1);
         }
-        
+
         return value0 + value1;
     }
 
