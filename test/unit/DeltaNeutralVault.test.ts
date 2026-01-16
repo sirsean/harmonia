@@ -432,6 +432,34 @@ describe("DeltaNeutralVault", function () {
       });
     });
 
+    describe("setCircuitBreakerEnabled", function () {
+      it("should allow owner to set circuit breaker enabled status", async function () {
+        const { vault, owner } = await loadFixture(deployVaultFixture);
+
+        await vault.connect(owner).setCircuitBreakerEnabled(false);
+        expect(await vault.circuitBreakerEnabled()).to.equal(false);
+
+        await vault.connect(owner).setCircuitBreakerEnabled(true);
+        expect(await vault.circuitBreakerEnabled()).to.equal(true);
+      });
+
+      it("should emit CircuitBreakerEnabled event", async function () {
+        const { vault, owner } = await loadFixture(deployVaultFixture);
+
+        await expect(vault.connect(owner).setCircuitBreakerEnabled(false))
+          .to.emit(vault, "CircuitBreakerEnabled")
+          .withArgs(false);
+      });
+
+      it("should reject non-owner setting circuit breaker", async function () {
+        const { vault, user1 } = await loadFixture(deployVaultFixture);
+
+        await expect(
+          vault.connect(user1).setCircuitBreakerEnabled(false)
+        ).to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
+      });
+    });
+
     describe("setManagers", function () {
       it("should allow owner to set managers", async function () {
         const { vault, owner, rebalanceController } = await loadFixture(deployVaultFixture);
@@ -664,6 +692,56 @@ describe("DeltaNeutralVault", function () {
 
       const maxRedeem = await vault.maxRedeem(user1.address);
       expect(maxRedeem).to.equal(shares);
+    });
+  });
+
+  describe("Circuit Breaker Control", function () {
+    it("should allow withdrawal when circuit breaker is disabled even if triggered", async function () {
+      const { vault, owner, user1 } = await loadFixture(deployVaultFixture);
+      const depositAmount = BigInt(10_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
+      const withdrawAmount = BigInt(1_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
+
+      await vault.connect(user1).deposit(depositAmount, user1.address);
+
+      // Trigger circuit breaker
+      await vault.connect(owner).triggerCircuitBreaker();
+      expect(await vault.circuitBreakerTriggered()).to.equal(true);
+
+      // Verify withdrawal fails initially
+      await expect(
+        vault.connect(user1).withdraw(withdrawAmount, user1.address, user1.address)
+      ).to.be.revertedWithCustomError(vault, "CircuitBreakerActive");
+
+      // Disable circuit breaker
+      await vault.connect(owner).setCircuitBreakerEnabled(false);
+
+      // Verify withdrawal now succeeds
+      await expect(vault.connect(user1).withdraw(withdrawAmount, user1.address, user1.address)).to
+        .not.be.reverted;
+    });
+
+    it("should allow redemption when circuit breaker is disabled even if triggered", async function () {
+      const { vault, owner, user1 } = await loadFixture(deployVaultFixture);
+      const depositAmount = BigInt(10_000) * BigInt(10) ** BigInt(USDC_DECIMALS);
+
+      await vault.connect(user1).deposit(depositAmount, user1.address);
+      const shares = await vault.balanceOf(user1.address);
+      const redeemShares = (shares * 10n) / 100n; // 10%
+
+      // Trigger circuit breaker
+      await vault.connect(owner).triggerCircuitBreaker();
+
+      // Verify redemption fails initially
+      await expect(
+        vault.connect(user1).redeem(redeemShares, user1.address, user1.address)
+      ).to.be.revertedWithCustomError(vault, "CircuitBreakerActive");
+
+      // Disable circuit breaker
+      await vault.connect(owner).setCircuitBreakerEnabled(false);
+
+      // Verify redemption now succeeds
+      await expect(vault.connect(user1).redeem(redeemShares, user1.address, user1.address)).to.not
+        .be.reverted;
     });
   });
 });
