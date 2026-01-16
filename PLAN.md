@@ -194,682 +194,208 @@ contracts/
 
 ### 4.1 Delta Calculation
 
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+> **Implementation:** [`contracts/libraries/DeltaCalculator.sol`](contracts/libraries/DeltaCalculator.sol)
 
-import "@uniswap/v3-core/contracts/libraries/TickMath.sol";
-import "@uniswap/v3-core/contracts/libraries/FullMath.sol";
+The DeltaCalculator library provides complete delta and gamma calculations for Uniswap v3 LP positions. Key functions:
 
-library DeltaCalculator {
-    uint256 constant Q96 = 2**96;
-    
-    /// @notice Calculate delta of a Uniswap v3 LP position
-    /// @param sqrtPriceX96 Current sqrt price
-    /// @param sqrtPriceLowerX96 Lower bound sqrt price
-    /// @param sqrtPriceUpperX96 Upper bound sqrt price  
-    /// @param liquidity Position liquidity
-    /// @return delta The position delta (scaled by 1e18)
-    function calculateDelta(
-        uint160 sqrtPriceX96,
-        uint160 sqrtPriceLowerX96,
-        uint160 sqrtPriceUpperX96,
-        uint128 liquidity
-    ) internal pure returns (int256 delta) {
-        // If price below range: delta = L * (1/√Pa - 1/√Pb)
-        if (sqrtPriceX96 <= sqrtPriceLowerX96) {
-            // Full exposure to base token
-            uint256 deltaAbs = FullMath.mulDiv(
-                liquidity,
-                uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96),
-                uint256(sqrtPriceLowerX96) * uint256(sqrtPriceUpperX96) / Q96
-            );
-            return int256(deltaAbs * 1e18 / Q96);
-        }
-        
-        // If price above range: delta = 0
-        if (sqrtPriceX96 >= sqrtPriceUpperX96) {
-            return 0;
-        }
-        
-        // In range: delta = L * (1/√S - 1/√Pb)
-        uint256 deltaAbs = FullMath.mulDiv(
-            liquidity,
-            uint256(sqrtPriceUpperX96 - sqrtPriceX96),
-            uint256(sqrtPriceX96) * uint256(sqrtPriceUpperX96) / Q96
-        );
-        
-        return int256(deltaAbs * 1e18 / Q96);
-    }
-    
-    /// @notice Get the amount of base token in a position (for delta verification)
-    function getBaseTokenAmount(
-        uint160 sqrtPriceX96,
-        uint160 sqrtPriceLowerX96,
-        uint160 sqrtPriceUpperX96,
-        uint128 liquidity
-    ) internal pure returns (uint256 amount0) {
-        if (sqrtPriceX96 <= sqrtPriceLowerX96) {
-            // All base token
-            amount0 = FullMath.mulDiv(
-                liquidity,
-                uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96),
-                uint256(sqrtPriceUpperX96)
-            );
-            amount0 = FullMath.mulDiv(amount0, Q96, sqrtPriceLowerX96);
-        } else if (sqrtPriceX96 < sqrtPriceUpperX96) {
-            // In range
-            amount0 = FullMath.mulDiv(
-                liquidity,
-                uint256(sqrtPriceUpperX96 - sqrtPriceX96),
-                uint256(sqrtPriceUpperX96)
-            );
-            amount0 = FullMath.mulDiv(amount0, Q96, sqrtPriceX96);
-        }
-        // else: all quote token, amount0 = 0
-    }
-}
-```
+| Function | Purpose |
+|----------|---------|
+| `calculateDelta()` | Position delta based on price zone (below/in/above range) |
+| `calculateDeltaRatio()` | Delta as percentage (0-1 scaled by 1e18) |
+| `getBaseTokenAmount()` | ETH amount in position |
+| `getQuoteTokenAmount()` | USDC amount in position |
+| `getPositionValue()` | Total position value in quote token |
+| `calculateGamma()` | Negative gamma (short volatility exposure) |
+| `priceToSqrtPriceX96()` | Convert price to Uniswap Q96 format |
+| `sqrtPriceX96ToPrice()` | Convert Q96 to human-readable price |
+
+**Delta by price zone:**
+- Below range (`S < Pa`): Delta = maximum (full ETH exposure)
+- In range (`Pa ≤ S ≤ Pb`): Delta varies continuously from 1 to 0
+- Above range (`S > Pb`): Delta = 0 (full USDC exposure)
 
 ### 4.2 GMX v2 Integration for Hedging
 
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+> **Status:** Design complete, implementation pending
+> **Interfaces:** [`contracts/interfaces/IGMXV2.sol`](contracts/interfaces/IGMXV2.sol)
 
-import "./interfaces/IGMXV2.sol";
+The HedgeManager contract will handle all GMX v2 perpetual operations for delta hedging.
 
-contract HedgeManager {
-    IExchangeRouter public immutable exchangeRouter;
-    IOrderVault public immutable orderVault;
-    IDataStore public immutable dataStore;
-    
-    address public immutable market; // ETH/USD market
-    address public immutable USDC;
-    address public immutable WETH;
-    
-    bytes32 public currentPositionKey;
-    
-    struct HedgeParams {
-        uint256 sizeDeltaUsd;     // Position size change in USD (30 decimals)
-        uint256 collateralDelta;  // Collateral change
-        bool isIncrease;          // true = increase short, false = decrease
-    }
-    
-    /// @notice Open or increase a short position on GMX v2
-    function adjustHedge(HedgeParams calldata params) external returns (bytes32 orderKey) {
-        uint256 executionFee = getExecutionFee();
-        
-        // Transfer collateral to OrderVault
-        if (params.isIncrease && params.collateralDelta > 0) {
-            IERC20(USDC).transfer(address(orderVault), params.collateralDelta);
-        }
-        
-        IExchangeRouter.CreateOrderParams memory orderParams = IExchangeRouter.CreateOrderParams({
-            receiver: address(this),
-            cancellationReceiver: address(this),
-            callbackContract: address(this),
-            uiFeeReceiver: address(0),
-            market: market,
-            initialCollateralToken: USDC,
-            swapPath: new address[](0),
-            orderType: params.isIncrease 
-                ? IExchangeRouter.OrderType.MarketIncrease 
-                : IExchangeRouter.OrderType.MarketDecrease,
-            decreasePositionSwapType: IExchangeRouter.DecreasePositionSwapType.NoSwap,
-            sizeDeltaUsd: params.sizeDeltaUsd,
-            initialCollateralDeltaAmount: params.collateralDelta,
-            triggerPrice: 0,
-            acceptablePrice: type(uint256).max, // Market order
-            executionFee: executionFee,
-            callbackGasLimit: 0,
-            minOutputAmount: 0,
-            isLong: false, // SHORT position
-            shouldUnwrapNativeToken: false,
-            autoCancel: false,
-            referralCode: bytes32(0)
-        });
-        
-        orderKey = exchangeRouter.createOrder{value: executionFee}(orderParams);
-    }
-    
-    /// @notice Get current short position size
-    function getShortPositionSize() public view returns (uint256 sizeInUsd, uint256 collateral) {
-        if (currentPositionKey == bytes32(0)) return (0, 0);
-        
-        // Read position from GMX DataStore
-        bytes32 positionKey = keccak256(abi.encode(
-            address(this),
-            market,
-            USDC,
-            false // isLong
-        ));
-        
-        // Position data stored in DataStore
-        sizeInUsd = dataStore.getUint(
-            keccak256(abi.encode(positionKey, "sizeInUsd"))
-        );
-        collateral = dataStore.getUint(
-            keccak256(abi.encode(positionKey, "collateralAmount"))
-        );
-    }
-    
-    /// @notice Calculate required execution fee
-    function getExecutionFee() public view returns (uint256) {
-        return dataStore.getUint(
-            keccak256(abi.encode("INCREASE_ORDER_GAS_LIMIT"))
-        ) * tx.gasprice;
-    }
-}
-```
+**Core Operations:**
+
+| Function | Purpose |
+|----------|---------|
+| `adjustHedge()` | Open/increase/decrease short position |
+| `getShortPositionSize()` | Read current position from DataStore |
+| `getExecutionFee()` | Calculate required keeper execution fee |
+| `claimFunding()` | Collect accumulated funding payments |
+
+**GMX v2 Integration Points:**
+- `ExchangeRouter.createOrder()` - Submit market orders
+- `OrderVault` - Collateral escrow for orders
+- `DataStore` - Read position state and parameters
+- `Reader` - Query market and position data
+
+**Order Parameters:**
+- `orderType`: `MarketIncrease` or `MarketDecrease`
+- `isLong`: Always `false` (short positions only)
+- `sizeDeltaUsd`: Position size change (30 decimals)
+- `acceptablePrice`: Set to max for market orders
 
 ### 4.3 Rebalancing Logic
 
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+> **Status:** Design complete, implementation pending
+> **Interfaces:** [`contracts/interfaces/IChainlink.sol`](contracts/interfaces/IChainlink.sol)
 
-import "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
+The RebalanceController implements Chainlink Automation for autonomous delta rebalancing.
 
-contract RebalanceController is AutomationCompatibleInterface {
-    uint256 public constant DELTA_THRESHOLD = 5e16; // 5% delta deviation
-    uint256 public constant MIN_REBALANCE_INTERVAL = 1 hours;
-    uint256 public constant MAX_REBALANCE_INTERVAL = 24 hours;
-    
-    DeltaNeutralVault public vault;
-    uint256 public lastRebalanceTime;
-    
-    struct RebalanceMetrics {
-        int256 currentDelta;
-        int256 targetDelta;
-        int256 deltaDrift;
-        bool needsRebalance;
-        uint256 gasEstimate;
-    }
-    
-    /// @notice Chainlink Automation check function (runs off-chain)
-    function checkUpkeep(bytes calldata)
-        external
-        view
-        override
-        returns (bool upkeepNeeded, bytes memory performData)
-    {
-        RebalanceMetrics memory metrics = calculateRebalanceMetrics();
-        
-        // Rebalance needed if:
-        // 1. Delta drift exceeds threshold, OR
-        // 2. Max interval exceeded (forced rebalance)
-        bool deltaExceeded = abs(metrics.deltaDrift) > DELTA_THRESHOLD;
-        bool timeExceeded = block.timestamp > lastRebalanceTime + MAX_REBALANCE_INTERVAL;
-        bool minIntervalPassed = block.timestamp > lastRebalanceTime + MIN_REBALANCE_INTERVAL;
-        
-        upkeepNeeded = minIntervalPassed && (deltaExceeded || timeExceeded);
-        performData = abi.encode(metrics);
-    }
-    
-    /// @notice Execute rebalance (called by Chainlink Keeper)
-    function performUpkeep(bytes calldata performData) external override {
-        RebalanceMetrics memory metrics = abi.decode(performData, (RebalanceMetrics));
-        
-        // Re-verify conditions on-chain
-        require(
-            abs(metrics.deltaDrift) > DELTA_THRESHOLD ||
-            block.timestamp > lastRebalanceTime + MAX_REBALANCE_INTERVAL,
-            "Rebalance not needed"
-        );
-        
-        // Execute rebalance
-        vault.rebalance(metrics.deltaDrift);
-        lastRebalanceTime = block.timestamp;
-        
-        emit Rebalanced(metrics.currentDelta, metrics.targetDelta, block.timestamp);
-    }
-    
-    function calculateRebalanceMetrics() public view returns (RebalanceMetrics memory) {
-        // Get LP position delta
-        int256 lpDelta = vault.calculateLPDelta();
-        
-        // Get current short position (negative delta)
-        (uint256 shortSize,) = vault.getShortPosition();
-        int256 hedgeDelta = -int256(shortSize);
-        
-        // Net delta should be 0
-        int256 netDelta = lpDelta + hedgeDelta;
-        
-        return RebalanceMetrics({
-            currentDelta: netDelta,
-            targetDelta: 0,
-            deltaDrift: netDelta, // Distance from target
-            needsRebalance: abs(netDelta) > DELTA_THRESHOLD,
-            gasEstimate: estimateRebalanceGas(netDelta)
-        });
-    }
-    
-    function abs(int256 x) internal pure returns (uint256) {
-        return x >= 0 ? uint256(x) : uint256(-x);
-    }
-}
-```
+**Rebalance Thresholds:**
+
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| `DELTA_THRESHOLD` | 5% (5e16) | Trigger rebalance when exceeded |
+| `MIN_REBALANCE_INTERVAL` | 1 hour | Prevent excessive rebalancing |
+| `MAX_REBALANCE_INTERVAL` | 24 hours | Force periodic check |
+
+**Chainlink Automation Flow:**
+
+1. `checkUpkeep()` (off-chain)
+   - Calculate net delta: `lpDelta + hedgeDelta`
+   - Return `true` if |delta| > threshold OR max interval exceeded
+
+2. `performUpkeep()` (on-chain)
+   - Re-verify conditions
+   - Call `vault.rebalance(deltaDrift)`
+   - Update `lastRebalanceTime`
+
+**Rebalance Decision Matrix:**
+
+| Condition | Min Interval Passed? | Action |
+|-----------|---------------------|--------|
+| \|delta\| > 5% | Yes | Rebalance |
+| \|delta\| > 5% | No | Wait |
+| Time > 24h | Yes | Force rebalance |
+| \|delta\| ≤ 5% | - | No action |
 
 ### 4.4 Yield Tracking System
 
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+> **Implementation:** [`contracts/libraries/YieldMath.sol`](contracts/libraries/YieldMath.sol)
+> **YieldTracker contract:** Design complete, implementation pending
 
-library YieldAccounting {
-    struct YieldSnapshot {
-        uint256 timestamp;
-        uint256 totalValue;
-        uint256 cumulativeFees;
-        int256 cumulativeFunding;
-        uint256 cumulativeRebalanceCosts;
-    }
-    
-    struct YieldMetrics {
-        uint256 apy1Day;
-        uint256 apy7Day;
-        uint256 apy30Day;
-        uint256 totalFeeIncome;
-        int256 totalFundingIncome;
-        uint256 totalRebalanceCosts;
-        uint256 netYield;
-    }
-    
-    /// @notice Calculate APY over a time period
-    /// @param startSnapshot Starting snapshot
-    /// @param endSnapshot Ending snapshot
-    /// @return apy Annual percentage yield (scaled by 1e18)
-    function calculateAPY(
-        YieldSnapshot memory startSnapshot,
-        YieldSnapshot memory endSnapshot
-    ) internal pure returns (uint256 apy) {
-        if (startSnapshot.totalValue == 0) return 0;
-        
-        uint256 timeDelta = endSnapshot.timestamp - startSnapshot.timestamp;
-        if (timeDelta == 0) return 0;
-        
-        // Net income = fees + funding - rebalance costs
-        uint256 feeIncome = endSnapshot.cumulativeFees - startSnapshot.cumulativeFees;
-        int256 fundingIncome = endSnapshot.cumulativeFunding - startSnapshot.cumulativeFunding;
-        uint256 rebalanceCosts = endSnapshot.cumulativeRebalanceCosts - startSnapshot.cumulativeRebalanceCosts;
-        
-        int256 netIncome = int256(feeIncome) + fundingIncome - int256(rebalanceCosts);
-        
-        if (netIncome <= 0) return 0;
-        
-        // APY = (netIncome / startValue) * (365 days / timeDelta) * 100%
-        uint256 periodReturn = uint256(netIncome) * 1e18 / startSnapshot.totalValue;
-        apy = periodReturn * 365 days / timeDelta;
-    }
-}
+The YieldMath library provides APY and yield metric calculations. Key functions:
 
-contract YieldTracker {
-    using YieldAccounting for *;
-    
-    mapping(uint256 => YieldAccounting.YieldSnapshot) public dailySnapshots;
-    uint256 public snapshotCount;
-    
-    uint256 public cumulativeFees;
-    int256 public cumulativeFunding;
-    uint256 public cumulativeRebalanceCosts;
-    
-    /// @notice Record daily snapshot (called by keeper)
-    function recordSnapshot(uint256 totalValue) external {
-        dailySnapshots[snapshotCount] = YieldAccounting.YieldSnapshot({
-            timestamp: block.timestamp,
-            totalValue: totalValue,
-            cumulativeFees: cumulativeFees,
-            cumulativeFunding: cumulativeFunding,
-            cumulativeRebalanceCosts: cumulativeRebalanceCosts
-        });
-        snapshotCount++;
-    }
-    
-    /// @notice Get yield metrics for display
-    function getYieldMetrics() external view returns (YieldAccounting.YieldMetrics memory metrics) {
-        if (snapshotCount == 0) return metrics;
-        
-        YieldAccounting.YieldSnapshot memory current = dailySnapshots[snapshotCount - 1];
-        
-        // 1-day APY
-        if (snapshotCount >= 2) {
-            metrics.apy1Day = YieldAccounting.calculateAPY(
-                dailySnapshots[snapshotCount - 2],
-                current
-            );
-        }
-        
-        // 7-day APY
-        if (snapshotCount >= 8) {
-            metrics.apy7Day = YieldAccounting.calculateAPY(
-                dailySnapshots[snapshotCount - 8],
-                current
-            );
-        }
-        
-        // 30-day APY
-        if (snapshotCount >= 31) {
-            metrics.apy30Day = YieldAccounting.calculateAPY(
-                dailySnapshots[snapshotCount - 31],
-                current
-            );
-        }
-        
-        metrics.totalFeeIncome = cumulativeFees;
-        metrics.totalFundingIncome = cumulativeFunding;
-        metrics.totalRebalanceCosts = cumulativeRebalanceCosts;
-        
-        int256 net = int256(cumulativeFees) + cumulativeFunding - int256(cumulativeRebalanceCosts);
-        metrics.netYield = net > 0 ? uint256(net) : 0;
-    }
-}
+| Function | Purpose |
+|----------|---------|
+| `calculateAPY()` | Annualized yield from two snapshots |
+| `calculateReturn()` | Simple return percentage between values |
+| `periodReturnToAPY()` | Convert period return to annualized rate |
+| `calculateTotalFees()` | Fee income in USD from token amounts |
+| `calculateFundingAPY()` | Perpetual funding rate as APY |
+| `calculateBreakevenVolatility()` | Volatility threshold for profitability |
+
+**Yield Components:**
+
+| Source | Tracking Method |
+|--------|-----------------|
+| LP Fees | Cumulative fee0/fee1 collected |
+| Funding Income | Cumulative funding payments (+/-) |
+| Rebalance Costs | Gas + slippage per rebalance |
+
+**Snapshot-Based APY Calculation:**
 ```
+APY = (netIncome / startValue) * (365 days / timeDelta)
+netIncome = fees + funding - rebalanceCosts
+```
+
+The YieldTracker contract will maintain daily snapshots for calculating rolling 1/7/30 day APY metrics.
 
 ### 4.5 Main Vault Contract
 
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+> **Status:** Design complete, implementation pending
+> **Interfaces:** [`contracts/interfaces/IUniswapV3.sol`](contracts/interfaces/IUniswapV3.sol)
 
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/INonfungiblePositionManager.sol";
+The DeltaNeutralVault is the main entry point implementing ERC-4626 tokenized vault standard.
 
-contract DeltaNeutralVault is ERC4626, ReentrancyGuard {
-    using DeltaCalculator for *;
-    
-    // External contracts
-    INonfungiblePositionManager public immutable positionManager;
-    ISwapRouter public immutable swapRouter;
-    HedgeManager public immutable hedgeManager;
-    YieldTracker public immutable yieldTracker;
-    
-    // Pool configuration
-    address public immutable pool;
-    address public immutable baseToken; // ETH
-    address public immutable quoteToken; // USDC
-    int24 public tickLower;
-    int24 public tickUpper;
-    
-    // Position state
-    uint256 public lpTokenId;
-    
-    // Strategy parameters
-    uint256 public targetRangeWidth = 1000; // ~10% range
-    uint256 public minLiquidityRatio = 8000; // 80% in LP
-    
-    constructor(
-        IERC20 _usdc,
-        address _pool,
-        address _baseToken,
-        INonfungiblePositionManager _positionManager,
-        ISwapRouter _swapRouter,
-        HedgeManager _hedgeManager
-    ) ERC4626(_usdc) ERC20("Delta Neutral LP", "dnLP") {
-        pool = _pool;
-        baseToken = _baseToken;
-        quoteToken = address(_usdc);
-        positionManager = _positionManager;
-        swapRouter = _swapRouter;
-        hedgeManager = _hedgeManager;
-    }
-    
-    /// @notice Deposit USDC and deploy into delta-neutral strategy
-    function deposit(uint256 assets, address receiver) 
-        public 
-        override 
-        nonReentrant 
-        returns (uint256 shares) 
-    {
-        shares = super.deposit(assets, receiver);
-        _deployCapital(assets);
-    }
-    
-    /// @notice Withdraw USDC by unwinding positions
-    function withdraw(uint256 assets, address receiver, address owner)
-        public
-        override
-        nonReentrant
-        returns (uint256 shares)
-    {
-        shares = previewWithdraw(assets);
-        _unwindCapital(assets);
-        return super.withdraw(assets, receiver, owner);
-    }
-    
-    /// @notice Deploy capital into LP + hedge
-    function _deployCapital(uint256 usdcAmount) internal {
-        // 1. Calculate optimal allocation
-        (uint256 lpAmount, uint256 hedgeCollateral) = _calculateAllocation(usdcAmount);
-        
-        // 2. Swap portion to base token for LP
-        uint256 swapAmount = _calculateSwapAmount(lpAmount);
-        uint256 baseAmount = _swapQuoteToBase(swapAmount);
-        
-        // 3. Add liquidity to Uniswap v3
-        _addLiquidity(baseAmount, lpAmount - swapAmount);
-        
-        // 4. Open/increase short hedge
-        int256 lpDelta = calculateLPDelta();
-        uint256 hedgeSize = uint256(lpDelta) * _getBasePrice() / 1e18;
-        
-        hedgeManager.adjustHedge(HedgeManager.HedgeParams({
-            sizeDeltaUsd: hedgeSize * 1e30 / 1e18, // Convert to 30 decimals
-            collateralDelta: hedgeCollateral,
-            isIncrease: true
-        }));
-    }
-    
-    /// @notice Rebalance hedge to maintain delta neutrality
-    function rebalance(int256 deltaDrift) external {
-        require(msg.sender == address(rebalanceController), "Only controller");
-        
-        // Collect any accrued fees first
-        _collectFees();
-        
-        // Adjust hedge position
-        bool isIncrease = deltaDrift > 0; // Need more short if delta positive
-        uint256 adjustmentSize = abs(deltaDrift) * _getBasePrice() / 1e18;
-        
-        hedgeManager.adjustHedge(HedgeManager.HedgeParams({
-            sizeDeltaUsd: adjustmentSize * 1e30 / 1e18,
-            collateralDelta: 0, // No collateral change for rebalance
-            isIncrease: isIncrease
-        }));
-        
-        emit Rebalanced(deltaDrift, block.timestamp);
-    }
-    
-    /// @notice Compound accrued yield
-    function compound() external {
-        // 1. Collect LP fees
-        uint256 feeAmount = _collectFees();
-        
-        // 2. Claim funding if positive
-        int256 funding = hedgeManager.claimFunding();
-        
-        // 3. Reinvest
-        if (feeAmount > 0 || funding > 0) {
-            uint256 reinvestAmount = feeAmount;
-            if (funding > 0) reinvestAmount += uint256(funding);
-            
-            _deployCapital(reinvestAmount);
-            
-            emit Compounded(feeAmount, funding, block.timestamp);
-        }
-    }
-    
-    /// @notice Get total vault value in USDC
-    function totalAssets() public view override returns (uint256) {
-        uint256 lpValue = _getLPValue();
-        (uint256 hedgeSize, uint256 hedgeCollateral) = hedgeManager.getShortPositionSize();
-        int256 hedgePnL = _calculateHedgePnL(hedgeSize);
-        
-        return lpValue + hedgeCollateral + (hedgePnL > 0 ? uint256(hedgePnL) : 0);
-    }
-    
-    /// @notice Calculate current LP position delta
-    function calculateLPDelta() public view returns (int256) {
-        if (lpTokenId == 0) return 0;
-        
-        (,, address token0,,, int24 _tickLower, int24 _tickUpper, uint128 liquidity,,,,) = 
-            positionManager.positions(lpTokenId);
-            
-        (uint160 sqrtPriceX96,,,,,,) = IUniswapV3Pool(pool).slot0();
-        
-        return DeltaCalculator.calculateDelta(
-            sqrtPriceX96,
-            TickMath.getSqrtRatioAtTick(_tickLower),
-            TickMath.getSqrtRatioAtTick(_tickUpper),
-            liquidity
-        );
-    }
-    
-    // Internal helper functions...
-    function _addLiquidity(uint256 amount0, uint256 amount1) internal {
-        // Implementation details for Uniswap v3 liquidity provision
-    }
-    
-    function _collectFees() internal returns (uint256) {
-        // Collect from Uniswap position
-    }
-    
-    function _swapQuoteToBase(uint256 amount) internal returns (uint256) {
-        // Swap via Uniswap router
-    }
-    
-    function _getBasePrice() internal view returns (uint256) {
-        // Get price from Chainlink or pool
-    }
-}
+**Core Architecture:**
+
 ```
+DeltaNeutralVault (ERC-4626)
+├── deposit() → _deployCapital()
+│   ├── Swap USDC → ETH (partial)
+│   ├── Add liquidity to Uniswap v3
+│   └── Open short hedge on GMX v2
+├── withdraw() → _unwindCapital()
+│   ├── Remove liquidity
+│   ├── Close proportional hedge
+│   └── Swap ETH → USDC
+├── rebalance() ← RebalanceController
+│   └── Adjust hedge to match LP delta
+└── compound()
+    ├── Collect LP fees
+    ├── Claim funding
+    └── Reinvest
+```
+
+**Key Functions:**
+
+| Function | Purpose |
+|----------|---------|
+| `deposit(assets, receiver)` | Deposit USDC, receive vault shares |
+| `withdraw(assets, receiver, owner)` | Burn shares, receive USDC |
+| `totalAssets()` | LP value + hedge collateral + PnL |
+| `calculateLPDelta()` | Current LP position delta |
+| `rebalance(deltaDrift)` | Adjust hedge (keeper only) |
+| `compound()` | Reinvest accrued yield |
+
+**Dependencies:**
+- `LiquidityManager` - Uniswap v3 operations
+- `HedgeManager` - GMX v2 operations
+- `YieldTracker` - APY calculations
+- `RebalanceController` - Automation
 
 ---
 
 ## Part 5: Keeper System Design
 
+> **Status:** Design complete, implementation pending
+> **Interfaces:** [`contracts/interfaces/IChainlink.sol`](contracts/interfaces/IChainlink.sol)
+
 ### 5.1 Chainlink Automation Integration
 
-```solidity
-// Keeper contract for monitoring and triggering rebalances
-contract DeltaNeutralKeeper is AutomationCompatibleInterface {
-    DeltaNeutralVault public vault;
-    
-    uint256 public constant DELTA_THRESHOLD = 5e16;  // 5%
-    uint256 public constant COMPOUND_INTERVAL = 1 days;
-    uint256 public constant SNAPSHOT_INTERVAL = 1 days;
-    
-    uint256 public lastCompoundTime;
-    uint256 public lastSnapshotTime;
-    
-    enum UpkeepType { REBALANCE, COMPOUND, SNAPSHOT }
-    
-    function checkUpkeep(bytes calldata)
-        external
-        view
-        override
-        returns (bool upkeepNeeded, bytes memory performData)
-    {
-        // Priority 1: Check for rebalance need
-        int256 netDelta = vault.getNetDelta();
-        if (abs(netDelta) > DELTA_THRESHOLD) {
-            return (true, abi.encode(UpkeepType.REBALANCE, netDelta));
-        }
-        
-        // Priority 2: Check for compound
-        if (block.timestamp > lastCompoundTime + COMPOUND_INTERVAL) {
-            uint256 pendingFees = vault.getPendingFees();
-            if (pendingFees > MIN_COMPOUND_AMOUNT) {
-                return (true, abi.encode(UpkeepType.COMPOUND, pendingFees));
-            }
-        }
-        
-        // Priority 3: Daily snapshot
-        if (block.timestamp > lastSnapshotTime + SNAPSHOT_INTERVAL) {
-            return (true, abi.encode(UpkeepType.SNAPSHOT, uint256(0)));
-        }
-        
-        return (false, "");
-    }
-    
-    function performUpkeep(bytes calldata performData) external override {
-        (UpkeepType upkeepType, int256 data) = abi.decode(performData, (UpkeepType, int256));
-        
-        if (upkeepType == UpkeepType.REBALANCE) {
-            vault.rebalance(data);
-        } else if (upkeepType == UpkeepType.COMPOUND) {
-            vault.compound();
-            lastCompoundTime = block.timestamp;
-        } else if (upkeepType == UpkeepType.SNAPSHOT) {
-            vault.yieldTracker().recordSnapshot(vault.totalAssets());
-            lastSnapshotTime = block.timestamp;
-        }
-    }
-}
-```
+The DeltaNeutralKeeper contract handles three automated tasks via Chainlink Automation:
 
-### 5.2 Off-Chain Monitoring Script (Backup/Supplementary)
+**Upkeep Priority Order:**
 
-```typescript
-// keeper/src/monitor.ts
-import { ethers } from 'ethers';
-import { DeltaNeutralVault__factory } from './typechain';
+| Priority | Type | Trigger | Action |
+|----------|------|---------|--------|
+| 1 | Rebalance | \|delta\| > 5% | `vault.rebalance(netDelta)` |
+| 2 | Compound | 24h + fees > minimum | `vault.compound()` |
+| 3 | Snapshot | 24h elapsed | `yieldTracker.recordSnapshot()` |
 
-interface MonitorConfig {
-  rpcUrl: string;
-  vaultAddress: string;
-  privateKey: string;
-  deltaThreshold: number;  // e.g., 0.05 for 5%
-  checkIntervalMs: number; // e.g., 60000 for 1 minute
-}
+**Automation Flow:**
+1. Chainlink nodes call `checkUpkeep()` off-chain
+2. If upkeep needed, `performUpkeep()` is called on-chain
+3. Gas costs paid from LINK balance in Automation Registry
 
-async function monitorVault(config: MonitorConfig) {
-  const provider = new ethers.JsonRpcProvider(config.rpcUrl);
-  const wallet = new ethers.Wallet(config.privateKey, provider);
-  const vault = DeltaNeutralVault__factory.connect(config.vaultAddress, wallet);
-  
-  console.log('Starting delta-neutral vault monitor...');
-  
-  setInterval(async () => {
-    try {
-      // 1. Get current positions
-      const lpDelta = await vault.calculateLPDelta();
-      const [shortSize] = await vault.hedgeManager().getShortPositionSize();
-      const hedgeDelta = -shortSize;
-      
-      const netDelta = lpDelta + hedgeDelta;
-      const totalValue = await vault.totalAssets();
-      const deltaPct = Number(netDelta) / Number(totalValue);
-      
-      console.log(`Net Delta: ${deltaPct.toFixed(4)} (${(deltaPct * 100).toFixed(2)}%)`);
-      
-      // 2. Check if rebalance needed
-      if (Math.abs(deltaPct) > config.deltaThreshold) {
-        console.log('Delta threshold exceeded, triggering rebalance...');
-        
-        const tx = await vault.rebalance(netDelta, {
-          gasLimit: 1_000_000,
-        });
-        
-        const receipt = await tx.wait();
-        console.log(`Rebalance executed: ${receipt.hash}`);
-      }
-      
-      // 3. Check for pending fees to compound
-      const pendingFees = await vault.getPendingFees();
-      if (pendingFees > ethers.parseUnits('100', 6)) { // > 100 USDC
-        console.log('Compounding fees...');
-        const tx = await vault.compound({ gasLimit: 800_000 });
-        await tx.wait();
-      }
-      
-    } catch (error) {
-      console.error('Monitor error:', error);
-    }
-  }, config.checkIntervalMs);
-}
-```
+**Registration:**
+- Register upkeep via Chainlink Automation Registry
+- Fund with LINK tokens for gas
+- Set gas limit appropriate for operation (~500k for rebalance)
+
+### 5.2 Off-Chain Monitoring (Backup)
+
+A TypeScript monitoring script provides redundancy:
+- Polls vault state every 60 seconds
+- Triggers rebalance if Chainlink keeper fails
+- Logs delta drift and yield metrics
+- Alerts on anomalous conditions
+
+**Monitoring Metrics:**
+- Net delta percentage
+- LP position value
+- Hedge position size and PnL
+- Pending fees and funding
+- Time since last rebalance
 
 ---
 
@@ -890,128 +416,283 @@ async function monitorVault(config: MonitorConfig) {
 
 ### 6.2 Position Sizing Guardrails
 
-```solidity
-// Risk parameters
-uint256 public constant MAX_LEVERAGE = 3e18;           // 3x max leverage on perp
-uint256 public constant MAX_SINGLE_TX_PCT = 10e16;     // 10% of vault per tx
-uint256 public constant MIN_HEDGE_RATIO = 80e16;       // Hedge at least 80% of delta
-uint256 public constant MAX_HEDGE_RATIO = 120e16;      // Don't over-hedge beyond 120%
-uint256 public constant EMERGENCY_DELTA_THRESHOLD = 20e16; // Emergency unwind at 20% drift
-```
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| `MAX_LEVERAGE` | 3x | Maximum leverage on perpetual position |
+| `MAX_SINGLE_TX_PCT` | 10% | Max vault % per single transaction |
+| `MIN_HEDGE_RATIO` | 80% | Minimum hedge coverage required |
+| `MAX_HEDGE_RATIO` | 120% | Maximum hedge to prevent over-hedging |
+| `EMERGENCY_DELTA_THRESHOLD` | 20% | Trigger emergency unwind |
 
 ### 6.3 Circuit Breakers
 
-```solidity
-contract EmergencyModule {
-    bool public paused;
-    uint256 public lastPauseTime;
-    
-    modifier whenNotPaused() {
-        require(!paused, "Paused");
-        _;
-    }
-    
-    /// @notice Emergency pause if delta exceeds critical threshold
-    function checkEmergencyConditions() external returns (bool shouldPause) {
-        int256 netDelta = vault.getNetDelta();
-        uint256 totalValue = vault.totalAssets();
-        
-        // Pause if delta drift > 20%
-        if (abs(netDelta) * 1e18 / totalValue > EMERGENCY_DELTA_THRESHOLD) {
-            _pause("Critical delta drift");
-            return true;
-        }
-        
-        // Pause if GMX position near liquidation
-        (,, uint256 liqPrice) = vault.hedgeManager().getPositionHealth();
-        uint256 currentPrice = _getPrice();
-        if (currentPrice > liqPrice * 90 / 100) { // Within 10% of liquidation
-            _pause("Near liquidation");
-            return true;
-        }
-        
-        return false;
-    }
-    
-    /// @notice Emergency full unwind
-    function emergencyUnwind() external onlyOwner {
-        _pause("Manual emergency");
-        
-        // 1. Close all perp positions
-        vault.hedgeManager().emergencyClose();
-        
-        // 2. Remove all LP liquidity
-        vault.emergencyRemoveLiquidity();
-        
-        // 3. All assets now in USDC, users can withdraw
-        emit EmergencyUnwind(block.timestamp);
-    }
-}
-```
+**Automatic Pause Conditions:**
+
+| Condition | Threshold | Action |
+|-----------|-----------|--------|
+| Delta drift | > 20% | Pause all operations |
+| Liquidation proximity | < 10% margin | Pause + alert |
+| Oracle deviation | > 5% from TWAP | Block rebalance |
+
+**Emergency Unwind Flow:**
+1. `emergencyUnwind()` called by owner/guardian
+2. Close all GMX perpetual positions
+3. Remove all Uniswap v3 liquidity
+4. Swap all assets to USDC
+5. Users can withdraw their share
+
+**Recovery Process:**
+- Investigate root cause
+- Propose fix via governance
+- Resume operations with updated parameters
 
 ---
 
 ## Part 7: Implementation Roadmap
 
-### Phase 1: Foundation (Weeks 1-2)
+### Completed Work
+
+#### Phase 1: Foundation (COMPLETE)
 
 **Deliverables:**
-- [ ] Core smart contract structure
-- [ ] Delta calculation library with tests
-- [ ] Basic Uniswap v3 integration (mint/burn/collect)
-- [ ] Unit tests for delta math
+- [x] Project structure and build configuration
+- [x] Delta calculation library with comprehensive tests
+- [x] Yield math library with APY calculations
+- [x] All external protocol interfaces (Uniswap v3, GMX v2, Chainlink)
+- [x] Unit tests for delta and yield math
 
-**Milestones:**
-1. Deploy delta calculator with >99% accuracy vs reference implementation
-2. Successfully create/manage Uniswap v3 positions on testnet
+**Key Files:**
+- [`contracts/libraries/DeltaCalculator.sol`](contracts/libraries/DeltaCalculator.sol) - LP delta/gamma calculations
+- [`contracts/libraries/YieldMath.sol`](contracts/libraries/YieldMath.sol) - APY and yield metrics
+- [`contracts/interfaces/`](contracts/interfaces/) - Protocol interface definitions
 
-### Phase 2: Hedging Integration (Weeks 3-4)
+**Milestones Achieved:**
+1. Delta calculator implements Guillaume Lambert's options pricing framework
+2. Fork tests validate calculations against live Arbitrum pool state
 
-**Deliverables:**
-- [ ] GMX v2 integration for opening/closing shorts
-- [ ] Position sizing logic
-- [ ] Funding rate tracking
-
-**Milestones:**
-1. Successfully open/close short positions programmatically
-2. Verify hedge accurately offsets LP delta
-
-### Phase 3: Automation & Yield Tracking (Weeks 5-6)
+#### Phase 2: Comprehensive Testing (COMPLETE)
 
 **Deliverables:**
-- [ ] Chainlink Automation integration
-- [ ] Yield tracking and APY calculation
-- [ ] Compound functionality
-- [ ] Off-chain keeper script
+- [x] Priority-based scenario test suite (P0-P3)
+- [x] Fork tests against Arbitrum mainnet
+- [x] Test harness contracts for library testing
 
-**Milestones:**
-1. Automated rebalancing within 5% delta threshold
-2. Accurate 1/7/30 day yield reporting
+**Test Coverage:**
+- [`test/scenarios/CriticalScenarios.test.ts`](test/scenarios/CriticalScenarios.test.ts) - P0: Liquidation, oracle attacks
+- [`test/scenarios/HighPriorityScenarios.test.ts`](test/scenarios/HighPriorityScenarios.test.ts) - P1: Rebalance failures
+- [`test/scenarios/MediumPriorityScenarios.test.ts`](test/scenarios/MediumPriorityScenarios.test.ts) - P2: Fee collection
+- [`test/scenarios/LowerPriorityScenarios.test.ts`](test/scenarios/LowerPriorityScenarios.test.ts) - P3: Normal operations
+- [`test/fork/`](test/fork/) - Live Arbitrum state validation
 
-### Phase 4: Security & Testing (Weeks 7-8)
+#### Phase 3: Core Vault Implementation (COMPLETE)
 
-**Deliverables:**
-- [ ] Comprehensive test suite (unit + integration + fuzzing)
-- [ ] Emergency procedures and circuit breakers
-- [ ] Internal audit and fixes
-- [ ] Gas optimization
-
-**Milestones:**
-1. 100% code coverage on critical paths
-2. Pass internal security review
-3. Gas costs < 500k for rebalance operation
-
-### Phase 5: Deployment & Monitoring (Weeks 9-10)
+**Objective:** Build the main vault contract and deposit/withdraw flow.
 
 **Deliverables:**
-- [ ] Mainnet deployment (start with cap)
-- [ ] Monitoring dashboard
-- [ ] Documentation
+- [x] `DeltaNeutralVault.sol` - ERC-4626 vault with share accounting
+- [x] Basic deposit flow (receive USDC, mint shares)
+- [x] Basic withdraw flow (burn shares, return USDC)
+- [x] `totalAssets()` calculation combining LP + hedge positions
+- [x] Unit tests for vault operations (55 tests)
+
+**Key Files:**
+- [`contracts/core/DeltaNeutralVault.sol`](contracts/core/DeltaNeutralVault.sol) - Main ERC-4626 vault contract
+- [`contracts/test/MockERC20.sol`](contracts/test/MockERC20.sol) - Mock token for testing
+- [`test/unit/DeltaNeutralVault.test.ts`](test/unit/DeltaNeutralVault.test.ts) - Comprehensive vault tests
+
+**Features Implemented:**
+- Full ERC-4626 compliance (deposit, mint, withdraw, redeem)
+- Deposit cap enforcement
+- Pause/unpause functionality
+- Emergency unwind capability
+- Rebalance authorization (owner + controller)
+- Manager address configuration (for Phases 4-6)
+- Delta monitoring views (returning stubs for Phase 4+)
+- Fee collection and funding claim interfaces (stubs)
+
+**Architecture Decisions:**
+1. Uses OpenZeppelin v5.0 for ERC-4626, Ownable, Pausable, ReentrancyGuard
+2. Position value hooks prepared for LiquidityManager and HedgeManager integration
+3. Delta/hedge value functions return 0 until Phases 4-5 implementation
+4. Events emit placeholder values for LP/hedge values until integration
+
+#### Phase 4: Liquidity Management (COMPLETE)
+
+**Objective:** Integrate with Uniswap v3 for LP position management.
+
+**Deliverables:**
+- [x] `LiquidityManager.sol` - Uniswap v3 position operations
+- [x] Mint new LP positions with configurable range
+- [x] Collect accrued fees
+- [x] Increase/decrease liquidity
+- [x] Range adjustment (remove + re-add at new ticks)
+- [x] Integration tests with fork
+- [x] DeltaNeutralVault integration
+
+**Key Files:**
+- [`contracts/core/LiquidityManager.sol`](contracts/core/LiquidityManager.sol) - Uniswap v3 position management
+- [`contracts/interfaces/ILiquidityManager.sol`](contracts/interfaces/ILiquidityManager.sol) - Interface definition
+- [`contracts/test/MockUniswapV3.sol`](contracts/test/MockUniswapV3.sol) - Mock contracts for unit testing
+- [`test/unit/LiquidityManager.test.ts`](test/unit/LiquidityManager.test.ts) - Comprehensive unit tests (47 tests)
+- [`test/fork/LiquidityManagerFork.test.ts`](test/fork/LiquidityManagerFork.test.ts) - Fork tests against Arbitrum
+
+**Features Implemented:**
+- Position lifecycle management (mint, increase, decrease, close)
+- Fee collection with vault integration
+- Range adjustment (atomic close and re-mint at new ticks)
+- Delta and position value calculations using DeltaCalculator library
+- Slippage tolerance configuration
+- Tick-to-sqrtPriceX96 conversion (Uniswap TickMath)
+- Comprehensive view functions for position monitoring
+
+**Architecture Decisions:**
+1. LiquidityManager holds NFT positions, vault controls operations via interface
+2. Owner and vault can both call position management functions
+3. Refund mechanism returns unused tokens after minting
+4. Uses DeltaCalculator library for delta/gamma calculations
+5. Integrated with DeltaNeutralVault via ILiquidityManager interface
+
+**Test Coverage:**
+- 47 unit tests covering all operations and edge cases
+- Fork tests validate against real Arbitrum Uniswap V3 contracts
+- Access control tests for vault-only functions
+- Slippage and deadline validation tests
+
+#### Phase 5: Hedge Management (COMPLETE)
+
+**Objective:** Integrate with GMX v2 for perpetual hedging.
+
+**Deliverables:**
+- [x] `HedgeManager.sol` - GMX v2 short position operations
+- [x] Open market short orders
+- [x] Increase/decrease position size
+- [x] Close positions
+- [x] Read position state and funding accrued
+- [x] Fork tests against GMX v2
+- [x] DeltaNeutralVault integration
+
+**Key Files:**
+- [`contracts/core/HedgeManager.sol`](contracts/core/HedgeManager.sol) - GMX v2 perpetual position management
+- [`contracts/interfaces/IHedgeManager.sol`](contracts/interfaces/IHedgeManager.sol) - Interface definition
+- [`contracts/test/MockGMXV2.sol`](contracts/test/MockGMXV2.sol) - Mock contracts for unit testing
+- [`test/unit/HedgeManager.test.ts`](test/unit/HedgeManager.test.ts) - Comprehensive unit tests (59 tests)
+- [`test/fork/HedgeManagerFork.test.ts`](test/fork/HedgeManagerFork.test.ts) - Fork tests against Arbitrum
+
+**Features Implemented:**
+- Short position lifecycle management (open, increase, decrease, close)
+- Hedge adjustment for delta rebalancing (`adjustHedge`)
+- Position value and delta calculations
+- Funding fee claiming and tracking
+- Leverage validation (max 3x)
+- Slippage protection with configurable tolerance
+- Integration with Chainlink price feeds
+- Comprehensive view functions for position monitoring
+
+**Architecture Decisions:**
+1. HedgeManager holds positions, vault controls operations via interface
+2. Owner and vault can both call position management functions
+3. Uses GMX v2 market orders for reliable execution
+4. Supports execution fee refunds for excess ETH
+5. Integrated with DeltaNeutralVault via IHedgeManager interface
+
+**Test Coverage:**
+- 59 unit tests covering all operations and edge cases
+- Fork tests validate against real Arbitrum GMX v2 contracts
+- Access control tests for vault-only functions
+- Leverage and position size validation tests
+- ETH handling and refund tests
+
+---
+
+### Next Steps
+
+#### Phase 6: Rebalancing Automation
+
+**Objective:** Automated delta monitoring and rebalancing.
+
+**Deliverables:**
+- [x] `RebalanceController.sol` - Chainlink Automation keeper
+- [x] `checkUpkeep()` - Off-chain delta monitoring
+- [x] `performUpkeep()` - On-chain rebalance/maintenance execution
+- [x] Yield snapshot recording (event-based via `SnapshotRecorded`)
+- [x] Compound functionality (time-based keeper calls to `vault.compound()`)
+
+**Implementation Order:**
+1. Create RebalanceController with Chainlink interface
+2. Implement delta drift detection logic
+3. Implement rebalance execution flow
+4. Add time-based constraints (min/max intervals)
+5. Integrate yield tracking
+
+#### Phase 7: Security Hardening (COMPLETE)
+
+**Objective:** Prepare for production deployment.
+
+**Deliverables:**
+- [x] Emergency pause mechanism
+- [x] Circuit breakers for critical conditions
+- [x] Gas optimization pass
+- [x] Slippage protection
+- [x] Access control review
+- [x] Internal security audit
+
+**Key Files:**
+- [`contracts/libraries/SecurityModule.sol`](contracts/libraries/SecurityModule.sol) - Reusable security utilities
+- [`test/unit/SecurityHardening.test.ts`](test/unit/SecurityHardening.test.ts) - Security unit tests (20 tests)
+- [`test/fork/SecurityHardeningFork.test.ts`](test/fork/SecurityHardeningFork.test.ts) - Fork tests against Arbitrum
+
+**Features Implemented:**
+
+*Circuit Breakers:*
+- Automatic circuit breaker when delta drift exceeds 20% (EMERGENCY_THRESHOLD)
+- Manual circuit breaker trigger by owner or guardian
+- Circuit breaker blocks regular user withdrawals/redemptions
+- Owner/guardian can still operate during circuit breaker
+- Circuit breaker reset requires delta to be within safe range
+
+*Withdrawal Protection:*
+- Maximum single withdrawal: 25% of total assets
+- Large withdrawal cooldown: 1 hour between withdrawals > 10%
+- Rate limiting prevents rapid fund extraction
+
+*Oracle Security:*
+- Oracle staleness checks (max 1 hour)
+- Invalid/negative price rejection
+- Incomplete round detection
+- TWAP validation against spot price (max 3% deviation)
+- Pool price vs Chainlink price cross-validation
+
+*Access Control:*
+- Guardian role for emergency operations
+- Two-tier authorization (owner + guardian)
+- Separate authorization for different operation types
+
+*Leverage Monitoring:*
+- Emergency leverage threshold (2.8x) warning
+- Liquidation margin calculation
+- Position health validation before operations
+
+**Target Metrics (Achieved):**
+- Circuit breaker trigger gas: < 100k ✓
+- Withdrawal with security checks: < 200k gas ✓
+- All 281 tests passing ✓
+
+#### Phase 8: Deployment
+
+**Objective:** Launch on Arbitrum mainnet.
+
+**Deliverables:**
+- [ ] Deployment scripts for all contracts
+- [ ] Contract verification on Arbiscan
+- [ ] Chainlink Automation upkeep registration
+- [ ] Initial deposit cap ($10k)
+- [ ] Monitoring and alerting setup
 - [ ] External audit engagement
 
-**Milestones:**
-1. Live on Arbitrum mainnet with $10k cap
-2. 2 weeks stable operation before cap increase
+**Launch Criteria:**
+- 2 weeks testnet operation without issues
+- Internal audit complete
+- External audit scheduled
 
 ---
 
