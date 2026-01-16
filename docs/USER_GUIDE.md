@@ -134,7 +134,7 @@ The vault implements protective withdrawal limits:
 | ----------------------------- | ------------------- | ------------------------------------------------------------ |
 | **Max Single Withdrawal**     | 25% of total assets | No single withdrawal can exceed 25% of vault TVL             |
 | **Large Withdrawal Cooldown** | 1 hour              | Withdrawals >10% of TVL require 1-hour cooldown between them |
-| **Circuit Breaker**           | Blocks withdrawals  | If triggered, only owner/guardian can withdraw               |
+| **Circuit Breaker**           | Blocks withdrawals  | If triggered, only owner/guardian can withdraw (can be disabled by owner) |
 
 ---
 
@@ -390,6 +390,8 @@ If the vault's delta exceeds safety thresholds, the circuit breaker activates. D
 - New deposits are paused
 - Regular users cannot withdraw
 - Owner/guardian can still execute emergency operations
+
+*Note: The owner can disable the circuit breaker enforcement to allow withdrawals even during an emergency.*
 
 ### How often is the vault rebalanced?
 
