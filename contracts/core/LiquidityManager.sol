@@ -15,11 +15,12 @@ import {
 import {DeltaCalculator} from "../libraries/DeltaCalculator.sol";
 import {SecurityModule} from "../libraries/SecurityModule.sol";
 import {IChainlinkPriceFeed} from "../interfaces/IChainlink.sol";
+import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
 
 /// @title Liquidity Manager
 /// @notice Manages Uniswap V3 LP positions for the delta-neutral vault
 /// @dev Handles minting, fee collection, liquidity adjustments, and range rebalancing
-contract LiquidityManager is Ownable, ReentrancyGuard {
+contract LiquidityManager is ILiquidityManager, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ============ Constants ============
@@ -476,17 +477,21 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
 
         (address token0, address token1) = _getTokenOrder();
 
+        // Use full balance for new position (allows for manual topping up or previous dust)
+        uint256 balance0 = IERC20(token0).balanceOf(address(this));
+        uint256 balance1 = IERC20(token1).balanceOf(address(this));
+
         // Approve tokens for new position
-        if (amount0 > 0) {
-            IERC20(token0).safeIncreaseAllowance(address(positionManager), amount0);
+        if (balance0 > 0) {
+            IERC20(token0).safeIncreaseAllowance(address(positionManager), balance0);
         }
-        if (amount1 > 0) {
-            IERC20(token1).safeIncreaseAllowance(address(positionManager), amount1);
+        if (balance1 > 0) {
+            IERC20(token1).safeIncreaseAllowance(address(positionManager), balance1);
         }
 
         // Calculate minimum amounts
-        uint256 amount0Min = (amount0 * (PRECISION - slippageTolerance)) / PRECISION;
-        uint256 amount1Min = (amount1 * (PRECISION - slippageTolerance)) / PRECISION;
+        uint256 amount0Min = (balance0 * (PRECISION - slippageTolerance)) / PRECISION;
+        uint256 amount1Min = (balance1 * (PRECISION - slippageTolerance)) / PRECISION;
 
         // Mint new position
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager
@@ -496,8 +501,8 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
                 fee: poolFee,
                 tickLower: newTickLower,
                 tickUpper: newTickUpper,
-                amount0Desired: amount0,
-                amount1Desired: amount1,
+                amount0Desired: balance0,
+                amount1Desired: balance1,
                 amount0Min: amount0Min,
                 amount1Min: amount1Min,
                 recipient: address(this),
@@ -515,7 +520,7 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
         liquidity = newLiquidity;
 
         // Refund any unused tokens to vault
-        _refundUnusedTokens(token0, token1, amount0 - actualAmount0, amount1 - actualAmount1);
+        _refundUnusedTokens(token0, token1, balance0 - actualAmount0, balance1 - actualAmount1);
 
         emit RangeAdjusted(
             oldTokenId,
@@ -913,5 +918,38 @@ contract LiquidityManager is Ownable, ReentrancyGuard {
         }
 
         return deviation <= MAX_TWAP_DEVIATION;
+    }
+
+    /// @inheritdoc ILiquidityManager
+    function getRebalanceTicks(
+        int24 widthMultiplier
+    ) external view returns (int24 newTickLower, int24 newTickUpper) {
+        address pool = getPool();
+        (, int24 currentTick, , , , , ) = IUniswapV3Pool(pool).slot0();
+        int24 tickSpacing = IUniswapV3Pool(pool).tickSpacing();
+
+        // Round current tick to nearest tickSpacing
+        int24 baseTick = (currentTick / tickSpacing) * tickSpacing;
+        if (currentTick < 0 && currentTick % tickSpacing != 0) {
+            baseTick -= tickSpacing;
+        }
+
+        // Calculate range
+        // widthMultiplier is interpreted as number of tickSpacings on each side
+        int24 halfWidth = widthMultiplier * tickSpacing;
+
+        newTickLower = baseTick - halfWidth;
+        newTickUpper = baseTick + halfWidth;
+    }
+
+    /// @inheritdoc ILiquidityManager
+    function getOraclePrice() external view returns (uint256 price) {
+        if (address(priceFeed) == address(0)) revert ZeroAddress();
+
+        (, int256 answer, , , ) = priceFeed.latestRoundData();
+        if (answer <= 0) revert("Invalid oracle price");
+
+        // Convert 8 decimals (Chainlink) to 18 decimals
+        return uint256(answer) * 1e10;
     }
 }

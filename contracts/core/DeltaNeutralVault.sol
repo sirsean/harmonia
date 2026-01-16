@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -83,6 +84,9 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     /// @notice Guardian address for emergency operations
     address public guardian;
 
+    /// @notice Multiplier for tick range width during rebalance (default 20)
+    int24 public rangeWidthMultiplier = 20;
+
     // ============ Events ============
 
     /// @notice Emitted when capital is deployed to strategy
@@ -124,6 +128,9 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Emitted when large withdrawal cooldown is enforced
     event LargeWithdrawalCooldownEnforced(uint256 requestedAmount, uint256 cooldownEnd);
+
+    /// @notice Emitted when range width multiplier is updated
+    event RangeWidthMultiplierUpdated(int24 oldMultiplier, int24 newMultiplier);
 
     // ============ Errors ============
 
@@ -437,7 +444,24 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         liquidityManager = _liquidityManager;
         hedgeManager = _hedgeManager;
         rebalanceController = _rebalanceController;
+
+        // Approve managers to spend asset
+        if (_liquidityManager != address(0)) {
+            IERC20(asset()).safeIncreaseAllowance(_liquidityManager, type(uint256).max);
+        }
+        if (_hedgeManager != address(0)) {
+            IERC20(asset()).safeIncreaseAllowance(_hedgeManager, type(uint256).max);
+        }
+
         emit ManagersUpdated(_liquidityManager, _hedgeManager, _rebalanceController);
+    }
+
+    /// @notice Set the range width multiplier for rebalancing
+    /// @param _multiplier New multiplier (e.g. 20)
+    function setRangeWidthMultiplier(int24 _multiplier) external onlyOwner {
+        int24 old = rangeWidthMultiplier;
+        rangeWidthMultiplier = _multiplier;
+        emit RangeWidthMultiplierUpdated(old, _multiplier);
     }
 
     /// @notice Pause the vault (emergency)
@@ -548,12 +572,76 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     }
 
     /// @notice Execute rebalance
-    /// @dev To be implemented in Phase 5+6
+    /// @dev Handles both out-of-range recovery and delta rebalancing
     function _executeRebalance(uint256 targetHedgeSize) internal {
-        // Phase 3: No-op
-        // Phase 5+6: Adjust hedge position to match LP delta
-        (targetHedgeSize);
+        // 1. Check if LP position is in range and adjust if needed
+        if (liquidityManager != address(0)) {
+            bool inRange = ILiquidityManager(liquidityManager).isInRange();
+
+            if (!inRange) {
+                // Determine new ticks
+                (int24 newTickLower, int24 newTickUpper) = ILiquidityManager(liquidityManager)
+                    .getRebalanceTicks(rangeWidthMultiplier);
+
+                // Adjust range (close current, mint new)
+                ILiquidityManager(liquidityManager).adjustRange(
+                    newTickLower,
+                    newTickUpper,
+                    block.timestamp
+                );
+            }
+        }
+
+        // 2. Adjust hedge to match new LP delta
+        // If targetHedgeSize is provided (non-zero), use it. Otherwise calculate.
+        uint256 hedgeTarget = targetHedgeSize;
+
+        if (hedgeTarget == 0 && liquidityManager != address(0) && hedgeManager != address(0)) {
+            int256 lpDelta = ILiquidityManager(liquidityManager).getPositionDelta();
+
+            // If LP delta is positive (long exposure), we need to short
+            if (lpDelta > 0) {
+                uint256 price = ILiquidityManager(liquidityManager).getOraclePrice();
+                uint256 deltaAbs = uint256(lpDelta);
+                address baseToken = ILiquidityManager(liquidityManager).baseToken();
+                uint8 decimals = IERC20Metadata(baseToken).decimals();
+
+                if (decimals <= 30) {
+                    // Calculate adjustment to reach 30 decimals
+                    // ValueUSD = (TokenAmount * Price) / 10^decimals
+                    // Price is 18 decimals
+                    // SizeUSD = (TokenAmount * Price * 10^30) / (10^decimals * 10^18)
+                    // SizeUSD = (TokenAmount * Price * 10^12) / 10^decimals
+
+                    if (decimals <= 12) {
+                        hedgeTarget = deltaAbs * price * (10 ** (12 - decimals));
+                    } else {
+                        hedgeTarget = (deltaAbs * price) / (10 ** (decimals - 12));
+                    }
+                }
+            } else {
+                // If LP delta is negative or zero, we don't want a short hedge
+                hedgeTarget = 0;
+            }
+        }
+
+        if (hedgeManager != address(0)) {
+            uint256 execFee = IHedgeManager(hedgeManager).getExecutionFee();
+            // Ensure we have enough ETH
+            if (address(this).balance >= execFee) {
+                IHedgeManager(hedgeManager).adjustHedge{value: execFee}(hedgeTarget);
+            } else {
+                // If not enough ETH, try without value (will fail if fee > 0, but allows testing if fee is 0)
+                // Or revert? Reverting is safer to notice the issue.
+                // However, for robustness, we might want to wrap WETH if we have it?
+                // For now, revert if insufficient ETH for fee.
+                revert("Insufficient ETH for execution fee");
+            }
+        }
     }
+
+    /// @notice Allow vault to receive ETH for execution fees
+    receive() external payable {}
 
     /// @notice Collect LP fees
     /// @dev Calls LiquidityManager to collect accumulated fees

@@ -113,6 +113,15 @@ contract MockExchangeRouter is IExchangeRouter {
             }
         }
 
+        // Update DataStore so HedgeManager can read it
+        bytes32 sizeUsdKey = keccak256(abi.encode(positionKey, "sizeInUsd"));
+        bytes32 sizeTokensKey = keccak256(abi.encode(positionKey, "sizeInTokens"));
+        bytes32 collateralKey = keccak256(abi.encode(positionKey, "collateralAmount"));
+
+        IDataStore(dataStore).setUint(sizeUsdKey, position.sizeInUsd);
+        IDataStore(dataStore).setUint(sizeTokensKey, position.sizeInTokens);
+        IDataStore(dataStore).setUint(collateralKey, position.collateralAmount);
+
         orderExecuted[orderKey] = true;
 
         emit PositionUpdated(positionKey, position.sizeInUsd, position.collateralAmount);
