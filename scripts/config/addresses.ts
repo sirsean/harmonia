@@ -56,7 +56,7 @@ export const ARBITRUM_MAINNET: NetworkAddresses = {
   uniswapV3Factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
   uniswapV3PositionManager: "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
   uniswapV3SwapRouter: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-  uniswapV3EthUsdcPool: "0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443", // 0.05% fee tier
+  uniswapV3EthUsdcPool: "0xC6962004f452bE9203591991D15f6b388e09E8D0", // 0.05% fee tier, native USDC
 
   // GMX V2 - https://docs.gmx.io/docs/api/contracts-v2
   gmxExchangeRouter: "0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8",

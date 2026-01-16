@@ -6,7 +6,11 @@
  */
 
 import { ethers } from "ethers";
-import { MarketConfig, MarketValidationResult } from "./types";
+import {
+  MarketConfig,
+  MarketValidationResult,
+  sqrtPriceX96ToPrice,
+} from "./types";
 
 // =============================================================================
 // ABI Fragments
@@ -497,23 +501,16 @@ export class MarketValidator {
         this.provider
       );
       const slot0 = await pool.slot0();
-      const sqrtPriceX96 = slot0[0];
+      const sqrtPriceX96 = slot0[0] as bigint;
 
-      // Calculate pool price
-      const Q96 = BigInt(2) ** BigInt(96);
-      const sqrtPrice = Number(sqrtPriceX96) / Number(Q96);
-      const poolPrice = sqrtPrice * sqrtPrice;
-
-      // Adjust for decimals
-      const decimalDiff =
-        config.uniswapPool.token0.decimals - config.uniswapPool.token1.decimals;
-      let uniswapPrice: number;
-
-      if (config.baseTokenIsToken0) {
-        uniswapPrice = poolPrice / Math.pow(10, decimalDiff);
-      } else {
-        uniswapPrice = Math.pow(10, decimalDiff) / poolPrice;
-      }
+      // Convert sqrtPriceX96 to a human-readable base token price using
+      // the shared helper to keep logic consistent with the rest of the codebase.
+      const uniswapPrice = sqrtPriceX96ToPrice(
+        sqrtPriceX96,
+        config.uniswapPool.token0.decimals,
+        config.uniswapPool.token1.decimals,
+        config.baseTokenIsToken0
+      );
 
       // Calculate deviation
       const deviation =
