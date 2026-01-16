@@ -114,7 +114,7 @@ export const ETH_MARKET: MarketConfig = {
   quoteToken: ARBITRUM_TOKENS.USDC,
 
   uniswapPool: {
-    address: "0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443",
+    address: "0xC6962004f452bE9203591991D15f6b388e09E8D0",
     feeTier: 500, // 0.05%
     tickSpacing: 10,
     token0: ARBITRUM_TOKENS.WETH, // WETH < USDC by address
