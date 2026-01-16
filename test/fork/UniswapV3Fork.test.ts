@@ -48,7 +48,7 @@ describeFork("Uniswap V3 Fork Tests", function () {
     [signer] = await ethers.getSigners();
 
     // Connect to Uniswap V3 ETH/USDC pool
-    uniswapPool = new Contract(ARBITRUM_ADDRESSES.UNISWAP_V3_ETH_USDC_005_POOL, POOL_ABI, signer);
+    uniswapPool = new Contract(ARBITRUM_ADDRESSES.UNISWAP_V3_WETH_USDC_005_POOL, POOL_ABI, signer);
 
     // Connect to Position Manager
     positionManager = new Contract(
@@ -58,9 +58,9 @@ describeFork("Uniswap V3 Fork Tests", function () {
     );
 
     // Connect to tokens
-    // Note: This pool uses USDC.e (bridged), not native USDC
+    // Note: This pool uses native USDC
     weth = new Contract(ARBITRUM_ADDRESSES.WETH, ERC20_ABI, signer);
-    usdc = new Contract(ARBITRUM_ADDRESSES.USDC_E, ERC20_ABI, signer);
+    usdc = new Contract(ARBITRUM_ADDRESSES.USDC, ERC20_ABI, signer);
   });
 
   describe("Pool State Reading", function () {
@@ -90,10 +90,10 @@ describeFork("Uniswap V3 Fork Tests", function () {
       console.log("Token0:", token0);
       console.log("Token1:", token1);
 
-      // One should be WETH and one should be USDC.e (bridged)
+      // One should be WETH and one should be native USDC
       const tokens = [token0.toLowerCase(), token1.toLowerCase()];
       expect(tokens).to.include(ARBITRUM_ADDRESSES.WETH.toLowerCase());
-      expect(tokens).to.include(ARBITRUM_ADDRESSES.USDC_E.toLowerCase());
+      expect(tokens).to.include(ARBITRUM_ADDRESSES.USDC.toLowerCase());
     });
 
     it("should calculate approximate ETH price from sqrtPriceX96", async function () {
