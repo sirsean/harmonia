@@ -1,10 +1,27 @@
 /**
  * Network-specific contract addresses for Harmonia deployment
  *
- * All addresses are validated mainnet contracts that have been audited
- * and are actively used by the respective protocols.
+ * This file provides backward-compatible exports and re-exports from
+ * the market registry. For multi-market support, use src/markets/registry.ts.
+ *
+ * @see src/markets/registry.ts for market-specific configurations
  */
 
+// Re-export from market registry for convenience
+export {
+  ARBITRUM_PROTOCOLS,
+  ARBITRUM_TOKENS,
+  MARKET_REGISTRY,
+  getMarketConfig,
+  getAvailableMarkets,
+} from "../../src/markets/registry";
+
+export type { MarketConfig, TokenConfig } from "../../src/markets/types";
+
+/**
+ * Legacy NetworkAddresses interface
+ * @deprecated Use MarketConfig from src/markets/registry.ts for multi-market support
+ */
 export interface NetworkAddresses {
   // Uniswap V3
   uniswapV3Factory: string;
@@ -30,15 +47,16 @@ export interface NetworkAddresses {
 }
 
 /**
- * Arbitrum Mainnet addresses
+ * Arbitrum Mainnet addresses (ETH market)
  * Chain ID: 42161
+ * @deprecated Use getMarketConfig('ETH') from src/markets/registry.ts
  */
 export const ARBITRUM_MAINNET: NetworkAddresses = {
   // Uniswap V3 - https://docs.uniswap.org/contracts/v3/reference/deployments
   uniswapV3Factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984",
   uniswapV3PositionManager: "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
   uniswapV3SwapRouter: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-  uniswapV3EthUsdcPool: "0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443", // 0.05% fee tier
+  uniswapV3EthUsdcPool: "0xC6962004f452bE9203591991D15f6b388e09E8D0", // 0.05% fee tier, native USDC
 
   // GMX V2 - https://docs.gmx.io/docs/api/contracts-v2
   gmxExchangeRouter: "0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8",
@@ -91,8 +109,9 @@ export const ARBITRUM_SEPOLIA: NetworkAddresses = {
 
 /**
  * Get addresses for a specific network
+ * @deprecated Use getMarketConfig(marketId) from src/markets/registry.ts
  * @param chainId Network chain ID
- * @returns NetworkAddresses for the specified network
+ * @returns NetworkAddresses for the specified network (ETH market)
  */
 export function getNetworkAddresses(chainId: number): NetworkAddresses {
   switch (chainId) {
@@ -125,6 +144,7 @@ export interface DeploymentConfig {
 
 /**
  * Default deployment configuration for mainnet
+ * @deprecated Configure per-market in deploy-all.ts
  */
 export const DEFAULT_DEPLOYMENT_CONFIG: Partial<DeploymentConfig> = {
   vaultName: "Harmonia Delta-Neutral Vault",

@@ -9,21 +9,26 @@
  * 5. Configure vault with all manager addresses
  *
  * Usage:
- *   npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
+ *   MARKET=ETH npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
+ *   MARKET=BTC npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
+ *   MARKET=ARB npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
  *
  * Required environment variables:
+ *   MARKET - Market to deploy (ETH, BTC, ARB, LINK)
  *   PRIVATE_KEY - Deployer private key
  *   ARBISCAN_API_KEY - For contract verification (optional)
+ *   DRY_RUN - Set to "true" to validate without deploying (optional)
  */
 
-import { ethers, network, run } from "hardhat";
+import { ethers, run } from "hardhat";
 import {
-  getNetworkAddresses,
-  DEFAULT_DEPLOYMENT_CONFIG,
-  CONSTANTS,
-  type DeploymentConfig,
-  type NetworkAddresses,
-} from "../config/addresses";
+  getMarketConfig,
+  getAvailableMarkets,
+  ARBITRUM_PROTOCOLS,
+  MarketConfig,
+} from "../../src/markets/registry";
+import { MarketValidator } from "../../src/markets/validator";
+import { CONSTANTS } from "../config/addresses";
 
 interface DeployedContracts {
   vault: string;
@@ -32,10 +37,19 @@ interface DeployedContracts {
   rebalanceController: string;
 }
 
+interface DeploymentConfig {
+  vaultName: string;
+  vaultSymbol: string;
+  initialDepositCap: bigint;
+  poolFee: number;
+  owner: string;
+  guardian: string;
+}
+
 interface DeploymentResult {
   contracts: DeployedContracts;
   config: DeploymentConfig;
-  networkAddresses: NetworkAddresses;
+  market: MarketConfig;
   deployer: string;
   chainId: number;
   timestamp: number;
@@ -45,9 +59,31 @@ interface DeploymentResult {
  * Main deployment function
  */
 async function main(): Promise<DeploymentResult> {
+  const marketId = process.env.MARKET;
+  const dryRun = process.env.DRY_RUN === "true";
+
   console.log("\n" + "=".repeat(60));
   console.log("HARMONIA PROTOCOL DEPLOYMENT");
   console.log("=".repeat(60) + "\n");
+
+  // Validate market selection
+  if (!marketId) {
+    console.error("Error: MARKET environment variable required");
+    console.log(`\nAvailable markets: ${getAvailableMarkets().join(", ")}`);
+    console.log("\nUsage: MARKET=ETH npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum");
+    process.exit(1);
+  }
+
+  const market = getMarketConfig(marketId);
+  if (!market) {
+    console.error(`Error: Unknown market "${marketId}"`);
+    console.log(`\nAvailable markets: ${getAvailableMarkets().join(", ")}`);
+    process.exit(1);
+  }
+
+  console.log(`Market: ${market.name} (${market.id})`);
+  console.log(`Mode: ${dryRun ? "DRY RUN (validation only)" : "LIVE DEPLOYMENT"}`);
+  console.log("");
 
   // Get deployer account
   const [deployer] = await ethers.getSigners();
@@ -63,16 +99,18 @@ async function main(): Promise<DeploymentResult> {
   );
   console.log("");
 
-  // Get network-specific addresses
-  const addresses = getNetworkAddresses(chainId);
+  // Validate chain ID matches market
+  if (chainId !== market.chainId && chainId !== 31337) {
+    console.error(`Error: Network mismatch. Market expects chainId ${market.chainId}, got ${chainId}`);
+    process.exit(1);
+  }
 
   // Build deployment config
   const config: DeploymentConfig = {
-    vaultName: DEFAULT_DEPLOYMENT_CONFIG.vaultName || "Harmonia Delta-Neutral Vault",
-    vaultSymbol: DEFAULT_DEPLOYMENT_CONFIG.vaultSymbol || "hDNV",
-    initialDepositCap:
-      DEFAULT_DEPLOYMENT_CONFIG.initialDepositCap || BigInt(10_000) * BigInt(10 ** 6),
-    poolFee: DEFAULT_DEPLOYMENT_CONFIG.poolFee || 500,
+    vaultName: `Harmonia ${market.id} Vault`,
+    vaultSymbol: `h${market.id}`,
+    initialDepositCap: BigInt(10_000) * BigInt(10 ** market.quoteToken.decimals), // $10k initial cap
+    poolFee: market.uniswapPool.feeTier,
     owner: deployerAddress,
     guardian: deployerAddress, // Set guardian same as owner initially
   };
@@ -80,16 +118,40 @@ async function main(): Promise<DeploymentResult> {
   console.log("Deployment Configuration:");
   console.log("  Vault Name:", config.vaultName);
   console.log("  Vault Symbol:", config.vaultSymbol);
-  console.log("  Initial Deposit Cap:", ethers.formatUnits(config.initialDepositCap, 6), "USDC");
+  console.log("  Initial Deposit Cap:", ethers.formatUnits(config.initialDepositCap, market.quoteToken.decimals), market.quoteToken.symbol);
   console.log("  Pool Fee:", config.poolFee / 10000, "%");
   console.log("  Owner:", config.owner);
   console.log("  Guardian:", config.guardian);
   console.log("");
 
-  // Validate addresses
-  console.log("Validating external contract addresses...");
-  await validateAddresses(addresses);
-  console.log("All addresses validated.\n");
+  console.log("Market Configuration:");
+  console.log("  Base Token:", market.baseToken.symbol, `(${market.baseToken.address})`);
+  console.log("  Quote Token:", market.quoteToken.symbol, `(${market.quoteToken.address})`);
+  console.log("  Uniswap Pool:", market.uniswapPool.address);
+  console.log("  GMX Market:", market.gmxMarket.marketAddress);
+  console.log("  Chainlink Feed:", market.chainlinkFeed.address);
+  console.log("");
+
+  // Validate market on-chain
+  console.log("Validating market configuration on-chain...");
+  const validator = new MarketValidator(ethers.provider);
+  const validationResult = await validator.validateMarket(market);
+
+  if (!validationResult.isValid) {
+    console.error("\n✗ Market validation failed!");
+    console.error("Errors:", validationResult.errors);
+    process.exit(1);
+  }
+  console.log("✓ Market validation passed.\n");
+
+  // If dry run, stop here
+  if (dryRun) {
+    console.log("=".repeat(60));
+    console.log("DRY RUN COMPLETE - No contracts deployed");
+    console.log("=".repeat(60));
+    console.log("\nTo deploy for real, run without DRY_RUN=true");
+    process.exit(0);
+  }
 
   // Deploy contracts
   const contracts: DeployedContracts = {
@@ -101,21 +163,21 @@ async function main(): Promise<DeploymentResult> {
 
   // Step 1: Deploy DeltaNeutralVault
   console.log("Step 1/5: Deploying DeltaNeutralVault...");
-  const vault = await deployVault(addresses.usdc, config);
+  const vault = await deployVault(market.quoteToken.address, config);
   contracts.vault = await vault.getAddress();
   console.log("  Vault deployed at:", contracts.vault);
   console.log("");
 
   // Step 2: Deploy LiquidityManager
   console.log("Step 2/5: Deploying LiquidityManager...");
-  const liquidityManager = await deployLiquidityManager(addresses, config);
+  const liquidityManager = await deployLiquidityManager(market, config);
   contracts.liquidityManager = await liquidityManager.getAddress();
   console.log("  LiquidityManager deployed at:", contracts.liquidityManager);
   console.log("");
 
   // Step 3: Deploy HedgeManager
   console.log("Step 3/5: Deploying HedgeManager...");
-  const hedgeManager = await deployHedgeManager(addresses, config);
+  const hedgeManager = await deployHedgeManager(market, config);
   contracts.hedgeManager = await hedgeManager.getAddress();
   console.log("  HedgeManager deployed at:", contracts.hedgeManager);
   console.log("");
@@ -136,7 +198,7 @@ async function main(): Promise<DeploymentResult> {
   // Verify contracts if not on local network
   if (chainId !== 31337 && process.env.ARBISCAN_API_KEY) {
     console.log("Verifying contracts on Arbiscan...");
-    await verifyContracts(contracts, addresses, config);
+    await verifyContracts(contracts, market, config);
     console.log("  Verification complete.");
     console.log("");
   }
@@ -145,7 +207,7 @@ async function main(): Promise<DeploymentResult> {
   const result: DeploymentResult = {
     contracts,
     config,
-    networkAddresses: addresses,
+    market,
     deployer: deployerAddress,
     chainId,
     timestamp: Math.floor(Date.now() / 1000),
@@ -157,40 +219,13 @@ async function main(): Promise<DeploymentResult> {
 }
 
 /**
- * Validate that all required external addresses have code
- */
-async function validateAddresses(addresses: NetworkAddresses): Promise<void> {
-  const checks = [
-    { name: "USDC", address: addresses.usdc },
-    { name: "WETH", address: addresses.weth },
-    { name: "Uniswap V3 Factory", address: addresses.uniswapV3Factory },
-    {
-      name: "Uniswap V3 Position Manager",
-      address: addresses.uniswapV3PositionManager,
-    },
-    { name: "Uniswap V3 Swap Router", address: addresses.uniswapV3SwapRouter },
-    { name: "GMX Exchange Router", address: addresses.gmxExchangeRouter },
-    { name: "GMX ETH/USD Market", address: addresses.gmxEthUsdMarket },
-    { name: "Chainlink ETH/USD Feed", address: addresses.chainlinkEthUsdFeed },
-  ];
-
-  for (const check of checks) {
-    const code = await ethers.provider.getCode(check.address);
-    if (code === "0x") {
-      throw new Error(`No contract found at ${check.name} address: ${check.address}`);
-    }
-    console.log(`  ✓ ${check.name}: ${check.address}`);
-  }
-}
-
-/**
  * Deploy DeltaNeutralVault
  */
-async function deployVault(usdcAddress: string, config: DeploymentConfig) {
+async function deployVault(quoteTokenAddress: string, config: DeploymentConfig) {
   const VaultFactory = await ethers.getContractFactory("DeltaNeutralVault");
 
   const vault = await VaultFactory.deploy(
-    usdcAddress,
+    quoteTokenAddress,
     config.vaultName,
     config.vaultSymbol,
     config.owner
@@ -203,15 +238,15 @@ async function deployVault(usdcAddress: string, config: DeploymentConfig) {
 /**
  * Deploy LiquidityManager
  */
-async function deployLiquidityManager(addresses: NetworkAddresses, config: DeploymentConfig) {
+async function deployLiquidityManager(market: MarketConfig, config: DeploymentConfig) {
   const LiquidityManagerFactory = await ethers.getContractFactory("LiquidityManager");
 
   const liquidityManager = await LiquidityManagerFactory.deploy(
-    addresses.uniswapV3PositionManager,
-    addresses.uniswapV3SwapRouter,
-    addresses.uniswapV3Factory,
-    addresses.weth,
-    addresses.usdc,
+    ARBITRUM_PROTOCOLS.UNISWAP_V3_POSITION_MANAGER,
+    ARBITRUM_PROTOCOLS.UNISWAP_V3_SWAP_ROUTER,
+    ARBITRUM_PROTOCOLS.UNISWAP_V3_FACTORY,
+    market.baseToken.address,
+    market.quoteToken.address,
     config.poolFee,
     config.owner
   );
@@ -223,15 +258,15 @@ async function deployLiquidityManager(addresses: NetworkAddresses, config: Deplo
 /**
  * Deploy HedgeManager
  */
-async function deployHedgeManager(addresses: NetworkAddresses, config: DeploymentConfig) {
+async function deployHedgeManager(market: MarketConfig, config: DeploymentConfig) {
   const HedgeManagerFactory = await ethers.getContractFactory("HedgeManager");
 
   const hedgeManager = await HedgeManagerFactory.deploy(
-    addresses.gmxExchangeRouter,
-    addresses.gmxEthUsdMarket,
-    addresses.usdc,
-    addresses.weth,
-    addresses.chainlinkEthUsdFeed,
+    ARBITRUM_PROTOCOLS.GMX_EXCHANGE_ROUTER,
+    market.gmxMarket.marketAddress,
+    market.quoteToken.address,
+    market.baseToken.address,
+    market.chainlinkFeed.address,
     config.owner
   );
 
@@ -300,24 +335,24 @@ async function configureContracts(
  */
 async function verifyContracts(
   contracts: DeployedContracts,
-  addresses: NetworkAddresses,
+  market: MarketConfig,
   config: DeploymentConfig
 ): Promise<void> {
   const verifications = [
     {
       name: "DeltaNeutralVault",
       address: contracts.vault,
-      args: [addresses.usdc, config.vaultName, config.vaultSymbol, config.owner],
+      args: [market.quoteToken.address, config.vaultName, config.vaultSymbol, config.owner],
     },
     {
       name: "LiquidityManager",
       address: contracts.liquidityManager,
       args: [
-        addresses.uniswapV3PositionManager,
-        addresses.uniswapV3SwapRouter,
-        addresses.uniswapV3Factory,
-        addresses.weth,
-        addresses.usdc,
+        ARBITRUM_PROTOCOLS.UNISWAP_V3_POSITION_MANAGER,
+        ARBITRUM_PROTOCOLS.UNISWAP_V3_SWAP_ROUTER,
+        ARBITRUM_PROTOCOLS.UNISWAP_V3_FACTORY,
+        market.baseToken.address,
+        market.quoteToken.address,
         config.poolFee,
         config.owner,
       ],
@@ -326,11 +361,11 @@ async function verifyContracts(
       name: "HedgeManager",
       address: contracts.hedgeManager,
       args: [
-        addresses.gmxExchangeRouter,
-        addresses.gmxEthUsdMarket,
-        addresses.usdc,
-        addresses.weth,
-        addresses.chainlinkEthUsdFeed,
+        ARBITRUM_PROTOCOLS.GMX_EXCHANGE_ROUTER,
+        market.gmxMarket.marketAddress,
+        market.quoteToken.address,
+        market.baseToken.address,
+        market.chainlinkFeed.address,
         config.owner,
       ],
     },
@@ -366,6 +401,9 @@ function printDeploymentSummary(result: DeploymentResult): void {
   console.log("DEPLOYMENT COMPLETE");
   console.log("=".repeat(60) + "\n");
 
+  console.log("Market:", result.market.name);
+  console.log("");
+
   console.log("Deployed Contracts:");
   console.log("  DeltaNeutralVault:    ", result.contracts.vault);
   console.log("  LiquidityManager:     ", result.contracts.liquidityManager);
@@ -373,13 +411,21 @@ function printDeploymentSummary(result: DeploymentResult): void {
   console.log("  RebalanceController:  ", result.contracts.rebalanceController);
   console.log("");
 
+  console.log("Market Addresses Used:");
+  console.log("  Base Token:           ", result.market.baseToken.symbol, `(${result.market.baseToken.address})`);
+  console.log("  Quote Token:          ", result.market.quoteToken.symbol, `(${result.market.quoteToken.address})`);
+  console.log("  Uniswap Pool:         ", result.market.uniswapPool.address);
+  console.log("  GMX Market:           ", result.market.gmxMarket.marketAddress);
+  console.log("  Chainlink Feed:       ", result.market.chainlinkFeed.address);
+  console.log("");
+
   console.log("Configuration:");
   console.log("  Owner:                ", result.config.owner);
   console.log("  Guardian:             ", result.config.guardian);
   console.log(
     "  Deposit Cap:          ",
-    ethers.formatUnits(result.config.initialDepositCap, 6),
-    "USDC"
+    ethers.formatUnits(result.config.initialDepositCap, result.market.quoteToken.decimals),
+    result.market.quoteToken.symbol
   );
   console.log("");
 
@@ -414,7 +460,7 @@ function bigIntReplacer(_key: string, value: unknown): unknown {
 
 // Execute deployment
 main()
-  .then((result) => {
+  .then(() => {
     console.log("\nDeployment successful!");
     process.exit(0);
   })
