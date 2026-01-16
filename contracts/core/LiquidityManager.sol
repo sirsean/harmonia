@@ -467,7 +467,7 @@ contract LiquidityManager is ILiquidityManager, Ownable, ReentrancyGuard {
         int24 oldTickUpper = tickUpper;
 
         // Close current position and collect all tokens
-        (uint256 amount0, uint256 amount1) = _closePosition();
+        _closePosition();
 
         // Reset state
         tokenId = 0;
