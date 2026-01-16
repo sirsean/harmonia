@@ -209,10 +209,16 @@ library DeltaCalculator {
         uint160 sqrtPriceUpperX96,
         uint128 liquidity
     ) private pure returns (uint256 amount0) {
-        uint256 numerator = uint256(liquidity) * uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96);
-        uint256 denominator = mulDiv(uint256(sqrtPriceUpperX96), uint256(sqrtPriceLowerX96), Q96);
+        // Use Uniswap's formula: amount0 = L * 2^96 * (Pb - Pa) / Pb / Pa
+        // We use mulDiv to handle the intermediate multiplication by 2^96
 
-        amount0 = mulDiv(numerator, Q96, denominator);
+        uint256 numerator = mulDiv(
+            uint256(liquidity) << 96,
+            uint256(sqrtPriceUpperX96 - sqrtPriceLowerX96),
+            uint256(sqrtPriceUpperX96)
+        );
+
+        amount0 = numerator / uint256(sqrtPriceLowerX96);
     }
 
     /// @notice Helper to calculate amount1 for a given liquidity and price range
