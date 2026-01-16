@@ -122,6 +122,37 @@ await vault.setDepositCap(0);
 
 ---
 
+### setCircuitBreakerEnabled
+
+Enables or disables the circuit breaker enforcement mechanism.
+
+```solidity
+function setCircuitBreakerEnabled(bool _enabled) external onlyOwner
+```
+
+**Usage:**
+
+```javascript
+// Disable circuit breaker (allow withdrawals during emergency)
+await vault.setCircuitBreakerEnabled(false);
+
+// Enable circuit breaker (default)
+await vault.setCircuitBreakerEnabled(true);
+```
+
+**When to Use:**
+
+- Allow users to exit during an emergency without owner intervention
+- Disable safety checks for testing/debugging
+- Permanently remove "training wheels" when protocol matures
+
+**Risks:**
+
+- Disabling removes a critical safety layer
+- Should only be disabled if you want to prioritize liquidity over solvency protection
+
+---
+
 ### setGuardian
 
 Assigns the guardian role for emergency operations.
@@ -584,11 +615,12 @@ These values are immutable and cannot be changed:
 
 ### DeltaNeutralVault (Owner)
 
-| Function                | Purpose                     |
-| ----------------------- | --------------------------- |
-| `setManagers()`         | Configure manager contracts |
-| `setDepositCap()`       | Set TVL limit               |
-| `setGuardian()`         | Assign guardian role        |
+| Function                     | Purpose                     |
+| ---------------------------- | --------------------------- |
+| `setManagers()`              | Configure manager contracts |
+| `setDepositCap()`            | Set TVL limit               |
+| `setCircuitBreakerEnabled()` | Toggle circuit breaker      |
+| `setGuardian()`              | Assign guardian role        |
 | `pause()`               | Halt deposits               |
 | `unpause()`             | Resume deposits             |
 | `resetCircuitBreaker()` | Reset after emergency       |

@@ -77,6 +77,9 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     /// @notice Timestamp of last large withdrawal
     uint256 public lastLargeWithdrawalTime;
 
+    /// @notice Circuit breaker: is the mechanism enabled
+    bool public circuitBreakerEnabled = true;
+
     /// @notice Guardian address for emergency operations
     address public guardian;
 
@@ -99,6 +102,9 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Emitted when deposit cap is updated
     event DepositCapUpdated(uint256 oldCap, uint256 newCap);
+
+    /// @notice Emitted when circuit breaker enabled status is updated
+    event CircuitBreakerEnabled(bool enabled);
 
     /// @notice Emitted when managers are updated
     event ManagersUpdated(
@@ -246,7 +252,13 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         if (assets == 0) revert ZeroAmount();
 
         // Circuit breaker check - block new withdrawals during emergency (except owner/guardian)
-        if (circuitBreakerTriggered && msg.sender != owner() && msg.sender != guardian) {
+        // Circuit breaker check - block new withdrawals during emergency (except owner/guardian)
+        if (
+            circuitBreakerEnabled &&
+            circuitBreakerTriggered &&
+            msg.sender != owner() &&
+            msg.sender != guardian
+        ) {
             revert CircuitBreakerActive();
         }
 
@@ -273,7 +285,13 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         if (shares == 0) revert ZeroAmount();
 
         // Circuit breaker check - block new redemptions during emergency (except owner/guardian)
-        if (circuitBreakerTriggered && msg.sender != owner() && msg.sender != guardian) {
+        // Circuit breaker check - block new withdrawals during emergency (except owner/guardian)
+        if (
+            circuitBreakerEnabled &&
+            circuitBreakerTriggered &&
+            msg.sender != owner() &&
+            msg.sender != guardian
+        ) {
             revert CircuitBreakerActive();
         }
 
@@ -398,6 +416,13 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         uint256 oldCap = depositCap;
         depositCap = _depositCap;
         emit DepositCapUpdated(oldCap, _depositCap);
+    }
+
+    /// @notice Enable or disable the circuit breaker mechanism
+    /// @param _enabled True to enable, false to disable
+    function setCircuitBreakerEnabled(bool _enabled) external onlyOwner {
+        circuitBreakerEnabled = _enabled;
+        emit CircuitBreakerEnabled(_enabled);
     }
 
     /// @notice Set manager addresses
@@ -575,6 +600,7 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Check and potentially trigger circuit breaker based on delta
     function _checkAndTriggerCircuitBreaker() internal {
+        if (!circuitBreakerEnabled) return; // Circuit breaker disabled
         if (circuitBreakerTriggered) return; // Already triggered
 
         int256 deltaRatio = this.getDeltaRatio();
