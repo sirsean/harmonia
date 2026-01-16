@@ -124,4 +124,16 @@ interface ILiquidityManager {
 
     /// @notice Get current liquidity
     function liquidity() external view returns (uint128);
+
+    /// @notice Get new ticks for rebalancing centered on current price
+    /// @param widthMultiplier Multiplier for tick spacing to determine width (e.g. 200 = +/- 100 ticks)
+    /// @return newTickLower New lower tick
+    /// @return newTickUpper New upper tick
+    function getRebalanceTicks(
+        int24 widthMultiplier
+    ) external view returns (int24 newTickLower, int24 newTickUpper);
+
+    /// @notice Get the current price from the oracle
+    /// @return price Current price (scaled by 1e18)
+    function getOraclePrice() external view returns (uint256 price);
 }

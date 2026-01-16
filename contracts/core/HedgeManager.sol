@@ -576,9 +576,22 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
             acceptablePrice = currentPrice;
         }
 
+        // Determine receiver
+        // For Increase: we (HedgeManager) must receive the position to manage it
+        // For Decrease: the vault should receive the withdrawn collateral
+        address orderReceiver;
+        if (
+            orderType == IExchangeRouter.OrderType.MarketIncrease ||
+            orderType == IExchangeRouter.OrderType.LimitIncrease
+        ) {
+            orderReceiver = address(this);
+        } else {
+            orderReceiver = vault != address(0) ? vault : msg.sender;
+        }
+
         // Create order params
         IExchangeRouter.CreateOrderParams memory params = IExchangeRouter.CreateOrderParams({
-            receiver: vault != address(0) ? vault : msg.sender,
+            receiver: orderReceiver,
             cancellationReceiver: address(this),
             callbackContract: address(0),
             uiFeeReceiver: address(0),
