@@ -101,7 +101,7 @@ describeFork("Chainlink Price Feed Fork Tests", function () {
         "function token0() external view returns (address)",
       ];
 
-      const pool = new Contract(ARBITRUM_ADDRESSES.UNISWAP_V3_ETH_USDC_005_POOL, POOL_ABI, signer);
+      const pool = new Contract(ARBITRUM_ADDRESSES.UNISWAP_V3_WETH_USDC_005_POOL, POOL_ABI, signer);
 
       const slot0 = await pool.slot0();
       const token0 = await pool.token0();

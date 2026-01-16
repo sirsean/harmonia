@@ -32,7 +32,7 @@ contracts/
 │   ├── DeltaNeutralVault.sol   # ERC-4626 vault
 │   ├── LiquidityManager.sol    # Uniswap v3 operations
 │   └── HedgeManager.sol        # GMX v2 operations
-├── periphery/            # Supporting contracts (NOT YET IMPLEMENTED)
+├── periphery/            # Supporting contracts (implemented)
 │   └── RebalanceController.sol # Chainlink Automation keeper
 └── test/                 # Test harness and mock contracts
     ├── MockERC20.sol
@@ -66,8 +66,19 @@ contracts/
 - TWAP validation in LiquidityManager
 - Comprehensive security tests (20 unit + fork tests)
 
-**Not Yet Implemented (Phase 8):**
-- Deployment scripts
+**In Progress (Phase 8):**
+- Deployment scripts (deploy-all.ts, validate-market.ts)
+- Multi-market configuration system (src/markets/)
+- Market validation and discovery tools
+
+**Multi-Market Support:**
+The system supports multiple token pairs via configurable market definitions:
+- ETH Market: WETH/USDC pool (0xC6962004f452bE9203591991D15f6b388e09E8D0) with native USDC
+- BTC Market: WBTC/USDC pool
+- ARB Market: ARB/USDC pool
+- LINK Market: LINK/USDC pool
+
+See `src/markets/registry.ts` for market configurations.
 
 ## Key Technical Concepts
 
