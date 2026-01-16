@@ -40,8 +40,4 @@ export {
 export { MarketValidator, printValidationSummary } from "./validator";
 
 // Discovery
-export {
-  MarketDiscovery,
-  printDiscoveryResult,
-  KNOWN_CHAINLINK_FEEDS,
-} from "./discovery";
+export { MarketDiscovery, printDiscoveryResult, KNOWN_CHAINLINK_FEEDS } from "./discovery";

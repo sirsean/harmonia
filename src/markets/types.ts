@@ -194,10 +194,7 @@ export interface MarketDiscoveryResult {
 /**
  * Helper to calculate decimal adjustment between two tokens
  */
-export function calculateDecimalAdjustment(
-  token0Decimals: number,
-  token1Decimals: number
-): bigint {
+export function calculateDecimalAdjustment(token0Decimals: number, token1Decimals: number): bigint {
   const diff = token0Decimals - token1Decimals;
   if (diff >= 0) {
     return BigInt(10) ** BigInt(diff);
@@ -212,15 +209,18 @@ export function calculateDecimalAdjustment(
  * Helper to determine if base token is token0 in a Uniswap pool
  * Token0 is always the lower address
  */
-export function isBaseTokenToken0(
-  baseTokenAddress: string,
-  quoteTokenAddress: string
-): boolean {
+export function isBaseTokenToken0(baseTokenAddress: string, quoteTokenAddress: string): boolean {
   return baseTokenAddress.toLowerCase() < quoteTokenAddress.toLowerCase();
 }
 
 /**
  * Convert a price to sqrtPriceX96 format with proper decimal handling
+ *
+ * This is the inverse of sqrtPriceX96ToPrice.
+ * poolPrice = token1_raw / token0_raw (what Uniswap uses internally)
+ *
+ * - If base is token0: poolPrice = price / 10^(token0Decimals - token1Decimals)
+ * - If base is token1: poolPrice = 1 / (price * 10^(token0Decimals - token1Decimals))
  */
 export function priceToSqrtPriceX96(
   price: number,
@@ -230,17 +230,16 @@ export function priceToSqrtPriceX96(
 ): bigint {
   const Q96 = BigInt(2) ** BigInt(96);
 
-  // Pool price is token1/token0 with decimal adjustment
-  // If base is token0: poolPrice = price * 10^(token0Decimals - token1Decimals)
-  // If base is token1: poolPrice = (1/price) * 10^(token0Decimals - token1Decimals)
   const decimalDiff = token0Decimals - token1Decimals;
   const decimalMultiplier = Math.pow(10, decimalDiff);
 
   let poolPrice: number;
   if (baseIsToken0) {
-    poolPrice = price * decimalMultiplier;
+    // price = poolPrice * decimalMultiplier, so poolPrice = price / decimalMultiplier
+    poolPrice = price / decimalMultiplier;
   } else {
-    poolPrice = decimalMultiplier / price;
+    // price = 1 / (poolPrice * decimalMultiplier), so poolPrice = 1 / (price * decimalMultiplier)
+    poolPrice = 1 / (price * decimalMultiplier);
   }
 
   const sqrtPrice = Math.sqrt(poolPrice);
@@ -249,6 +248,13 @@ export function priceToSqrtPriceX96(
 
 /**
  * Convert sqrtPriceX96 to human-readable price
+ *
+ * sqrtPriceX96 encodes sqrt(token1_per_token0) * 2^96
+ * poolPrice = token1_raw / token0_raw
+ *
+ * To convert to human price (quote per base):
+ * - If base is token0: humanPrice = poolPrice * 10^(token0_decimals - token1_decimals)
+ * - If base is token1: humanPrice = 1 / (poolPrice * 10^(token0_decimals - token1_decimals))
  */
 export function sqrtPriceX96ToPrice(
   sqrtPriceX96: bigint,
@@ -264,8 +270,10 @@ export function sqrtPriceX96ToPrice(
   const decimalMultiplier = Math.pow(10, decimalDiff);
 
   if (baseIsToken0) {
-    return poolPrice / decimalMultiplier;
+    // poolPrice = token1/token0, we want quote(token1) per base(token0)
+    return poolPrice * decimalMultiplier;
   } else {
-    return decimalMultiplier / poolPrice;
+    // poolPrice = token1/token0, we want quote(token0) per base(token1)
+    return 1 / (poolPrice * decimalMultiplier);
   }
 }
