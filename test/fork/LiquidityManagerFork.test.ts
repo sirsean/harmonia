@@ -135,9 +135,7 @@ describeFork("LiquidityManager Fork Tests", function () {
         // Check if whale has balance
         const whaleBalance = await usdc.balanceOf(whaleAddress);
         if (whaleBalance < usdcAmount) {
-          errors.push(
-            `${whaleAddress}: Insufficient balance (${Number(whaleBalance) / 1e6} USDC)`
-          );
+          errors.push(`${whaleAddress}: Insufficient balance (${Number(whaleBalance) / 1e6} USDC)`);
           continue;
         }
 
