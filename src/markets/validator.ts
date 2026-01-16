@@ -6,11 +6,7 @@
  */
 
 import { ethers } from "ethers";
-import {
-  MarketConfig,
-  MarketValidationResult,
-  sqrtPriceX96ToPrice,
-} from "./types";
+import { MarketConfig, MarketValidationResult, sqrtPriceX96ToPrice } from "./types";
 
 // =============================================================================
 // ABI Fragments
@@ -40,9 +36,7 @@ const GMX_READER_ABI = [
   "function getMarket(address dataStore, address market) view returns (tuple(address marketToken, address indexToken, address longToken, address shortToken))",
 ];
 
-const GMX_DATA_STORE_ABI = [
-  "function getUint(bytes32 key) view returns (uint256)",
-];
+const GMX_DATA_STORE_ABI = ["function getUint(bytes32 key) view returns (uint256)"];
 
 // =============================================================================
 // Validator Class
@@ -123,11 +117,7 @@ export class MarketValidator {
     console.log("\n[Uniswap Pool Validation]");
 
     try {
-      const pool = new ethers.Contract(
-        config.uniswapPool.address,
-        UNISWAP_POOL_ABI,
-        this.provider
-      );
+      const pool = new ethers.Contract(config.uniswapPool.address, UNISWAP_POOL_ABI, this.provider);
 
       // Check pool exists by calling token0()
       const [token0, token1, fee, liquidity, slot0] = await Promise.all([
@@ -145,10 +135,7 @@ export class MarketValidator {
       const expectedToken0 = config.uniswapPool.token0.address.toLowerCase();
       const expectedToken1 = config.uniswapPool.token1.address.toLowerCase();
 
-      if (
-        token0.toLowerCase() !== expectedToken0 ||
-        token1.toLowerCase() !== expectedToken1
-      ) {
+      if (token0.toLowerCase() !== expectedToken0 || token1.toLowerCase() !== expectedToken1) {
         result.errors.push(
           `Pool tokens mismatch. Expected: ${expectedToken0}/${expectedToken1}, Got: ${token0}/${token1}`
         );
@@ -178,9 +165,7 @@ export class MarketValidator {
       const sqrtPriceX96 = slot0[0];
       console.log(`  ℹ Current sqrtPriceX96: ${sqrtPriceX96.toString()}`);
     } catch (error) {
-      result.errors.push(
-        `Failed to validate Uniswap pool: ${(error as Error).message}`
-      );
+      result.errors.push(`Failed to validate Uniswap pool: ${(error as Error).message}`);
       console.log(`  ✗ Pool validation failed: ${(error as Error).message}`);
     }
   }
@@ -195,11 +180,7 @@ export class MarketValidator {
     console.log("\n[GMX Market Validation]");
 
     try {
-      const reader = new ethers.Contract(
-        this.gmxReaderAddress,
-        GMX_READER_ABI,
-        this.provider
-      );
+      const reader = new ethers.Contract(this.gmxReaderAddress, GMX_READER_ABI, this.provider);
 
       const market = await reader.getMarket(
         this.gmxDataStoreAddress,
@@ -217,14 +198,11 @@ export class MarketValidator {
 
       // Verify tokens
       const indexTokenMatch =
-        market.indexToken.toLowerCase() ===
-        config.gmxMarket.indexToken.toLowerCase();
+        market.indexToken.toLowerCase() === config.gmxMarket.indexToken.toLowerCase();
       const longTokenMatch =
-        market.longToken.toLowerCase() ===
-        config.gmxMarket.longToken.toLowerCase();
+        market.longToken.toLowerCase() === config.gmxMarket.longToken.toLowerCase();
       const shortTokenMatch =
-        market.shortToken.toLowerCase() ===
-        config.gmxMarket.shortToken.toLowerCase();
+        market.shortToken.toLowerCase() === config.gmxMarket.shortToken.toLowerCase();
 
       if (!indexTokenMatch) {
         result.errors.push(
@@ -277,9 +255,7 @@ export class MarketValidator {
         result.checks.gmxMarketHasLiquidity = true; // Assume available
       }
     } catch (error) {
-      result.errors.push(
-        `Failed to validate GMX market: ${(error as Error).message}`
-      );
+      result.errors.push(`Failed to validate GMX market: ${(error as Error).message}`);
       console.log(`  ✗ Market validation failed: ${(error as Error).message}`);
     }
   }
@@ -334,9 +310,7 @@ export class MarketValidator {
       const price = Number(roundData[1]) / 10 ** Number(decimals);
       console.log(`  ℹ Current price: $${price.toFixed(2)}`);
     } catch (error) {
-      result.errors.push(
-        `Failed to validate Chainlink feed: ${(error as Error).message}`
-      );
+      result.errors.push(`Failed to validate Chainlink feed: ${(error as Error).message}`);
       console.log(`  ✗ Feed validation failed: ${(error as Error).message}`);
     }
   }
@@ -351,24 +325,15 @@ export class MarketValidator {
     console.log("\n[Token Validation]");
 
     try {
-      const baseToken = new ethers.Contract(
-        config.baseToken.address,
-        ERC20_ABI,
-        this.provider
-      );
-      const quoteToken = new ethers.Contract(
-        config.quoteToken.address,
-        ERC20_ABI,
-        this.provider
-      );
+      const baseToken = new ethers.Contract(config.baseToken.address, ERC20_ABI, this.provider);
+      const quoteToken = new ethers.Contract(config.quoteToken.address, ERC20_ABI, this.provider);
 
-      const [baseSymbol, baseDecimals, quoteSymbol, quoteDecimals] =
-        await Promise.all([
-          baseToken.symbol(),
-          baseToken.decimals(),
-          quoteToken.symbol(),
-          quoteToken.decimals(),
-        ]);
+      const [baseSymbol, baseDecimals, quoteSymbol, quoteDecimals] = await Promise.all([
+        baseToken.symbol(),
+        baseToken.decimals(),
+        quoteToken.symbol(),
+        quoteToken.decimals(),
+      ]);
 
       // Verify base token
       if (baseSymbol !== config.baseToken.symbol) {
@@ -397,14 +362,10 @@ export class MarketValidator {
         );
         result.checks.decimalsConsistent = false;
       } else {
-        console.log(
-          `  ✓ Quote token: ${quoteSymbol} (${quoteDecimals} decimals)`
-        );
+        console.log(`  ✓ Quote token: ${quoteSymbol} (${quoteDecimals} decimals)`);
       }
     } catch (error) {
-      result.errors.push(
-        `Failed to validate tokens: ${(error as Error).message}`
-      );
+      result.errors.push(`Failed to validate tokens: ${(error as Error).message}`);
       console.log(`  ✗ Token validation failed: ${(error as Error).message}`);
     }
   }
@@ -420,57 +381,41 @@ export class MarketValidator {
 
     // Check that base token appears in all components
     const baseInPool =
-      config.uniswapPool.token0.address.toLowerCase() ===
-        config.baseToken.address.toLowerCase() ||
-      config.uniswapPool.token1.address.toLowerCase() ===
-        config.baseToken.address.toLowerCase();
+      config.uniswapPool.token0.address.toLowerCase() === config.baseToken.address.toLowerCase() ||
+      config.uniswapPool.token1.address.toLowerCase() === config.baseToken.address.toLowerCase();
 
     const baseInGMX =
-      config.gmxMarket.indexToken.toLowerCase() ===
-      config.baseToken.address.toLowerCase();
+      config.gmxMarket.indexToken.toLowerCase() === config.baseToken.address.toLowerCase();
 
     // Quote token should be in pool and GMX short token
     const quoteInPool =
-      config.uniswapPool.token0.address.toLowerCase() ===
-        config.quoteToken.address.toLowerCase() ||
-      config.uniswapPool.token1.address.toLowerCase() ===
-        config.quoteToken.address.toLowerCase();
+      config.uniswapPool.token0.address.toLowerCase() === config.quoteToken.address.toLowerCase() ||
+      config.uniswapPool.token1.address.toLowerCase() === config.quoteToken.address.toLowerCase();
 
     const quoteInGMX =
-      config.gmxMarket.shortToken.toLowerCase() ===
-      config.quoteToken.address.toLowerCase();
+      config.gmxMarket.shortToken.toLowerCase() === config.quoteToken.address.toLowerCase();
 
-    result.checks.tokensMatch =
-      baseInPool && baseInGMX && quoteInPool && quoteInGMX;
+    result.checks.tokensMatch = baseInPool && baseInGMX && quoteInPool && quoteInGMX;
 
     if (result.checks.tokensMatch) {
       console.log(`  ✓ All components use consistent tokens`);
     } else {
-      if (!baseInPool)
-        result.errors.push("Base token not found in Uniswap pool");
-      if (!baseInGMX)
-        result.errors.push("Base token not index token in GMX market");
-      if (!quoteInPool)
-        result.errors.push("Quote token not found in Uniswap pool");
-      if (!quoteInGMX)
-        result.errors.push("Quote token not short token in GMX market");
+      if (!baseInPool) result.errors.push("Base token not found in Uniswap pool");
+      if (!baseInGMX) result.errors.push("Base token not index token in GMX market");
+      if (!quoteInPool) result.errors.push("Quote token not found in Uniswap pool");
+      if (!quoteInGMX) result.errors.push("Quote token not short token in GMX market");
       console.log(`  ✗ Token mismatch across components`);
     }
 
     // Verify baseTokenIsToken0 flag
     const computedBaseIsToken0 =
-      config.baseToken.address.toLowerCase() <
-      config.quoteToken.address.toLowerCase();
+      config.baseToken.address.toLowerCase() < config.quoteToken.address.toLowerCase();
 
     if (config.baseTokenIsToken0 !== computedBaseIsToken0) {
-      result.warnings.push(
-        `baseTokenIsToken0 flag incorrect. Should be: ${computedBaseIsToken0}`
-      );
+      result.warnings.push(`baseTokenIsToken0 flag incorrect. Should be: ${computedBaseIsToken0}`);
       console.log(`  ⚠ baseTokenIsToken0 flag may be incorrect`);
     } else {
-      console.log(
-        `  ✓ baseTokenIsToken0: ${config.baseTokenIsToken0} (correct)`
-      );
+      console.log(`  ✓ baseTokenIsToken0: ${config.baseTokenIsToken0} (correct)`);
     }
   }
 
@@ -491,15 +436,10 @@ export class MarketValidator {
         this.provider
       );
       const [, chainlinkAnswer] = await feed.latestRoundData();
-      const chainlinkPrice =
-        Number(chainlinkAnswer) / 10 ** config.chainlinkFeed.decimals;
+      const chainlinkPrice = Number(chainlinkAnswer) / 10 ** config.chainlinkFeed.decimals;
 
       // Get Uniswap price
-      const pool = new ethers.Contract(
-        config.uniswapPool.address,
-        UNISWAP_POOL_ABI,
-        this.provider
-      );
+      const pool = new ethers.Contract(config.uniswapPool.address, UNISWAP_POOL_ABI, this.provider);
       const slot0 = await pool.slot0();
       const sqrtPriceX96 = slot0[0] as bigint;
 
@@ -514,8 +454,7 @@ export class MarketValidator {
 
       // Calculate deviation
       const deviation =
-        Math.abs(chainlinkPrice - uniswapPrice) /
-        ((chainlinkPrice + uniswapPrice) / 2);
+        Math.abs(chainlinkPrice - uniswapPrice) / ((chainlinkPrice + uniswapPrice) / 2);
 
       result.priceConsistency = {
         uniswapPrice,
@@ -538,9 +477,7 @@ export class MarketValidator {
         console.log(`  ✓ Price sources are consistent`);
       }
     } catch (error) {
-      result.warnings.push(
-        `Could not verify price consistency: ${(error as Error).message}`
-      );
+      result.warnings.push(`Could not verify price consistency: ${(error as Error).message}`);
       console.log(`  ⚠ Could not verify price consistency`);
     }
   }
@@ -554,9 +491,7 @@ export function printValidationSummary(result: MarketValidationResult): void {
   console.log("VALIDATION SUMMARY");
   console.log("=".repeat(50));
 
-  console.log(
-    `\nOverall: ${result.isValid ? "✓ VALID" : "✗ INVALID"}\n`
-  );
+  console.log(`\nOverall: ${result.isValid ? "✓ VALID" : "✗ INVALID"}\n`);
 
   console.log("Checks:");
   for (const [check, passed] of Object.entries(result.checks)) {
@@ -575,14 +510,8 @@ export function printValidationSummary(result: MarketValidationResult): void {
 
   if (result.priceConsistency) {
     console.log("\nPrice Data:");
-    console.log(
-      `  Chainlink: $${result.priceConsistency.chainlinkPrice.toFixed(2)}`
-    );
-    console.log(
-      `  Uniswap: $${result.priceConsistency.uniswapPrice.toFixed(2)}`
-    );
-    console.log(
-      `  Deviation: ${(result.priceConsistency.maxDeviation * 100).toFixed(2)}%`
-    );
+    console.log(`  Chainlink: $${result.priceConsistency.chainlinkPrice.toFixed(2)}`);
+    console.log(`  Uniswap: $${result.priceConsistency.uniswapPrice.toFixed(2)}`);
+    console.log(`  Deviation: ${(result.priceConsistency.maxDeviation * 100).toFixed(2)}%`);
   }
 }

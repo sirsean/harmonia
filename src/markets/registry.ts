@@ -6,12 +6,7 @@
  * a delta-neutral vault for that market.
  */
 
-import {
-  MarketConfig,
-  TokenConfig,
-  calculateDecimalAdjustment,
-  isBaseTokenToken0,
-} from "./types";
+import { MarketConfig, TokenConfig, calculateDecimalAdjustment, isBaseTokenToken0 } from "./types";
 
 // =============================================================================
 // Common Token Definitions (Arbitrum One)
@@ -106,8 +101,7 @@ export const TICK_SPACING: Record<number, number> = {
 export const ETH_MARKET: MarketConfig = {
   id: "ETH",
   name: "Harmonia ETH",
-  description:
-    "Delta-neutral ETH yield vault using WETH/USDC LP and ETH/USD perpetual hedge",
+  description: "Delta-neutral ETH yield vault using WETH/USDC LP and ETH/USD perpetual hedge",
   chainId: 42161,
 
   baseToken: ARBITRUM_TOKENS.WETH,
@@ -136,10 +130,7 @@ export const ETH_MARKET: MarketConfig = {
     heartbeat: 3600, // 1 hour
   },
 
-  baseTokenIsToken0: isBaseTokenToken0(
-    ARBITRUM_TOKENS.WETH.address,
-    ARBITRUM_TOKENS.USDC.address
-  ),
+  baseTokenIsToken0: isBaseTokenToken0(ARBITRUM_TOKENS.WETH.address, ARBITRUM_TOKENS.USDC.address),
 
   decimalAdjustment: calculateDecimalAdjustment(
     ARBITRUM_TOKENS.WETH.decimals,
@@ -168,8 +159,7 @@ export const ETH_MARKET: MarketConfig = {
 export const BTC_MARKET: MarketConfig = {
   id: "BTC",
   name: "Harmonia BTC",
-  description:
-    "Delta-neutral BTC yield vault using WBTC/USDC LP and BTC/USD perpetual hedge",
+  description: "Delta-neutral BTC yield vault using WBTC/USDC LP and BTC/USD perpetual hedge",
   chainId: 42161,
 
   baseToken: ARBITRUM_TOKENS.WBTC,
@@ -198,10 +188,7 @@ export const BTC_MARKET: MarketConfig = {
     heartbeat: 3600, // 1 hour
   },
 
-  baseTokenIsToken0: isBaseTokenToken0(
-    ARBITRUM_TOKENS.WBTC.address,
-    ARBITRUM_TOKENS.USDC.address
-  ),
+  baseTokenIsToken0: isBaseTokenToken0(ARBITRUM_TOKENS.WBTC.address, ARBITRUM_TOKENS.USDC.address),
 
   decimalAdjustment: calculateDecimalAdjustment(
     ARBITRUM_TOKENS.WBTC.decimals, // 8 decimals
@@ -231,8 +218,7 @@ export const BTC_MARKET: MarketConfig = {
 export const ARB_MARKET: MarketConfig = {
   id: "ARB",
   name: "Harmonia ARB",
-  description:
-    "Delta-neutral ARB yield vault using ARB/USDC LP and ARB/USD perpetual hedge",
+  description: "Delta-neutral ARB yield vault using ARB/USDC LP and ARB/USD perpetual hedge",
   chainId: 42161,
 
   baseToken: ARBITRUM_TOKENS.ARB,
@@ -261,10 +247,7 @@ export const ARB_MARKET: MarketConfig = {
     heartbeat: 3600,
   },
 
-  baseTokenIsToken0: isBaseTokenToken0(
-    ARBITRUM_TOKENS.ARB.address,
-    ARBITRUM_TOKENS.USDC.address
-  ),
+  baseTokenIsToken0: isBaseTokenToken0(ARBITRUM_TOKENS.ARB.address, ARBITRUM_TOKENS.USDC.address),
 
   decimalAdjustment: calculateDecimalAdjustment(
     ARBITRUM_TOKENS.USDC.decimals, // Note: USDC is token0 here
@@ -293,8 +276,7 @@ export const ARB_MARKET: MarketConfig = {
 export const LINK_MARKET: MarketConfig = {
   id: "LINK",
   name: "Harmonia LINK",
-  description:
-    "Delta-neutral LINK yield vault using LINK/USDC LP and LINK/USD perpetual hedge",
+  description: "Delta-neutral LINK yield vault using LINK/USDC LP and LINK/USD perpetual hedge",
   chainId: 42161,
 
   baseToken: ARBITRUM_TOKENS.LINK,
@@ -323,10 +305,7 @@ export const LINK_MARKET: MarketConfig = {
     heartbeat: 3600,
   },
 
-  baseTokenIsToken0: isBaseTokenToken0(
-    ARBITRUM_TOKENS.LINK.address,
-    ARBITRUM_TOKENS.USDC.address
-  ),
+  baseTokenIsToken0: isBaseTokenToken0(ARBITRUM_TOKENS.LINK.address, ARBITRUM_TOKENS.USDC.address),
 
   decimalAdjustment: calculateDecimalAdjustment(
     ARBITRUM_TOKENS.USDC.decimals,
@@ -387,9 +366,7 @@ export function getMarketsByRiskLevel(
 /**
  * Get markets filtered by liquidity rating
  */
-export function getMarketsByLiquidity(
-  rating: "low" | "medium" | "high"
-): MarketConfig[] {
+export function getMarketsByLiquidity(rating: "low" | "medium" | "high"): MarketConfig[] {
   return Object.values(MARKET_REGISTRY).filter(
     (market) => market.characteristics.liquidityRating === rating
   );

@@ -44,10 +44,7 @@ const ERC20_ABI = [
 // Known Chainlink Feeds (Arbitrum)
 // =============================================================================
 
-export const KNOWN_CHAINLINK_FEEDS: Record<
-  string,
-  { address: string; heartbeat: number }
-> = {
+export const KNOWN_CHAINLINK_FEEDS: Record<string, { address: string; heartbeat: number }> = {
   ETH: { address: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612", heartbeat: 3600 },
   BTC: { address: "0x6ce185860a4963106506C203335A2910525d22AD", heartbeat: 3600 },
   ARB: { address: "0xb2A824043730FE05F3DA2efaFa1CBbe83fa548D6", heartbeat: 3600 },
@@ -99,11 +96,7 @@ export class MarketDiscovery {
       UNISWAP_FACTORY_ABI,
       provider
     );
-    this.gmxReader = new ethers.Contract(
-      ARBITRUM_PROTOCOLS.GMX_READER,
-      GMX_READER_ABI,
-      provider
-    );
+    this.gmxReader = new ethers.Contract(ARBITRUM_PROTOCOLS.GMX_READER, GMX_READER_ABI, provider);
   }
 
   /**
@@ -113,9 +106,7 @@ export class MarketDiscovery {
     baseToken: TokenConfig,
     quoteToken: TokenConfig = ARBITRUM_TOKENS.USDC
   ): Promise<MarketDiscoveryResult> {
-    console.log(
-      `\nDiscovering market for ${baseToken.symbol}/${quoteToken.symbol}`
-    );
+    console.log(`\nDiscovering market for ${baseToken.symbol}/${quoteToken.symbol}`);
     console.log("=".repeat(50));
 
     const result: MarketDiscoveryResult = {
@@ -139,11 +130,7 @@ export class MarketDiscovery {
       result.gmxMarkets.length > 0 &&
       result.chainlinkFeeds.length > 0
     ) {
-      result.recommendedConfig = this.generateRecommendedConfig(
-        baseToken,
-        quoteToken,
-        result
-      );
+      result.recommendedConfig = this.generateRecommendedConfig(baseToken, quoteToken, result);
     }
 
     return result;
@@ -170,11 +157,7 @@ export class MarketDiscovery {
         );
 
         if (poolAddress !== ethers.ZeroAddress) {
-          const pool = new ethers.Contract(
-            poolAddress,
-            UNISWAP_POOL_ABI,
-            this.provider
-          );
+          const pool = new ethers.Contract(poolAddress, UNISWAP_POOL_ABI, this.provider);
 
           const liquidity = await pool.liquidity();
 
@@ -185,9 +168,7 @@ export class MarketDiscovery {
             volume24h: 0n, // Would need subgraph for this
           });
 
-          console.log(
-            `  ✓ Found ${fee / 10000}% pool: ${poolAddress} (liquidity: ${liquidity})`
-          );
+          console.log(`  ✓ Found ${fee / 10000}% pool: ${poolAddress} (liquidity: ${liquidity})`);
         }
       } catch {
         // Pool doesn't exist for this fee tier
@@ -210,17 +191,11 @@ export class MarketDiscovery {
 
     try {
       // Get all markets (fetch first 100)
-      const markets = await this.gmxReader.getMarkets(
-        ARBITRUM_PROTOCOLS.GMX_DATA_STORE,
-        0,
-        100
-      );
+      const markets = await this.gmxReader.getMarkets(ARBITRUM_PROTOCOLS.GMX_DATA_STORE, 0, 100);
 
       for (const market of markets) {
         // Check if this market's index token matches our base token
-        if (
-          market.indexToken.toLowerCase() === baseToken.address.toLowerCase()
-        ) {
+        if (market.indexToken.toLowerCase() === baseToken.address.toLowerCase()) {
           result.gmxMarkets.push({
             address: market.marketToken,
             indexToken: market.indexToken,
@@ -257,11 +232,7 @@ export class MarketDiscovery {
 
     if (knownFeed) {
       try {
-        const feed = new ethers.Contract(
-          knownFeed.address,
-          CHAINLINK_FEED_ABI,
-          this.provider
-        );
+        const feed = new ethers.Contract(knownFeed.address, CHAINLINK_FEED_ABI, this.provider);
 
         const [decimals, description, roundData] = await Promise.all([
           feed.decimals(),
@@ -282,14 +253,10 @@ export class MarketDiscovery {
         console.log(`    Address: ${knownFeed.address}`);
         console.log(`    Price: $${price.toFixed(2)}`);
       } catch (error) {
-        console.log(
-          `  ✗ Failed to verify Chainlink feed: ${(error as Error).message}`
-        );
+        console.log(`  ✗ Failed to verify Chainlink feed: ${(error as Error).message}`);
       }
     } else {
-      console.log(
-        `  ✗ No known Chainlink feed for ${baseToken.symbol}`
-      );
+      console.log(`  ✗ No known Chainlink feed for ${baseToken.symbol}`);
       console.log(`    Consider adding to KNOWN_CHAINLINK_FEEDS if one exists`);
     }
   }
@@ -305,8 +272,7 @@ export class MarketDiscovery {
     // Select best Uniswap pool (highest liquidity in a reasonable fee tier)
     const sortedPools = [...discovery.uniswapPools].sort((a, b) => {
       // Prefer 0.05% and 0.3% tiers, then sort by liquidity
-      const tierPref = (tier: number) =>
-        tier === 500 ? 0 : tier === 3000 ? 1 : 2;
+      const tierPref = (tier: number) => (tier === 500 ? 0 : tier === 3000 ? 1 : 2);
       const prefDiff = tierPref(a.feeTier) - tierPref(b.feeTier);
       if (prefDiff !== 0) return prefDiff;
       return Number(b.liquidity - a.liquidity);
@@ -316,8 +282,7 @@ export class MarketDiscovery {
     const bestGMX = discovery.gmxMarkets[0];
     const bestFeed = discovery.chainlinkFeeds[0];
 
-    const baseIsToken0 =
-      baseToken.address.toLowerCase() < quoteToken.address.toLowerCase();
+    const baseIsToken0 = baseToken.address.toLowerCase() < quoteToken.address.toLowerCase();
 
     return {
       id: baseToken.symbol,
@@ -348,8 +313,7 @@ export class MarketDiscovery {
         address: bestFeed.address,
         description: bestFeed.description,
         decimals: bestFeed.decimals,
-        heartbeat:
-          KNOWN_CHAINLINK_FEEDS[baseToken.symbol]?.heartbeat || 3600,
+        heartbeat: KNOWN_CHAINLINK_FEEDS[baseToken.symbol]?.heartbeat || 3600,
       },
 
       baseTokenIsToken0: baseIsToken0,
