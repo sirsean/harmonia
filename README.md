@@ -153,7 +153,7 @@ The [`DeltaCalculator`](contracts/libraries/DeltaCalculator.sol) library impleme
 | Contract | Address |
 |----------|---------|
 | Uniswap v3 PositionManager | `0xC36442b4a4522E871399CD717aBDD847Ab11FE88` |
-| Uniswap v3 ETH/USDC Pool | `0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443` |
+| Uniswap v3 WETH/USDC Pool | `0xC6962004f452bE9203591991D15f6b388e09E8D0` |
 | GMX ExchangeRouter | `0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8` |
 | Chainlink ETH/USD Feed | `0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612` |
 

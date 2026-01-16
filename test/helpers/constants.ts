@@ -33,7 +33,7 @@ export const PROTOCOL_ADDRESSES = {
 export const ADDRESSES = {
   ...PROTOCOL_ADDRESSES,
   // Legacy ETH-specific addresses for backward compatibility
-  UNISWAP_V3_ETH_USDC_005_POOL: "0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443",
+  UNISWAP_V3_WETH_USDC_005_POOL: "0xC6962004f452bE9203591991D15f6b388e09E8D0",
   GMX_ETH_USD_MARKET: "0x70d95587d40A2caf56bd97485aB3Eec10Bee6336",
   CHAINLINK_ETH_USD_FEED: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
   USDC: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
@@ -79,7 +79,7 @@ export const MARKET_CONFIGS: Record<string, MarketTestConfig> = {
     name: "ETH/USDC",
     baseToken: TOKENS.WETH,
     quoteToken: TOKENS.USDC,
-    uniswapPool: "0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443",
+    uniswapPool: "0xC6962004f452bE9203591991D15f6b388e09E8D0",
     gmxMarket: "0x70d95587d40A2caf56bd97485aB3Eec10Bee6336",
     chainlinkFeed: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
     baseTokenIsToken0: true, // WETH address < USDC address
@@ -171,6 +171,10 @@ export function sqrtPriceX96ToTick(sqrtPriceX96: bigint): number {
 
 /**
  * Convert price to sqrtPriceX96 for any token pair
+ *
+ * This is the inverse of sqrtPriceX96ToPriceGeneric.
+ * poolPrice = token1_raw / token0_raw (what Uniswap uses internally)
+ *
  * @param price Price of base token in quote token units
  * @param token0Decimals Decimals of token0
  * @param token1Decimals Decimals of token1
@@ -183,20 +187,16 @@ export function priceToSqrtPriceX96Generic(
   token1Decimals: number,
   baseIsToken0: boolean
 ): bigint {
-  // Pool price = token1/token0 with decimal adjustment
-  // Decimal adjustment = 10^(token0Decimals - token1Decimals)
   const decimalDiff = token0Decimals - token1Decimals;
   const decimalMultiplier = Math.pow(10, decimalDiff);
 
   let poolPrice: number;
   if (baseIsToken0) {
-    // Base is token0, quote is token1
-    // poolPrice = quote/base = price * decimalMultiplier
-    poolPrice = price * decimalMultiplier;
+    // price = poolPrice * decimalMultiplier, so poolPrice = price / decimalMultiplier
+    poolPrice = price / decimalMultiplier;
   } else {
-    // Base is token1, quote is token0
-    // poolPrice = quote/base = (1/price) * decimalMultiplier
-    poolPrice = decimalMultiplier / price;
+    // price = 1 / (poolPrice * decimalMultiplier), so poolPrice = 1 / (price * decimalMultiplier)
+    poolPrice = 1 / (price * decimalMultiplier);
   }
 
   const sqrtPrice = Math.sqrt(poolPrice);
@@ -217,6 +217,14 @@ export function priceToSqrtPriceX96(priceUsdPerEth: number, wethIsToken0: boolea
 
 /**
  * Convert sqrtPriceX96 to human-readable price for any token pair
+ *
+ * sqrtPriceX96 encodes sqrt(token1_per_token0) * 2^96
+ * poolPrice = token1_raw / token0_raw
+ *
+ * To convert to human price (quote per base):
+ * - If base is token0: humanPrice = poolPrice * 10^(token0_decimals - token1_decimals)
+ * - If base is token1: humanPrice = 1 / (poolPrice * 10^(token0_decimals - token1_decimals))
+ *
  * @param sqrtPriceX96 The sqrt price
  * @param token0Decimals Decimals of token0
  * @param token1Decimals Decimals of token1
@@ -236,13 +244,11 @@ export function sqrtPriceX96ToPriceGeneric(
   const decimalMultiplier = Math.pow(10, decimalDiff);
 
   if (baseIsToken0) {
-    // Base is token0, quote is token1
-    // price = poolPrice / decimalMultiplier
-    return poolPrice / decimalMultiplier;
+    // poolPrice = token1/token0, we want quote(token1) per base(token0)
+    return poolPrice * decimalMultiplier;
   } else {
-    // Base is token1, quote is token0
-    // price = decimalMultiplier / poolPrice
-    return decimalMultiplier / poolPrice;
+    // poolPrice = token1/token0, we want quote(token0) per base(token1)
+    return 1 / (poolPrice * decimalMultiplier);
   }
 }
 
@@ -294,18 +300,18 @@ export function calculateTickRangeGeneric(
   const decimalDiff = token0Decimals - token1Decimals;
   const decimalMultiplier = Math.pow(10, decimalDiff);
 
-  // Convert prices to pool prices
+  // Convert prices to pool prices (using corrected formula)
   let poolPriceLower: number;
   let poolPriceUpper: number;
 
   if (baseIsToken0) {
-    // Pool price = quote/base * decimalMultiplier
-    poolPriceLower = priceLower * decimalMultiplier;
-    poolPriceUpper = priceUpper * decimalMultiplier;
+    // poolPrice = price / decimalMultiplier
+    poolPriceLower = priceLower / decimalMultiplier;
+    poolPriceUpper = priceUpper / decimalMultiplier;
   } else {
-    // Pool price = 1/base_price * decimalMultiplier (inverted)
-    poolPriceLower = decimalMultiplier / priceUpper; // Note: inverted
-    poolPriceUpper = decimalMultiplier / priceLower;
+    // poolPrice = 1 / (price * decimalMultiplier), inverted for range
+    poolPriceLower = 1 / (priceUpper * decimalMultiplier); // Note: inverted
+    poolPriceUpper = 1 / (priceLower * decimalMultiplier);
   }
 
   // Convert pool prices to ticks

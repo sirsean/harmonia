@@ -169,19 +169,66 @@ constructor(
 
 ## Deployment Steps
 
-### Option 1: Automated Deployment Script
+### Multi-Market Deployment
+
+Harmonia supports multiple token markets. Before deploying, validate your target market:
 
 ```bash
-# Deploy all contracts
-npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
+# Validate ETH market configuration (recommended first step)
+MARKET=ETH npx hardhat run scripts/validate-market.ts --network arbitrum
+
+# Available markets: ETH, BTC, ARB, LINK
+# You can also discover new markets:
+TOKEN=GMX npx hardhat run scripts/discover-markets.ts --network arbitrum
+```
+
+**Expected validation output for ETH:**
+```
+[Price Consistency]
+  ℹ Chainlink price: $3306.26
+  ℹ Uniswap price: $3306.19
+  ℹ Price deviation: 0.00%
+  ✓ Price sources are consistent
+
+Overall: ✓ VALID
+```
+
+### Deploying harmETH (Step-by-Step Walkthrough)
+
+This walkthrough deploys the primary ETH delta-neutral vault.
+
+**1. Validate market configuration:**
+```bash
+MARKET=ETH npx hardhat run scripts/validate-market.ts --network arbitrum
+```
+
+**2. Deploy all contracts:**
+```bash
+MARKET=ETH npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
+```
+
+**3. Verify deployment succeeded:**
+- Check Arbiscan for all four deployed contracts
+- Verify constructor arguments match expected values
+- Confirm manager addresses are correctly linked
+
+### Option 1: Automated Deployment Script (Recommended)
+
+```bash
+# Deploy all contracts for a specific market
+MARKET=ETH npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
+
+# Or for other markets:
+MARKET=BTC npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
 ```
 
 The script will:
 
-1. Deploy all four contracts in order
-2. Configure contract relationships
-3. Set initial deposit cap
-4. Output deployment addresses
+1. Load market configuration from `src/markets/registry.ts`
+2. Deploy all four contracts in order with correct addresses
+3. Configure contract relationships
+4. Set initial deposit cap ($10,000 USDC)
+5. Output deployment addresses and verification commands
 
 ### Option 2: Manual Deployment
 
@@ -338,21 +385,30 @@ Before going live, verify:
 
 ### External Protocols (Arbitrum Mainnet)
 
-| Protocol       | Contract            | Address                                      |
-| -------------- | ------------------- | -------------------------------------------- |
-| **Uniswap V3** | Factory             | `0x1F98431c8aD98523631AE4a59f267346ea31F984` |
-|                | Position Manager    | `0xC36442b4a4522E871399CD717aBDD847Ab11FE88` |
-|                | Swap Router         | `0xE592427A0AEce92De3Edee1F18E0157C05861564` |
-|                | ETH/USDC 0.05% Pool | `0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443` |
-| **GMX V2**     | Exchange Router     | `0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8` |
-|                | Order Vault         | `0x31eF83a530Fde1B38EE9A18093A333D8Bbbc40D5` |
-|                | Data Store          | `0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8` |
-|                | ETH/USD Market      | `0x70d95587d40A2caf56bd97485aB3Eec10Bee6336` |
-| **Chainlink**  | ETH/USD Feed        | `0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612` |
-|                | Automation Registry | `0x37D9dC70bfcd8BC77Ec2858836B923c560E891D1` |
-|                | LINK Token          | `0xf97f4df75117a78c1A5a0DBb814Af92458539FB4` |
-| **Tokens**     | USDC (Native)       | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
-|                | WETH                | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
+| Protocol       | Contract             | Address                                      |
+| -------------- | -------------------- | -------------------------------------------- |
+| **Uniswap V3** | Factory              | `0x1F98431c8aD98523631AE4a59f267346ea31F984` |
+|                | Position Manager     | `0xC36442b4a4522E871399CD717aBDD847Ab11FE88` |
+|                | Swap Router          | `0xE592427A0AEce92De3Edee1F18E0157C05861564` |
+|                | WETH/USDC 0.05% Pool | `0xC6962004f452bE9203591991D15f6b388e09E8D0` |
+| **GMX V2**     | Exchange Router      | `0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8` |
+|                | Order Vault          | `0x31eF83a530Fde1B38EE9A18093A333D8Bbbc40D5` |
+|                | Data Store           | `0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8` |
+|                | ETH/USD Market       | `0x70d95587d40A2caf56bd97485aB3Eec10Bee6336` |
+| **Chainlink**  | ETH/USD Feed         | `0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612` |
+|                | Automation Registry  | `0x37D9dC70bfcd8BC77Ec2858836B923c560E891D1` |
+|                | LINK Token           | `0xf97f4df75117a78c1A5a0DBb814Af92458539FB4` |
+| **Tokens**     | USDC (Native)        | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
+|                | USDC.e (Bridged)     | `0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8` |
+|                | WETH                 | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
+
+**Note:** Harmonia uses **native USDC** (`0xaf88...`) for all markets. This is the same USDC used by GMX V2, ensuring consistency between the LP pool and hedge market. Do not use bridged USDC.e for new deployments.
+
+### Market-Specific Addresses
+
+For complete market configurations including BTC, ARB, and LINK markets, see:
+- `src/markets/registry.ts` - Programmatic market configurations
+- `PLAN.md` Appendix A - Reference addresses for all markets
 
 ---
 
