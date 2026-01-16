@@ -63,7 +63,7 @@ describeFork("LiquidityManager Fork Tests", function () {
     [signer, vault] = await ethers.getSigners();
 
     // Connect to Uniswap V3 contracts
-    uniswapPool = new Contract(ARBITRUM_ADDRESSES.UNISWAP_V3_ETH_USDC_005_POOL, POOL_ABI, signer);
+    uniswapPool = new Contract(ARBITRUM_ADDRESSES.UNISWAP_V3_WETH_USDC_005_POOL, POOL_ABI, signer);
     positionManager = new Contract(
       ARBITRUM_ADDRESSES.UNISWAP_V3_POSITION_MANAGER,
       POSITION_MANAGER_ABI,
@@ -71,9 +71,9 @@ describeFork("LiquidityManager Fork Tests", function () {
     );
     factory = new Contract(ARBITRUM_ADDRESSES.UNISWAP_V3_FACTORY, FACTORY_ABI, signer);
 
-    // Connect to tokens (using USDC.e for the existing pool)
+    // Connect to tokens (using native USDC)
     weth = new Contract(ARBITRUM_ADDRESSES.WETH, ERC20_ABI, signer);
-    usdc = new Contract(ARBITRUM_ADDRESSES.USDC_E, ERC20_ABI, signer);
+    usdc = new Contract(ARBITRUM_ADDRESSES.USDC, ERC20_ABI, signer);
 
     // Deploy LiquidityManager
     const LiquidityManager = await ethers.getContractFactory("LiquidityManager");
@@ -82,7 +82,7 @@ describeFork("LiquidityManager Fork Tests", function () {
       ARBITRUM_ADDRESSES.UNISWAP_V3_SWAP_ROUTER,
       ARBITRUM_ADDRESSES.UNISWAP_V3_FACTORY,
       ARBITRUM_ADDRESSES.WETH,
-      ARBITRUM_ADDRESSES.USDC_E,
+      ARBITRUM_ADDRESSES.USDC,
       POOL_FEE,
       signer.address
     );
@@ -117,14 +117,14 @@ describeFork("LiquidityManager Fork Tests", function () {
     const wethContract = new Contract(ARBITRUM_ADDRESSES.WETH, WETH_ABI, vault);
     await wethContract.deposit({ value: wethAmount });
 
-    // For USDC.e, try multiple whale addresses
-    // These are known USDC.e holders on Arbitrum with substantial balances
+    // For USDC (native), try multiple whale addresses
+    // These are known native USDC holders on Arbitrum with substantial balances
     const usdcWhales = [
+      "0x47c031236e19d024b42f8AE6780E44A573170703", // GMX GLP Manager
+      "0xF89d7b9c864f589bbF53a82105107622B35EaA40", // Bybit hot wallet
+      "0x0B0A5886664376F59C351ba3f598C8A8B4D0A6f3", // Another USDC holder
       "0x62383739D68Dd0F844103Db8dFb05a7EdED5BBE6", // Stargate USDC pool
-      "0x489ee077994B6658eAfA855C308275EAd8097C4A", // GMX vault (holds USDC.e)
-      "0xf89d7b9c864f589bbF53a82105107622B35EaA40", // Bybit hot wallet
-      "0x1714400FF23dB4aF24F9fd64e7039e6597f18C2b", // Aave pool
-      "0xB38e8c17e38363aF6EbdCb3dAE12e0243582891D", // Another holder
+      "0x1714400FF23dB4aF24F9fd64e7039e6597f18C2b", // Aave USDC pool
     ];
 
     let funded = false;
@@ -136,7 +136,7 @@ describeFork("LiquidityManager Fork Tests", function () {
         const whaleBalance = await usdc.balanceOf(whaleAddress);
         if (whaleBalance < usdcAmount) {
           errors.push(
-            `${whaleAddress}: Insufficient balance (${Number(whaleBalance) / 1e6} USDC.e)`
+            `${whaleAddress}: Insufficient balance (${Number(whaleBalance) / 1e6} USDC)`
           );
           continue;
         }
@@ -153,7 +153,7 @@ describeFork("LiquidityManager Fork Tests", function () {
         });
 
         const whaleSigner = await ethers.getSigner(whaleAddress);
-        const usdcWithWhale = new Contract(ARBITRUM_ADDRESSES.USDC_E, ERC20_ABI, whaleSigner);
+        const usdcWithWhale = new Contract(ARBITRUM_ADDRESSES.USDC, ERC20_ABI, whaleSigner);
 
         await usdcWithWhale.transfer(account, usdcAmount);
 
@@ -182,12 +182,12 @@ describeFork("LiquidityManager Fork Tests", function () {
 
     if (!funded) {
       // Log errors for debugging
-      console.log("\n=== USDC.e Funding Errors ===");
+      console.log("\n=== USDC Funding Errors ===");
       for (const err of errors) {
         console.log(err);
       }
       throw new Error(
-        `Could not fund account with ${Number(usdcAmount) / 1e6} USDC.e from any whale. ` +
+        `Could not fund account with ${Number(usdcAmount) / 1e6} USDC from any whale. ` +
           `Consider using a different fork block or adding more whale addresses.`
       );
     }
@@ -210,14 +210,14 @@ describeFork("LiquidityManager Fork Tests", function () {
       );
       expect(await liquidityManager.factory()).to.equal(ARBITRUM_ADDRESSES.UNISWAP_V3_FACTORY);
       expect(await liquidityManager.baseToken()).to.equal(ARBITRUM_ADDRESSES.WETH);
-      expect(await liquidityManager.quoteToken()).to.equal(ARBITRUM_ADDRESSES.USDC_E);
+      expect(await liquidityManager.quoteToken()).to.equal(ARBITRUM_ADDRESSES.USDC);
       expect(await liquidityManager.poolFee()).to.equal(POOL_FEE);
     });
 
     it("should find correct pool", async function () {
       const pool = await liquidityManager.getPool();
       expect(pool.toLowerCase()).to.equal(
-        ARBITRUM_ADDRESSES.UNISWAP_V3_ETH_USDC_005_POOL.toLowerCase()
+        ARBITRUM_ADDRESSES.UNISWAP_V3_WETH_USDC_005_POOL.toLowerCase()
       );
     });
   });
