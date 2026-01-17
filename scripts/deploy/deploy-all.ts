@@ -334,8 +334,32 @@ async function verifyContracts(
   market: MarketConfig,
   config: DeploymentConfig
 ): Promise<void> {
-  console.log("Note: Proxies are deployed. Verification of implementation contracts is handled automatically by hardhat-upgrades in most cases, or requires verifying the implementation address manually.");
-  console.log("Skipping programmatic verification for proxies in this script version.");
+  console.log("Waiting 30 seconds for block explorer indexing...");
+  await new Promise((resolve) => setTimeout(resolve, 30000));
+
+  const verifications = [
+    { name: "DeltaNeutralVault", address: contracts.vault },
+    { name: "LiquidityManager", address: contracts.liquidityManager },
+    { name: "HedgeManager", address: contracts.hedgeManager },
+    { name: "RebalanceController", address: contracts.rebalanceController },
+  ];
+
+  for (const v of verifications) {
+    try {
+      console.log(`  Verifying ${v.name} at ${v.address}...`);
+      // For proxies, we verify the proxy address. The hardhat-upgrades plugin
+      // detects the proxy and verifies the implementation automatically.
+      await run("verify:verify", {
+        address: v.address,
+      });
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.includes("Already Verified")) {
+        console.log(`  ${v.name} already verified.`);
+      } else {
+        console.error(`  Failed to verify ${v.name}:`, error);
+      }
+    }
+  }
 }
 
 /**
