@@ -35,16 +35,17 @@ Harmonia captures LP fees and favorable funding rates while eliminating directio
 ```
 harmonia/
 ├── contracts/
+│   ├── core/              # Core protocol logic
+│   │   ├── DeltaNeutralVault.sol
+│   │   ├── HedgeManager.sol
+│   │   ├── LiquidityManager.sol
+│   │   └── RebalanceController.sol
 │   ├── interfaces/        # External protocol interfaces
-│   │   ├── IUniswapV3.sol
-│   │   ├── IGMXV2.sol
-│   │   └── IChainlink.sol
 │   ├── libraries/         # Core calculation libraries
-│   │   ├── DeltaCalculator.sol
-│   │   └── YieldMath.sol
 │   └── test/              # Test harness contracts
 ├── test/
 │   ├── unit/              # Unit tests for libraries
+│   ├── integration/       # Integration tests
 │   ├── scenarios/         # Priority-based scenario tests (P0-P3)
 │   ├── fork/              # Fork tests against Arbitrum mainnet
 │   └── helpers/           # Test utilities and constants
@@ -75,23 +76,23 @@ npm run compile
 npm test
 
 # Run unit tests only
-npx hardhat test test/unit/**/*.test.ts
+npm run test:unit
 
-# Run scenario tests
-npx hardhat test test/scenarios/**/*.test.ts
+# Run integration tests
+npm run test:integration
 
 # Run fork tests (requires ALCHEMY_API_KEY)
-ALCHEMY_API_KEY=<your-api-key> npx hardhat test test/fork/**/*.test.ts
+ALCHEMY_API_KEY=<your-api-key> npm run test:fork
 ```
 
 ### Code Formatting
 
 ```bash
 # Format all files
-npm run format
+npm run lint:fix
 
 # Check formatting
-npm run format:check
+npm run lint
 ```
 
 ## Configuration
@@ -137,7 +138,7 @@ The [`DeltaCalculator`](contracts/libraries/DeltaCalculator.sol) library impleme
 
 ## Technology Stack
 
-- **Solidity 0.8.19** with OpenZeppelin 5.0
+- **Solidity ^0.8.20** with OpenZeppelin 5.0
 - **Hardhat** for development and testing
 - **Ethers.js v6** for blockchain interaction
 - **TypeChain** for type-safe contract bindings
@@ -157,13 +158,9 @@ The [`DeltaCalculator`](contracts/libraries/DeltaCalculator.sol) library impleme
 | GMX ExchangeRouter | `0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8` |
 | Chainlink ETH/USD Feed | `0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612` |
 
-## License
-
-MIT
-
 ## References
 
-- Lambert, G. "Pricing Uniswap v3 LP Positions: Towards a New Options Paradigm"
+- Lambert, G. ["Pricing Uniswap v3 LP Positions: Towards a New Options Paradigm"](https://lambert-guillaume.medium.com/pricing-uniswap-v3-lp-positions-towards-a-new-options-paradigm-dce3e3b50125)
 - GMX Documentation: https://docs.gmx.io/
 - Uniswap v3 Documentation: https://docs.uniswap.org/
 - Chainlink Automation: https://docs.chain.link/chainlink-automation
