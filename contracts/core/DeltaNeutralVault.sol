@@ -447,12 +447,16 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         hedgeManager = _hedgeManager;
         rebalanceController = _rebalanceController;
 
-        // Approve managers to spend asset
+        // Approve managers to spend tokens
         if (_liquidityManager != address(0)) {
-            IERC20(asset()).safeIncreaseAllowance(_liquidityManager, type(uint256).max);
+            address baseToken = ILiquidityManager(_liquidityManager).baseToken();
+            address quoteToken = ILiquidityManager(_liquidityManager).quoteToken();
+
+            IERC20(baseToken).forceApprove(_liquidityManager, type(uint256).max);
+            IERC20(quoteToken).forceApprove(_liquidityManager, type(uint256).max);
         }
         if (_hedgeManager != address(0)) {
-            IERC20(asset()).safeIncreaseAllowance(_hedgeManager, type(uint256).max);
+            IERC20(asset()).forceApprove(_hedgeManager, type(uint256).max);
         }
 
         emit ManagersUpdated(_liquidityManager, _hedgeManager, _rebalanceController);
@@ -540,36 +544,65 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         _swapForLP(lpAmount);
 
         // 2. Deposit to LP
+
         address baseToken = ILiquidityManager(liquidityManager).baseToken();
+
         address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
 
         // We need to know balances of this contract
-        uint256 bal0 = IERC20(baseToken).balanceOf(address(this));
-        uint256 bal1 = IERC20(quoteToken).balanceOf(address(this));
+
+        uint256 balBase = IERC20(baseToken).balanceOf(address(this));
+
+        uint256 balQuote = IERC20(quoteToken).balanceOf(address(this));
 
         // Reserve collateral if it is one of the tokens (usually asset() which is quoteToken)
+
         if (baseToken == asset()) {
-            if (bal0 > collateralAmount) bal0 -= collateralAmount;
-            else bal0 = 0;
-        }
-        if (quoteToken == asset()) {
-            if (bal1 > collateralAmount) bal1 -= collateralAmount;
-            else bal1 = 0;
+            if (balBase > collateralAmount) balBase -= collateralAmount;
+            else balBase = 0;
         }
 
-        if (bal0 > 0 || bal1 > 0) {
+        if (quoteToken == asset()) {
+            if (balQuote > collateralAmount) balQuote -= collateralAmount;
+            else balQuote = 0;
+        }
+
+        if (balBase > 0 || balQuote > 0) {
+            // Determine amount0 and amount1 based on address order
+
+            uint256 amount0;
+
+            uint256 amount1;
+
+            if (baseToken < quoteToken) {
+                amount0 = balBase;
+
+                amount1 = balQuote;
+            } else {
+                amount0 = balQuote;
+
+                amount1 = balBase;
+            }
+
             // Check if position exists
+
             if (ILiquidityManager(liquidityManager).tokenId() != 0) {
-                ILiquidityManager(liquidityManager).increaseLiquidity(bal0, bal1, block.timestamp);
+                ILiquidityManager(liquidityManager).increaseLiquidity(
+                    amount0,
+                    amount1,
+                    block.timestamp
+                );
             } else {
                 // Get ticks
+
                 (int24 tickLower, int24 tickUpper) = ILiquidityManager(liquidityManager)
                     .getRebalanceTicks(rangeWidthMultiplier);
+
                 ILiquidityManager(liquidityManager).mintPosition(
                     tickLower,
                     tickUpper,
-                    bal0,
-                    bal1,
+                    amount0,
+                    amount1,
                     block.timestamp
                 );
             }
