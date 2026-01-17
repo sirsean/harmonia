@@ -6,13 +6,17 @@ import {IHedgeManager} from "../interfaces/IHedgeManager.sol";
 import {ISwapRouter} from "../interfaces/IUniswapV3.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract MockSwapRouter {
-    function exactInputSingle(
-        ISwapRouter.ExactInputSingleParams calldata
-    ) external payable returns (uint256) {
+contract SimpleMockSwapRouter {
+
+    function exactInputSingle(ISwapRouter.ExactInputSingleParams calldata) external payable returns (uint256) {
+
         return 0;
+
     }
+
 }
+
+
 
 contract MockPool {
     function slot0() external pure returns (uint160, int24, uint16, uint16, uint16, uint8, bool) {
@@ -26,12 +30,12 @@ contract MockLiquidityManager is ILiquidityManager {
     address public quoteToken;
     address public pool;
     address public vault;
-    MockSwapRouter public router;
+    SimpleMockSwapRouter public router;
 
     constructor(address _baseToken, address _quoteToken) {
         baseToken = _baseToken;
         quoteToken = _quoteToken;
-        router = new MockSwapRouter();
+        router = new SimpleMockSwapRouter();
         pool = address(new MockPool());
     }
 
