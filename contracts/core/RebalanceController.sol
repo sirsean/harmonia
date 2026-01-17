@@ -112,7 +112,7 @@ contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeabl
     /// @inheritdoc AutomationCompatibleInterface
     function checkUpkeep(
         bytes calldata /* checkData */
-    ) external override returns (bool upkeepNeeded, bytes memory performData) {
+    ) external view override returns (bool upkeepNeeded, bytes memory performData) {
         UpkeepType upkeepType;
         (upkeepNeeded, upkeepType, ) = _selectUpkeepType();
 
