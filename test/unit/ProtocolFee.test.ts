@@ -67,7 +67,7 @@ describe("Protocol Fee", function () {
   describe("Configuration", function () {
     it("should allow owner to set protocol fee", async function () {
       const { vault, owner } = await loadFixture(deployVaultFixture);
-      const newFee = 1000; // 10%
+      const newFee = 100; // 1%
 
       await expect(vault.connect(owner).setProtocolFee(newFee))
         .to.emit(vault, "ProtocolFeeUpdated")

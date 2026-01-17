@@ -43,7 +43,7 @@ ARBISCAN_API_KEY=your_arbiscan_api_key
 ALCHEMY_API_KEY=your_alchemy_api_key
 
 # Optional Configuration
-PROTOCOL_FEE_BPS=1000            # 10% (default 1000)
+PROTOCOL_FEE_BPS=100             # 1% (default 100)
 TREASURY_ADDRESS=0x...           # Fee recipient (default deployer)
 ```
 
@@ -212,8 +212,8 @@ await vault.setDepositCap(ethers.parseUnits("10000", 6));
 If not set during deployment:
 
 ```javascript
-// Set 10% fee and treasury address
-await vault.setProtocolFee(1000);
+// Set 1% fee and treasury address
+await vault.setProtocolFee(100);
 await vault.setTreasury(treasuryAddress);
 ```
 

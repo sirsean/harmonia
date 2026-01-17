@@ -14,7 +14,7 @@ Implement a configurable protocol fee mechanism where a percentage of the yield/
 ### `DeltaNeutralVault.sol`
 
 #### State Variables
-- `uint256 public protocolFeeBps`: The fee percentage in basis points (e.g., 1000 = 10%).
+- `uint256 public protocolFeeBps`: The fee percentage in basis points (e.g., 100 = 1%).
 - `address public treasury`: The recipient of the fee shares.
 - `uint256 public constant MAX_PROTOCOL_FEE_BPS = 5000`: Maximum allowed fee (50%).
 
