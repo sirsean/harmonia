@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { MockRebalanceVault, RebalanceController } from "../../typechain-types";
 
@@ -17,11 +17,13 @@ describeFork("RebalanceController Fork Tests", function () {
     const mockVault = (await MockVault.deploy(DELTA_THRESHOLD)) as MockRebalanceVault;
     await mockVault.waitForDeployment();
 
+    // Deploy controller
     const Controller = await ethers.getContractFactory("RebalanceController");
-    const controller = (await Controller.deploy(
-      await mockVault.getAddress(),
-      owner.address
-    )) as RebalanceController;
+    const controller = (await upgrades.deployProxy(
+      Controller,
+      [await mockVault.getAddress(), owner.address],
+      { kind: "uups" }
+    )) as unknown as RebalanceController;
     await controller.waitForDeployment();
 
     return { owner, mockVault, controller };

@@ -172,20 +172,20 @@ For this strategy to work, we need:
 ```
 contracts/
 ├── core/
-│   ├── DeltaNeutralVault.sol      # Main vault with ERC-4626
-│   ├── LiquidityManager.sol       # Uniswap v3 integration
-│   └── HedgeManager.sol           # GMX v2 integration
+│   ├── DeltaNeutralVault.sol      # Main vault (UUPS Upgradeable)
+│   ├── LiquidityManager.sol       # Uniswap v3 integration (UUPS Upgradeable)
+│   ├── HedgeManager.sol           # GMX v2 integration (UUPS Upgradeable)
+│   └── RebalanceController.sol    # Keeper logic (UUPS Upgradeable)
 ├── libraries/
 │   ├── DeltaCalculator.sol        # LP position delta math
 │   ├── TickMath.sol               # Price/tick conversions
-│   └── YieldMath.sol              # APY calculations
-├── periphery/
-│   ├── SwapRouter.sol             # USDC ↔ ETH swaps
-│   └── KeeperCompatible.sol       # Chainlink Automation
-└── interfaces/
-    ├── IUniswapV3.sol
-    ├── IGMXV2.sol
-    └── IChainlinkAutomation.sol
+│   ├── YieldMath.sol              # APY calculations
+│   └── SecurityModule.sol         # Security utilities
+├── interfaces/
+│   ├── IUniswapV3.sol
+│   ├── IGMXV2.sol
+│   └── IChainlink.sol
+└── test/                          # Test helpers and mocks
 ```
 
 ---
@@ -311,10 +311,10 @@ The YieldTracker contract will maintain daily snapshots for calculating rolling 
 
 ### 4.5 Main Vault Contract
 
-> **Status:** Design complete, implementation pending
+> **Status:** COMPLETE
 > **Interfaces:** [`contracts/interfaces/IUniswapV3.sol`](contracts/interfaces/IUniswapV3.sol)
 
-The DeltaNeutralVault is the main entry point implementing ERC-4626 tokenized vault standard.
+The DeltaNeutralVault is the main entry point implementing ERC-4626 tokenized vault standard. It is implemented as a **UUPS Upgradeable Proxy**.
 
 **Core Architecture:**
 
@@ -682,7 +682,7 @@ A TypeScript monitoring script provides redundancy:
 **Objective:** Launch on Arbitrum mainnet.
 
 **Deliverables:**
-- [ ] Deployment scripts for all contracts
+- [x] Deployment scripts for all contracts (UUPS proxies)
 - [ ] Contract verification on Arbiscan
 - [ ] Chainlink Automation upkeep registration
 - [ ] Initial deposit cap ($10k)

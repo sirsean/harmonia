@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers, network } from "hardhat";
+import { ethers, network, upgrades } from "hardhat";
 import { Contract } from "ethers";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { ARBITRUM_ADDRESSES } from "../../hardhat.config";
@@ -77,15 +77,19 @@ describeFork("LiquidityManager Fork Tests", function () {
 
     // Deploy LiquidityManager
     const LiquidityManager = await ethers.getContractFactory("LiquidityManager");
-    liquidityManager = await LiquidityManager.deploy(
-      ARBITRUM_ADDRESSES.UNISWAP_V3_POSITION_MANAGER,
-      ARBITRUM_ADDRESSES.UNISWAP_V3_SWAP_ROUTER,
-      ARBITRUM_ADDRESSES.UNISWAP_V3_FACTORY,
-      ARBITRUM_ADDRESSES.WETH,
-      ARBITRUM_ADDRESSES.USDC,
-      POOL_FEE,
-      signer.address
-    );
+    liquidityManager = (await upgrades.deployProxy(
+      LiquidityManager,
+      [
+        ARBITRUM_ADDRESSES.UNISWAP_V3_POSITION_MANAGER,
+        ARBITRUM_ADDRESSES.UNISWAP_V3_SWAP_ROUTER,
+        ARBITRUM_ADDRESSES.UNISWAP_V3_FACTORY,
+        ARBITRUM_ADDRESSES.WETH,
+        ARBITRUM_ADDRESSES.USDC,
+        POOL_FEE,
+        signer.address,
+      ],
+      { kind: "uups" }
+    )) as unknown as LiquidityManager;
     await liquidityManager.waitForDeployment();
 
     // Set vault

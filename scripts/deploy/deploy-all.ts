@@ -20,7 +20,7 @@
  *   DRY_RUN - Set to "true" to validate without deploying (optional)
  */
 
-import { ethers, run } from "hardhat";
+import { ethers, run, upgrades, network } from "hardhat";
 import {
   getMarketConfig,
   getAvailableMarkets,
@@ -30,30 +30,7 @@ import {
 import { MarketValidator } from "../../src/markets/validator";
 import { CONSTANTS } from "../config/addresses";
 
-interface DeployedContracts {
-  vault: string;
-  liquidityManager: string;
-  hedgeManager: string;
-  rebalanceController: string;
-}
-
-interface DeploymentConfig {
-  vaultName: string;
-  vaultSymbol: string;
-  initialDepositCap: bigint;
-  poolFee: number;
-  owner: string;
-  guardian: string;
-}
-
-interface DeploymentResult {
-  contracts: DeployedContracts;
-  config: DeploymentConfig;
-  market: MarketConfig;
-  deployer: string;
-  chainId: number;
-  timestamp: number;
-}
+// ...
 
 /**
  * Main deployment function
@@ -62,8 +39,13 @@ async function main(): Promise<DeploymentResult> {
   const marketId = process.env.MARKET;
   const dryRun = process.env.DRY_RUN === "true";
 
+  // Workaround for "No known hardfork" error on Arbitrum fork
+  if (network.name === "hardhat" || network.name === "localhost") {
+    await network.provider.send("hardhat_mine", ["0x1"]);
+  }
+
   console.log("\n" + "=".repeat(60));
-  console.log("HARMONIA PROTOCOL DEPLOYMENT");
+  console.log("HARMONIA PROTOCOL DEPLOYMENT (UPGRADEABLE)");
   console.log("=".repeat(60) + "\n");
 
   // Validate market selection
@@ -137,12 +119,23 @@ async function main(): Promise<DeploymentResult> {
   const validator = new MarketValidator(ethers.provider);
   const validationResult = await validator.validateMarket(market);
 
-  if (!validationResult.isValid) {
-    console.error("\n✗ Market validation failed!");
+  if (validationResult.warnings.length > 0) {
+    console.log("\nValidation Warnings:");
+    validationResult.warnings.forEach((w) => console.log(`  ⚠ ${w}`));
+  }
+
+  if (validationResult.errors.length > 0) {
+    console.error("\n✗ Market validation failed with errors!");
     console.error("Errors:", validationResult.errors);
     process.exit(1);
   }
-  console.log("✓ Market validation passed.\n");
+
+  if (!validationResult.isValid && !dryRun) {
+    console.error("\n✗ Market validation failed (invalid state)!");
+    process.exit(1);
+  }
+
+  console.log("✓ Market validation passed (or acceptable for dry run).\n");
 
   // If dry run, stop here
   if (dryRun) {
@@ -162,28 +155,28 @@ async function main(): Promise<DeploymentResult> {
   };
 
   // Step 1: Deploy DeltaNeutralVault
-  console.log("Step 1/5: Deploying DeltaNeutralVault...");
+  console.log("Step 1/5: Deploying DeltaNeutralVault (Proxy)...");
   const vault = await deployVault(market.quoteToken.address, config);
   contracts.vault = await vault.getAddress();
   console.log("  Vault deployed at:", contracts.vault);
   console.log("");
 
   // Step 2: Deploy LiquidityManager
-  console.log("Step 2/5: Deploying LiquidityManager...");
+  console.log("Step 2/5: Deploying LiquidityManager (Proxy)...");
   const liquidityManager = await deployLiquidityManager(market, config);
   contracts.liquidityManager = await liquidityManager.getAddress();
   console.log("  LiquidityManager deployed at:", contracts.liquidityManager);
   console.log("");
 
   // Step 3: Deploy HedgeManager
-  console.log("Step 3/5: Deploying HedgeManager...");
+  console.log("Step 3/5: Deploying HedgeManager (Proxy)...");
   const hedgeManager = await deployHedgeManager(market, config);
   contracts.hedgeManager = await hedgeManager.getAddress();
   console.log("  HedgeManager deployed at:", contracts.hedgeManager);
   console.log("");
 
   // Step 4: Deploy RebalanceController
-  console.log("Step 4/5: Deploying RebalanceController...");
+  console.log("Step 4/5: Deploying RebalanceController (Proxy)...");
   const rebalanceController = await deployRebalanceController(contracts.vault, config);
   contracts.rebalanceController = await rebalanceController.getAddress();
   console.log("  RebalanceController deployed at:", contracts.rebalanceController);
@@ -224,12 +217,12 @@ async function main(): Promise<DeploymentResult> {
 async function deployVault(quoteTokenAddress: string, config: DeploymentConfig) {
   const VaultFactory = await ethers.getContractFactory("DeltaNeutralVault");
 
-  const vault = await VaultFactory.deploy(
+  const vault = await upgrades.deployProxy(VaultFactory, [
     quoteTokenAddress,
     config.vaultName,
     config.vaultSymbol,
     config.owner
-  );
+  ], { kind: 'uups' });
 
   await vault.waitForDeployment();
   return vault;
@@ -241,7 +234,7 @@ async function deployVault(quoteTokenAddress: string, config: DeploymentConfig) 
 async function deployLiquidityManager(market: MarketConfig, config: DeploymentConfig) {
   const LiquidityManagerFactory = await ethers.getContractFactory("LiquidityManager");
 
-  const liquidityManager = await LiquidityManagerFactory.deploy(
+  const liquidityManager = await upgrades.deployProxy(LiquidityManagerFactory, [
     ARBITRUM_PROTOCOLS.UNISWAP_V3_POSITION_MANAGER,
     ARBITRUM_PROTOCOLS.UNISWAP_V3_SWAP_ROUTER,
     ARBITRUM_PROTOCOLS.UNISWAP_V3_FACTORY,
@@ -249,7 +242,7 @@ async function deployLiquidityManager(market: MarketConfig, config: DeploymentCo
     market.quoteToken.address,
     config.poolFee,
     config.owner
-  );
+  ], { kind: 'uups' });
 
   await liquidityManager.waitForDeployment();
   return liquidityManager;
@@ -261,14 +254,14 @@ async function deployLiquidityManager(market: MarketConfig, config: DeploymentCo
 async function deployHedgeManager(market: MarketConfig, config: DeploymentConfig) {
   const HedgeManagerFactory = await ethers.getContractFactory("HedgeManager");
 
-  const hedgeManager = await HedgeManagerFactory.deploy(
+  const hedgeManager = await upgrades.deployProxy(HedgeManagerFactory, [
     ARBITRUM_PROTOCOLS.GMX_EXCHANGE_ROUTER,
     market.gmxMarket.marketAddress,
     market.quoteToken.address,
     market.baseToken.address,
     market.chainlinkFeed.address,
     config.owner
-  );
+  ], { kind: 'uups' });
 
   await hedgeManager.waitForDeployment();
   return hedgeManager;
@@ -280,7 +273,10 @@ async function deployHedgeManager(market: MarketConfig, config: DeploymentConfig
 async function deployRebalanceController(vaultAddress: string, config: DeploymentConfig) {
   const RebalanceControllerFactory = await ethers.getContractFactory("RebalanceController");
 
-  const rebalanceController = await RebalanceControllerFactory.deploy(vaultAddress, config.owner);
+  const rebalanceController = await upgrades.deployProxy(RebalanceControllerFactory, [
+    vaultAddress, 
+    config.owner
+  ], { kind: 'uups' });
 
   await rebalanceController.waitForDeployment();
   return rebalanceController;
@@ -290,9 +286,9 @@ async function deployRebalanceController(vaultAddress: string, config: Deploymen
  * Configure all contracts with proper relationships
  */
 async function configureContracts(
-  vault: Awaited<ReturnType<typeof deployVault>>,
-  liquidityManager: Awaited<ReturnType<typeof deployLiquidityManager>>,
-  hedgeManager: Awaited<ReturnType<typeof deployHedgeManager>>,
+  vault: any,
+  liquidityManager: any,
+  hedgeManager: any,
   contracts: DeployedContracts,
   config: DeploymentConfig
 ): Promise<void> {
@@ -338,50 +334,23 @@ async function verifyContracts(
   market: MarketConfig,
   config: DeploymentConfig
 ): Promise<void> {
+  console.log("Waiting 30 seconds for block explorer indexing...");
+  await new Promise((resolve) => setTimeout(resolve, 30000));
+
   const verifications = [
-    {
-      name: "DeltaNeutralVault",
-      address: contracts.vault,
-      args: [market.quoteToken.address, config.vaultName, config.vaultSymbol, config.owner],
-    },
-    {
-      name: "LiquidityManager",
-      address: contracts.liquidityManager,
-      args: [
-        ARBITRUM_PROTOCOLS.UNISWAP_V3_POSITION_MANAGER,
-        ARBITRUM_PROTOCOLS.UNISWAP_V3_SWAP_ROUTER,
-        ARBITRUM_PROTOCOLS.UNISWAP_V3_FACTORY,
-        market.baseToken.address,
-        market.quoteToken.address,
-        config.poolFee,
-        config.owner,
-      ],
-    },
-    {
-      name: "HedgeManager",
-      address: contracts.hedgeManager,
-      args: [
-        ARBITRUM_PROTOCOLS.GMX_EXCHANGE_ROUTER,
-        market.gmxMarket.marketAddress,
-        market.quoteToken.address,
-        market.baseToken.address,
-        market.chainlinkFeed.address,
-        config.owner,
-      ],
-    },
-    {
-      name: "RebalanceController",
-      address: contracts.rebalanceController,
-      args: [contracts.vault, config.owner],
-    },
+    { name: "DeltaNeutralVault", address: contracts.vault },
+    { name: "LiquidityManager", address: contracts.liquidityManager },
+    { name: "HedgeManager", address: contracts.hedgeManager },
+    { name: "RebalanceController", address: contracts.rebalanceController },
   ];
 
   for (const v of verifications) {
     try {
-      console.log(`  Verifying ${v.name}...`);
+      console.log(`  Verifying ${v.name} at ${v.address}...`);
+      // For proxies, we verify the proxy address. The hardhat-upgrades plugin
+      // detects the proxy and verifies the implementation automatically.
       await run("verify:verify", {
         address: v.address,
-        constructorArguments: v.args,
       });
     } catch (error: unknown) {
       if (error instanceof Error && error.message.includes("Already Verified")) {

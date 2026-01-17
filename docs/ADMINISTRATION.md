@@ -11,7 +11,8 @@ This guide documents all administrative functions, roles, and operational proced
 5. [RebalanceController Administration](#rebalancecontroller-administration)
 6. [Emergency Procedures](#emergency-procedures)
 7. [Ownership Transfer](#ownership-transfer)
-8. [Security Best Practices](#security-best-practices)
+8. [Upgrading Contract Logic](#upgrading-contract-logic)
+9. [Security Best Practices](#security-best-practices)
 
 ---
 
@@ -21,14 +22,14 @@ This guide documents all administrative functions, roles, and operational proced
 
 | Contract                | Role                 | Capabilities                                              |
 | ----------------------- | -------------------- | --------------------------------------------------------- |
-| **DeltaNeutralVault**   | Owner                | Full admin control, set managers, set caps, pause/unpause |
+| **DeltaNeutralVault**   | Owner                | Full admin control, set managers, set caps, pause/unpause, **Upgrade Logic** |
 |                         | Guardian             | Trigger circuit breaker, emergency unwind                 |
 |                         | Rebalance Controller | Call rebalance()                                          |
-| **LiquidityManager**    | Owner                | Set vault, update slippage, configure TWAP                |
+| **LiquidityManager**    | Owner                | Set vault, update slippage, configure TWAP, **Upgrade Logic** |
 |                         | Vault                | Execute LP operations                                     |
-| **HedgeManager**        | Owner                | Set vault, update slippage, set execution fee             |
+| **HedgeManager**        | Owner                | Set vault, update slippage, set execution fee, **Upgrade Logic** |
 |                         | Vault                | Execute hedge operations                                  |
-| **RebalanceController** | Owner                | Standard Ownable functions                                |
+| **RebalanceController** | Owner                | Standard Ownable functions, **Upgrade Logic**             |
 
 ### Role Hierarchy
 
@@ -560,6 +561,44 @@ await contract.connect(newOwnerSigner).acceptOwnership();
 
 ---
 
+## Upgrading Contract Logic
+
+Harmonia core contracts use the **UUPS (Universal Upgradeable Proxy Standard)** pattern. Unlike Transparent proxies, the upgrade logic resides in the implementation contract itself, making it more gas-efficient.
+
+### Authorization
+
+Only the **Owner** of the contract can authorize an upgrade. The `_authorizeUpgrade` function is protected by the `onlyOwner` modifier in all core contracts.
+
+### Upgrade Process via Hardhat
+
+The recommended way to upgrade implementation logic is using the OpenZeppelin Hardhat Upgrades plugin:
+
+1. **Develop New Implementation**: Create a new version of the contract (e.g., `DeltaNeutralVaultV2.sol`).
+2. **Validate Upgrade**: Ensure the new implementation is upgrade-compatible (no storage layout changes, etc.).
+3. **Execute Upgrade**:
+
+```javascript
+const { upgrades, ethers } = require("hardhat");
+
+const PROXY_ADDRESS = "0x..."; // The address of the existing proxy
+const VaultV2 = await ethers.getContractFactory("DeltaNeutralVaultV2");
+
+console.log("Upgrading vault...");
+await upgrades.upgradeProxy(PROXY_ADDRESS, VaultV2);
+console.log("Vault upgraded successfully");
+```
+
+### Manual Upgrade
+
+If not using the plugin, the owner can call `upgradeToAndCall(newImplementation, data)` directly on the proxy.
+
+### Risks
+
+- **Storage Collisions**: Never change the order or type of existing state variables. Use the provided `__gap` variables if adding state to base contracts.
+- **Initialization**: New versions might require new initialization logic. Use the `reinitializer` modifier for V2+ initialization functions.
+
+---
+
 ## Security Best Practices
 
 ### Access Control
@@ -625,6 +664,7 @@ These values are immutable and cannot be changed:
 | `unpause()`             | Resume deposits             |
 | `resetCircuitBreaker()` | Reset after emergency       |
 | `transferOwnership()`   | Transfer owner role         |
+| `upgradeToAndCall()`    | Upgrade contract logic      |
 
 ### DeltaNeutralVault (Guardian)
 
@@ -642,6 +682,7 @@ These values are immutable and cannot be changed:
 | `setTWAPValidation()`    | Toggle TWAP check   |
 | `setPriceFeed()`         | Set Chainlink feed  |
 | `transferOwnership()`    | Transfer owner role |
+| `upgradeToAndCall()`     | Upgrade logic       |
 
 ### HedgeManager (Owner)
 
@@ -651,3 +692,11 @@ These values are immutable and cannot be changed:
 | `setSlippageTolerance()`    | Adjust GMX slippage |
 | `setExecutionFeeOverride()` | Override GMX fee    |
 | `transferOwnership()`       | Transfer owner role |
+| `upgradeToAndCall()`        | Upgrade logic       |
+
+### RebalanceController (Owner)
+
+| Function                | Purpose             |
+| ----------------------- | ------------------- |
+| `transferOwnership()`   | Transfer owner role |
+| `upgradeToAndCall()`    | Upgrade logic       |
