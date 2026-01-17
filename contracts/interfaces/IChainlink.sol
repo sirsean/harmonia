@@ -49,7 +49,7 @@ interface AutomationCompatibleInterface {
     /// @return performData Data to pass to performUpkeep if upkeep is needed
     function checkUpkeep(
         bytes calldata checkData
-    ) external returns (bool upkeepNeeded, bytes memory performData);
+    ) external view returns (bool upkeepNeeded, bytes memory performData);
 
     /// @notice Called by the Chainlink Keeper when upkeep is needed
     /// @param performData Data returned by checkUpkeep
