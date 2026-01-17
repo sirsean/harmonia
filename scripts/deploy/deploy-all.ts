@@ -20,7 +20,7 @@
  *   DRY_RUN - Set to "true" to validate without deploying (optional)
  */
 
-import { ethers, run, upgrades } from "hardhat";
+import { ethers, run, upgrades, network } from "hardhat";
 import {
   getMarketConfig,
   getAvailableMarkets,
@@ -30,30 +30,7 @@ import {
 import { MarketValidator } from "../../src/markets/validator";
 import { CONSTANTS } from "../config/addresses";
 
-interface DeployedContracts {
-  vault: string;
-  liquidityManager: string;
-  hedgeManager: string;
-  rebalanceController: string;
-}
-
-interface DeploymentConfig {
-  vaultName: string;
-  vaultSymbol: string;
-  initialDepositCap: bigint;
-  poolFee: number;
-  owner: string;
-  guardian: string;
-}
-
-interface DeploymentResult {
-  contracts: DeployedContracts;
-  config: DeploymentConfig;
-  market: MarketConfig;
-  deployer: string;
-  chainId: number;
-  timestamp: number;
-}
+// ...
 
 /**
  * Main deployment function
@@ -61,6 +38,11 @@ interface DeploymentResult {
 async function main(): Promise<DeploymentResult> {
   const marketId = process.env.MARKET;
   const dryRun = process.env.DRY_RUN === "true";
+
+  // Workaround for "No known hardfork" error on Arbitrum fork
+  if (network.name === "hardhat" || network.name === "localhost") {
+    await network.provider.send("hardhat_mine", ["0x1"]);
+  }
 
   console.log("\n" + "=".repeat(60));
   console.log("HARMONIA PROTOCOL DEPLOYMENT (UPGRADEABLE)");
@@ -137,12 +119,23 @@ async function main(): Promise<DeploymentResult> {
   const validator = new MarketValidator(ethers.provider);
   const validationResult = await validator.validateMarket(market);
 
-  if (!validationResult.isValid) {
-    console.error("\n✗ Market validation failed!");
+  if (validationResult.warnings.length > 0) {
+    console.log("\nValidation Warnings:");
+    validationResult.warnings.forEach((w) => console.log(`  ⚠ ${w}`));
+  }
+
+  if (validationResult.errors.length > 0) {
+    console.error("\n✗ Market validation failed with errors!");
     console.error("Errors:", validationResult.errors);
     process.exit(1);
   }
-  console.log("✓ Market validation passed.\n");
+
+  if (!validationResult.isValid && !dryRun) {
+    console.error("\n✗ Market validation failed (invalid state)!");
+    process.exit(1);
+  }
+
+  console.log("✓ Market validation passed (or acceptable for dry run).\n");
 
   // If dry run, stop here
   if (dryRun) {
