@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import {
   LiquidityManager,
@@ -68,7 +68,7 @@ describe("LiquidityManager", function () {
 
     // Deploy LiquidityManager
     const LiquidityManager = await ethers.getContractFactory("LiquidityManager");
-    const liquidityManager = await LiquidityManager.deploy(
+    const liquidityManager = await upgrades.deployProxy(LiquidityManager, [
       await positionManager.getAddress(),
       await swapRouter.getAddress(),
       await factory.getAddress(),
@@ -76,7 +76,7 @@ describe("LiquidityManager", function () {
       usdcAddress,
       POOL_FEE,
       owner.address
-    );
+    ], { kind: 'uups' });
     await liquidityManager.waitForDeployment();
 
     // Set vault
@@ -140,7 +140,7 @@ describe("LiquidityManager", function () {
       const LiquidityManager = await ethers.getContractFactory("LiquidityManager");
 
       await expect(
-        LiquidityManager.deploy(
+        upgrades.deployProxy(LiquidityManager, [
           ethers.ZeroAddress,
           await swapRouter.getAddress(),
           await factory.getAddress(),
@@ -148,11 +148,11 @@ describe("LiquidityManager", function () {
           await usdc.getAddress(),
           POOL_FEE,
           owner.address
-        )
+        ], { kind: 'uups' })
       ).to.be.revertedWithCustomError(LiquidityManager, "ZeroAddress");
 
       await expect(
-        LiquidityManager.deploy(
+        upgrades.deployProxy(LiquidityManager, [
           await positionManager.getAddress(),
           ethers.ZeroAddress,
           await factory.getAddress(),
@@ -160,7 +160,7 @@ describe("LiquidityManager", function () {
           await usdc.getAddress(),
           POOL_FEE,
           owner.address
-        )
+        ], { kind: 'uups' })
       ).to.be.revertedWithCustomError(LiquidityManager, "ZeroAddress");
     });
 
@@ -888,12 +888,12 @@ describe("LiquidityManager", function () {
 
       // Deploy actual vault
       const DeltaNeutralVault = await ethers.getContractFactory("DeltaNeutralVault");
-      const actualVault = await DeltaNeutralVault.deploy(
+      const actualVault = await upgrades.deployProxy(DeltaNeutralVault, [
         await usdc.getAddress(),
         "Harmonia Delta Neutral",
         "hdnUSDC",
         owner.address
-      );
+      ], { kind: 'uups' });
       await actualVault.waitForDeployment();
 
       // Set managers

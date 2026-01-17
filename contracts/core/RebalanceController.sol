@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AutomationCompatibleInterface} from "../interfaces/IChainlink.sol";
 
 /// @notice Minimal interface for the delta-neutral vault used by the controller
@@ -25,7 +26,7 @@ interface IDeltaNeutralVaultMinimal {
 
 /// @title Delta-Neutral Rebalance Controller
 /// @notice Chainlink Automation-compatible keeper for delta monitoring and maintenance tasks
-contract RebalanceController is AutomationCompatibleInterface, Ownable {
+contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeable, UUPSUpgradeable {
     // ============ Types ============
 
     /// @notice Type of upkeep operation to perform
@@ -56,13 +57,16 @@ contract RebalanceController is AutomationCompatibleInterface, Ownable {
     // ============ State ============
 
     /// @notice Delta-neutral vault controlled by this keeper
-    IDeltaNeutralVaultMinimal public immutable vault;
+    IDeltaNeutralVaultMinimal public vault;
 
     /// @notice Timestamp of last compound operation
     uint256 public lastCompoundTime;
 
     /// @notice Timestamp of last snapshot operation
     uint256 public lastSnapshotTime;
+
+    // ============ Gap for Upgradeability ============
+    uint256[50] private __gap;
 
     // ============ Events ============
 
@@ -87,16 +91,21 @@ contract RebalanceController is AutomationCompatibleInterface, Ownable {
     /// @notice Thrown when a zero address is provided where not allowed
     error ZeroAddress();
 
-    // ============ Constructor ============
+    // ============ Initializer ============
 
     /// @param _vault Address of the DeltaNeutralVault contract
     /// @param _owner Owner address for administrative control
-    constructor(address _vault, address _owner) Ownable(_owner) {
+    function initialize(address _vault, address _owner) public initializer {
         if (_vault == address(0)) revert ZeroAddress();
-        // Note: Ownable enforces non-zero owner via OwnableInvalidOwner
+
+        __Ownable_init(_owner);
+        __UUPSUpgradeable_init();
 
         vault = IDeltaNeutralVaultMinimal(_vault);
     }
+
+    /// @dev Authorize upgrade - only owner can upgrade
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     // ============ Chainlink Automation Interface ============
 

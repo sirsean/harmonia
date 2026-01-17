@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { DeltaNeutralVault, MockERC20 } from "../../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
@@ -26,12 +26,12 @@ describe("DeltaNeutralVault", function () {
 
     // Deploy vault
     const DeltaNeutralVault = await ethers.getContractFactory("DeltaNeutralVault");
-    const vault = await DeltaNeutralVault.deploy(
+    const vault = await upgrades.deployProxy(DeltaNeutralVault, [
       await usdc.getAddress(),
       "Harmonia Delta Neutral",
       "hdnUSDC",
       owner.address
-    );
+    ], { kind: 'uups' });
     await vault.waitForDeployment();
 
     // Approve vault to spend USDC
@@ -68,17 +68,28 @@ describe("DeltaNeutralVault", function () {
       const DeltaNeutralVault = await ethers.getContractFactory("DeltaNeutralVault");
 
       await expect(
-        DeltaNeutralVault.deploy(ethers.ZeroAddress, "Test", "TEST", owner.address)
+        upgrades.deployProxy(DeltaNeutralVault, [
+          ethers.ZeroAddress,
+          "Test",
+          "TEST",
+          owner.address
+        ], { kind: 'uups' })
       ).to.be.revertedWithCustomError(DeltaNeutralVault, "ZeroAddress");
     });
 
     it("should revert on zero owner address", async function () {
       const { usdc } = await loadFixture(deployVaultFixture);
+      const [owner] = await ethers.getSigners();
       const DeltaNeutralVault = await ethers.getContractFactory("DeltaNeutralVault");
 
       // OpenZeppelin's Ownable throws OwnableInvalidOwner for zero address
       await expect(
-        DeltaNeutralVault.deploy(await usdc.getAddress(), "Test", "TEST", ethers.ZeroAddress)
+        upgrades.deployProxy(DeltaNeutralVault, [
+          await usdc.getAddress(),
+          "Test",
+          "TEST",
+          ethers.ZeroAddress
+        ], { kind: 'uups' })
       ).to.be.revertedWithCustomError(DeltaNeutralVault, "OwnableInvalidOwner");
     });
   });

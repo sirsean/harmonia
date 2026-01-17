@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
 import {IHedgeManager} from "../interfaces/IHedgeManager.sol";
@@ -19,7 +20,13 @@ import {DeltaCalculator} from "../libraries/DeltaCalculator.sol";
 /// @title Delta Neutral Vault
 /// @notice ERC-4626 vault that deploys capital into delta-neutral yield strategy
 /// @dev Combines Uniswap v3 LP positions with GMX v2 perpetual hedging
-contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
+contract DeltaNeutralVault is 
+    ERC4626Upgradeable, 
+    ReentrancyGuardUpgradeable, 
+    OwnableUpgradeable, 
+    PausableUpgradeable,
+    UUPSUpgradeable 
+{
     using SafeERC20 for IERC20;
 
     // ============ Constants ============
@@ -81,13 +88,16 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     uint256 public lastLargeWithdrawalTime;
 
     /// @notice Circuit breaker: is the mechanism enabled
-    bool public circuitBreakerEnabled = true;
+    bool public circuitBreakerEnabled;
 
     /// @notice Guardian address for emergency operations
     address public guardian;
 
     /// @notice Multiplier for tick range width during rebalance (default 20)
-    int24 public rangeWidthMultiplier = 20;
+    int24 public rangeWidthMultiplier;
+
+    // ============ Gap for Upgradeability ============
+    uint256[50] private __gap;
 
     // ============ Events ============
 
@@ -163,22 +173,34 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     /// @notice Thrown when caller is not guardian
     error OnlyGuardian();
 
-    // ============ Constructor ============
+    // ============ Initializer ============
 
     /// @notice Initialize the vault with USDC as the underlying asset
     /// @param _asset Address of the underlying asset (USDC)
     /// @param _name Name of the vault token
     /// @param _symbol Symbol of the vault token
     /// @param _owner Address of the vault owner
-    constructor(
+    function initialize(
         IERC20 _asset,
         string memory _name,
         string memory _symbol,
         address _owner
-    ) ERC4626(_asset) ERC20(_name, _symbol) Ownable(_owner) {
+    ) public initializer {
         if (address(_asset) == address(0)) revert ZeroAddress();
-        // Note: OpenZeppelin's Ownable already validates non-zero owner
+
+        __ERC20_init(_name, _symbol);
+        __ERC4626_init(_asset);
+        __ReentrancyGuard_init();
+        __Ownable_init(_owner);
+        __Pausable_init();
+        __UUPSUpgradeable_init();
+
+        circuitBreakerEnabled = true;
+        rangeWidthMultiplier = 20;
     }
+
+    /// @dev Authorize upgrade - only owner can upgrade
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     // ============ ERC-4626 Overrides ============
 
