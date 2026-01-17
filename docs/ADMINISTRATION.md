@@ -193,8 +193,8 @@ function setProtocolFee(uint256 _protocolFeeBps) external onlyOwner
 **Usage:**
 
 ```javascript
-// Set 10% fee (1000 bps)
-await vault.setProtocolFee(1000);
+// Set 1% fee (100 bps)
+await vault.setProtocolFee(100);
 
 // Disable fee
 await vault.setProtocolFee(0);
