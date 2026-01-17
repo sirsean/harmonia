@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import {
   HedgeManager,
@@ -51,14 +51,14 @@ describe("HedgeManager", function () {
 
     // Deploy HedgeManager
     const HedgeManager = await ethers.getContractFactory("HedgeManager");
-    const hedgeManager = await HedgeManager.deploy(
+    const hedgeManager = await upgrades.deployProxy(HedgeManager, [
       await exchangeRouter.getAddress(),
       marketAddress,
       await usdc.getAddress(),
       await weth.getAddress(),
       await priceFeed.getAddress(),
       owner.address
-    );
+    ], { kind: 'uups' });
     await hedgeManager.waitForDeployment();
 
     // Set vault
@@ -118,38 +118,38 @@ describe("HedgeManager", function () {
 
       // Zero exchange router
       await expect(
-        HedgeManager.deploy(
+        upgrades.deployProxy(HedgeManager, [
           ethers.ZeroAddress,
           marketAddress,
           await usdc.getAddress(),
           await weth.getAddress(),
           await priceFeed.getAddress(),
           owner.address
-        )
+        ], { kind: 'uups' })
       ).to.be.revertedWithCustomError(HedgeManager, "ZeroAddress");
 
       // Zero market
       await expect(
-        HedgeManager.deploy(
+        upgrades.deployProxy(HedgeManager, [
           await exchangeRouter.getAddress(),
           ethers.ZeroAddress,
           await usdc.getAddress(),
           await weth.getAddress(),
           await priceFeed.getAddress(),
           owner.address
-        )
+        ], { kind: 'uups' })
       ).to.be.revertedWithCustomError(HedgeManager, "ZeroAddress");
 
       // Zero collateral token
       await expect(
-        HedgeManager.deploy(
+        upgrades.deployProxy(HedgeManager, [
           await exchangeRouter.getAddress(),
           marketAddress,
           ethers.ZeroAddress,
           await weth.getAddress(),
           await priceFeed.getAddress(),
           owner.address
-        )
+        ], { kind: 'uups' })
       ).to.be.revertedWithCustomError(HedgeManager, "ZeroAddress");
     });
 
@@ -861,12 +861,12 @@ describe("HedgeManager", function () {
 
       // Deploy actual vault
       const DeltaNeutralVault = await ethers.getContractFactory("DeltaNeutralVault");
-      const actualVault = await DeltaNeutralVault.deploy(
+      const actualVault = await upgrades.deployProxy(DeltaNeutralVault, [
         await usdc.getAddress(),
         "Harmonia Delta Neutral",
         "hdnUSDC",
         owner.address
-      );
+      ], { kind: 'uups' });
       await actualVault.waitForDeployment();
 
       // Set managers

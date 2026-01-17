@@ -3,8 +3,9 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {
     INonfungiblePositionManager,
@@ -20,7 +21,7 @@ import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
 /// @title Liquidity Manager
 /// @notice Manages Uniswap V3 LP positions for the delta-neutral vault
 /// @dev Handles minting, fee collection, liquidity adjustments, and range rebalancing
-contract LiquidityManager is ILiquidityManager, Ownable, ReentrancyGuard {
+contract LiquidityManager is ILiquidityManager, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     // ============ Constants ============
@@ -40,25 +41,25 @@ contract LiquidityManager is ILiquidityManager, Ownable, ReentrancyGuard {
     /// @notice Maximum acceptable TWAP deviation from spot (3%)
     uint256 public constant MAX_TWAP_DEVIATION = 3e16;
 
-    // ============ Immutables ============
+    // ============ Storage Variables (Converted from Immutables) ============
 
     /// @notice Uniswap V3 NonfungiblePositionManager
-    INonfungiblePositionManager public immutable positionManager;
+    INonfungiblePositionManager public positionManager;
 
     /// @notice Uniswap V3 SwapRouter
-    ISwapRouter public immutable swapRouter;
+    ISwapRouter public swapRouter;
 
     /// @notice Uniswap V3 Factory
-    IUniswapV3Factory public immutable factory;
+    IUniswapV3Factory public factory;
 
     /// @notice Base token (e.g., WETH)
-    address public immutable baseToken;
+    address public baseToken;
 
     /// @notice Quote token (e.g., USDC)
-    address public immutable quoteToken;
+    address public quoteToken;
 
     /// @notice Pool fee tier
-    uint24 public immutable poolFee;
+    uint24 public poolFee;
 
     // ============ State Variables ============
 
@@ -91,6 +92,9 @@ contract LiquidityManager is ILiquidityManager, Ownable, ReentrancyGuard {
 
     /// @notice Enable/disable TWAP validation
     bool public twapValidationEnabled;
+
+    // ============ Gap for Upgradeability ============
+    uint256[50] private __gap;
 
     // ============ Events ============
 
@@ -193,7 +197,7 @@ contract LiquidityManager is ILiquidityManager, Ownable, ReentrancyGuard {
         _;
     }
 
-    // ============ Constructor ============
+    // ============ Initializer ============
 
     /// @notice Initialize the liquidity manager
     /// @param _positionManager Uniswap V3 NonfungiblePositionManager address
@@ -203,7 +207,7 @@ contract LiquidityManager is ILiquidityManager, Ownable, ReentrancyGuard {
     /// @param _quoteToken Quote token address (e.g., USDC)
     /// @param _poolFee Pool fee tier (e.g., 500 for 0.05%)
     /// @param _owner Owner address
-    constructor(
+    function initialize(
         address _positionManager,
         address _swapRouter,
         address _factory,
@@ -211,12 +215,16 @@ contract LiquidityManager is ILiquidityManager, Ownable, ReentrancyGuard {
         address _quoteToken,
         uint24 _poolFee,
         address _owner
-    ) Ownable(_owner) {
+    ) public initializer {
         if (_positionManager == address(0)) revert ZeroAddress();
         if (_swapRouter == address(0)) revert ZeroAddress();
         if (_factory == address(0)) revert ZeroAddress();
         if (_baseToken == address(0)) revert ZeroAddress();
         if (_quoteToken == address(0)) revert ZeroAddress();
+
+        __Ownable_init(_owner);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
 
         positionManager = INonfungiblePositionManager(_positionManager);
         swapRouter = ISwapRouter(_swapRouter);
@@ -226,6 +234,9 @@ contract LiquidityManager is ILiquidityManager, Ownable, ReentrancyGuard {
         poolFee = _poolFee;
         slippageTolerance = DEFAULT_SLIPPAGE;
     }
+
+    /// @dev Authorize upgrade - only owner can upgrade
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     // ============ External Functions ============
 

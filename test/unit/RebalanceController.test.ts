@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { MockRebalanceVault, RebalanceController } from "../../typechain-types";
 
@@ -20,10 +20,10 @@ describe("RebalanceController", function () {
 
     // Deploy controller
     const Controller = await ethers.getContractFactory("RebalanceController");
-    const controller = (await Controller.deploy(
+    const controller = (await upgrades.deployProxy(Controller, [
       await mockVault.getAddress(),
       owner.address
-    )) as RebalanceController;
+    ], { kind: 'uups' })) as unknown as RebalanceController;
     await controller.waitForDeployment();
 
     return { owner, mockVault, controller };
@@ -47,7 +47,10 @@ describe("RebalanceController", function () {
       const Controller = await ethers.getContractFactory("RebalanceController");
 
       await expect(
-        Controller.deploy(ethers.ZeroAddress, owner.address)
+        upgrades.deployProxy(Controller, [
+          ethers.ZeroAddress,
+          owner.address
+        ], { kind: 'uups' })
       ).to.be.revertedWithCustomError(Controller, "ZeroAddress");
     });
 
@@ -60,7 +63,10 @@ describe("RebalanceController", function () {
       const Controller = await ethers.getContractFactory("RebalanceController");
 
       await expect(
-        Controller.deploy(await mockVault.getAddress(), ethers.ZeroAddress)
+        upgrades.deployProxy(Controller, [
+          await mockVault.getAddress(),
+          ethers.ZeroAddress
+        ], { kind: 'uups' })
       ).to.be.revertedWithCustomError(Controller, "OwnableInvalidOwner");
     });
   });

@@ -1,5 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "@openzeppelin/hardhat-upgrades";
 import "dotenv/config";
 
 // Arbitrum contract addresses for reference
@@ -50,6 +51,16 @@ const testDir = process.env.TEST_SCOPE || "test";
 const config: HardhatUserConfig = {
   solidity: {
     compilers: [
+      {
+        version: "0.8.24",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+          viaIR: true,
+        },
+      },
       {
         version: "0.8.20",
         settings: {
