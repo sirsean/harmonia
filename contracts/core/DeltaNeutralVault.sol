@@ -60,13 +60,13 @@ contract DeltaNeutralVault is
 
     // ============ State Variables ============
 
-    /// @notice Address of the liquidity manager (to be set in Phase 4)
+    /// @notice Address of the liquidity manager
     address public liquidityManager;
 
-    /// @notice Address of the hedge manager (to be set in Phase 5)
+    /// @notice Address of the hedge manager
     address public hedgeManager;
 
-    /// @notice Address of the rebalance controller (to be set in Phase 6)
+    /// @notice Address of the rebalance controller
     address public rebalanceController;
 
     /// @notice Current Uniswap v3 position token ID (0 if no position)
@@ -255,7 +255,7 @@ contract DeltaNeutralVault is
 
         shares = super.deposit(assets, receiver);
 
-        // Deploy capital to strategy (to be implemented in Phase 4+)
+        // Deploy capital to strategy
         _deployCapital(assets);
     }
 
@@ -370,7 +370,7 @@ contract DeltaNeutralVault is
 
         int256 deltaBefore = getNetDelta();
 
-        // Rebalance logic will be implemented in Phase 5+6
+        // Execute rebalance logic
         _executeRebalance(targetHedgeSize);
 
         int256 deltaAfter = getNetDelta();
@@ -382,7 +382,6 @@ contract DeltaNeutralVault is
     /// @notice Collect accrued fees from LP position
     /// @dev Called periodically to harvest yield
     function collectFees() external returns (uint256 amount0, uint256 amount1) {
-        // Fee collection will be implemented in Phase 4
         (amount0, amount1) = _collectLPFees();
 
         uint256 totalUSD = _calculateFeesInUSD(amount0, amount1);
@@ -394,7 +393,6 @@ contract DeltaNeutralVault is
     /// @notice Claim funding payments from perpetual position
     /// @dev Called periodically to realize funding income/expense
     function claimFunding() external returns (int256 fundingAmount) {
-        // Funding claim will be implemented in Phase 5
         fundingAmount = _claimHedgeFunding();
         totalFundingReceived += fundingAmount;
 
@@ -404,7 +402,6 @@ contract DeltaNeutralVault is
     /// @notice Compound collected yield back into strategy
     /// @dev Reinvests fees and funding into LP + hedge
     function compound() external whenNotPaused {
-        // Compounding will be implemented in Phase 6
         _compoundYield();
     }
 
@@ -586,7 +583,6 @@ contract DeltaNeutralVault is
     // ============ Internal Functions ============
 
     /// @notice Deploy capital to the delta-neutral strategy
-    /// @dev To be implemented in Phase 4+5 with LP and hedge integration
     /// @param assets Amount of assets to deploy
     function _deployCapital(uint256 assets) internal {
         if (liquidityManager == address(0) || hedgeManager == address(0)) {
@@ -771,7 +767,6 @@ contract DeltaNeutralVault is
     }
 
     /// @notice Unwind capital from strategy for withdrawal
-    /// @dev To be implemented in Phase 4+5 with LP and hedge integration
     /// @param assets Amount of assets to unwind
     function _unwindCapital(uint256 assets) internal {
         if (liquidityManager == address(0) || hedgeManager == address(0)) {
@@ -954,7 +949,6 @@ contract DeltaNeutralVault is
     }
 
     /// @notice Calculate fees in USD
-    /// @dev To be implemented in Phase 4
     function _calculateFeesInUSD(uint256 amount0, uint256 amount1) internal view returns (uint256) {
         if (liquidityManager == address(0)) return 0;
 
@@ -1007,7 +1001,6 @@ contract DeltaNeutralVault is
     }
 
     /// @notice Compound yield
-    /// @dev To be implemented in Phase 6
     function _compoundYield() internal {
         // Only compound if strategy is active (managers set)
         if (liquidityManager == address(0)) return;
