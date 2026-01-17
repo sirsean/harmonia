@@ -15,7 +15,12 @@ import {SecurityModule} from "../libraries/SecurityModule.sol";
 /// @title Hedge Manager
 /// @notice Manages GMX v2 perpetual short positions for delta hedging
 /// @dev Handles opening, adjusting, and closing short positions on GMX v2
-contract HedgeManager is IHedgeManager, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
+contract HedgeManager is
+    IHedgeManager,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
 
     // ============ Constants ============

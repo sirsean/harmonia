@@ -26,12 +26,11 @@ describe("DeltaNeutralVault", function () {
 
     // Deploy vault
     const DeltaNeutralVault = await ethers.getContractFactory("DeltaNeutralVault");
-    const vault = await upgrades.deployProxy(DeltaNeutralVault, [
-      await usdc.getAddress(),
-      "Harmonia Delta Neutral",
-      "hdnUSDC",
-      owner.address
-    ], { kind: 'uups' });
+    const vault = await upgrades.deployProxy(
+      DeltaNeutralVault,
+      [await usdc.getAddress(), "Harmonia Delta Neutral", "hdnUSDC", owner.address],
+      { kind: "uups" }
+    );
     await vault.waitForDeployment();
 
     // Approve vault to spend USDC
@@ -68,12 +67,11 @@ describe("DeltaNeutralVault", function () {
       const DeltaNeutralVault = await ethers.getContractFactory("DeltaNeutralVault");
 
       await expect(
-        upgrades.deployProxy(DeltaNeutralVault, [
-          ethers.ZeroAddress,
-          "Test",
-          "TEST",
-          owner.address
-        ], { kind: 'uups' })
+        upgrades.deployProxy(
+          DeltaNeutralVault,
+          [ethers.ZeroAddress, "Test", "TEST", owner.address],
+          { kind: "uups" }
+        )
       ).to.be.revertedWithCustomError(DeltaNeutralVault, "ZeroAddress");
     });
 
@@ -84,12 +82,11 @@ describe("DeltaNeutralVault", function () {
 
       // OpenZeppelin's Ownable throws OwnableInvalidOwner for zero address
       await expect(
-        upgrades.deployProxy(DeltaNeutralVault, [
-          await usdc.getAddress(),
-          "Test",
-          "TEST",
-          ethers.ZeroAddress
-        ], { kind: 'uups' })
+        upgrades.deployProxy(
+          DeltaNeutralVault,
+          [await usdc.getAddress(), "Test", "TEST", ethers.ZeroAddress],
+          { kind: "uups" }
+        )
       ).to.be.revertedWithCustomError(DeltaNeutralVault, "OwnableInvalidOwner");
     });
   });

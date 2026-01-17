@@ -72,12 +72,11 @@ describeFork("Security Hardening Fork Tests", function () {
 
     // Deploy vault
     const Vault = await ethers.getContractFactory("DeltaNeutralVault");
-    vault = (await upgrades.deployProxy(Vault, [
-      ADDRESSES.USDC,
-      "Delta Neutral Vault",
-      "dnVault",
-      owner.address
-    ], { kind: 'uups' })) as unknown as DeltaNeutralVault;
+    vault = (await upgrades.deployProxy(
+      Vault,
+      [ADDRESSES.USDC, "Delta Neutral Vault", "dnVault", owner.address],
+      { kind: "uups" }
+    )) as unknown as DeltaNeutralVault;
     await vault.waitForDeployment();
 
     // Set guardian
@@ -193,14 +192,18 @@ describeFork("Security Hardening Fork Tests", function () {
       const HedgeManager = await ethers.getContractFactory("HedgeManager");
 
       await expect(
-        upgrades.deployProxy(HedgeManager, [
-          ADDRESSES.GMX_EXCHANGE_ROUTER,
-          ADDRESSES.GMX_ETH_USD_MARKET,
-          ADDRESSES.USDC,
-          ADDRESSES.WETH,
-          ADDRESSES.CHAINLINK_ETH_USD_FEED,
-          owner.address
-        ], { kind: 'uups' })
+        upgrades.deployProxy(
+          HedgeManager,
+          [
+            ADDRESSES.GMX_EXCHANGE_ROUTER,
+            ADDRESSES.GMX_ETH_USD_MARKET,
+            ADDRESSES.USDC,
+            ADDRESSES.WETH,
+            ADDRESSES.CHAINLINK_ETH_USD_FEED,
+            owner.address,
+          ],
+          { kind: "uups" }
+        )
       ).to.not.be.reverted;
     });
 
@@ -232,15 +235,19 @@ describeFork("Security Hardening Fork Tests", function () {
   describe("TWAP Validation with Real Pool", function () {
     it("should deploy LiquidityManager with TWAP validation", async function () {
       const LiquidityManager = await ethers.getContractFactory("LiquidityManager");
-      const liquidityManager = (await upgrades.deployProxy(LiquidityManager, [
-        ADDRESSES.UNISWAP_V3_POSITION_MANAGER,
-        ADDRESSES.UNISWAP_V3_SWAP_ROUTER,
-        ADDRESSES.UNISWAP_V3_FACTORY,
-        ADDRESSES.WETH,
-        ADDRESSES.USDC,
-        3000,
-        owner.address
-      ], { kind: 'uups' })) as unknown as LiquidityManager;
+      const liquidityManager = (await upgrades.deployProxy(
+        LiquidityManager,
+        [
+          ADDRESSES.UNISWAP_V3_POSITION_MANAGER,
+          ADDRESSES.UNISWAP_V3_SWAP_ROUTER,
+          ADDRESSES.UNISWAP_V3_FACTORY,
+          ADDRESSES.WETH,
+          ADDRESSES.USDC,
+          3000,
+          owner.address,
+        ],
+        { kind: "uups" }
+      )) as unknown as LiquidityManager;
       await liquidityManager.waitForDeployment();
 
       await liquidityManager.setTWAPValidation(true);
@@ -249,15 +256,19 @@ describeFork("Security Hardening Fork Tests", function () {
 
     it("should compare spot and TWAP deviation", async function () {
       const LiquidityManager = await ethers.getContractFactory("LiquidityManager");
-      const liquidityManager = (await upgrades.deployProxy(LiquidityManager, [
-        ADDRESSES.UNISWAP_V3_POSITION_MANAGER,
-        ADDRESSES.UNISWAP_V3_SWAP_ROUTER,
-        ADDRESSES.UNISWAP_V3_FACTORY,
-        ADDRESSES.WETH,
-        ADDRESSES.USDC,
-        500,
-        owner.address
-      ], { kind: 'uups' })) as unknown as LiquidityManager;
+      const liquidityManager = (await upgrades.deployProxy(
+        LiquidityManager,
+        [
+          ADDRESSES.UNISWAP_V3_POSITION_MANAGER,
+          ADDRESSES.UNISWAP_V3_SWAP_ROUTER,
+          ADDRESSES.UNISWAP_V3_FACTORY,
+          ADDRESSES.WETH,
+          ADDRESSES.USDC,
+          500,
+          owner.address,
+        ],
+        { kind: "uups" }
+      )) as unknown as LiquidityManager;
       await liquidityManager.waitForDeployment();
 
       const deviation = await liquidityManager.getSpotTWAPDeviation();
