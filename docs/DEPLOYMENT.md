@@ -54,43 +54,25 @@ npm run compile
 
 ## Contract Overview
 
-Harmonia consists of four main contracts that work together:
+Harmonia consists of four main contracts that work together. All core contracts are deployed as **UUPS (Universal Upgradeable Proxy Standard)** proxies, allowing for logic updates and bug fixes without migrating liquidity.
 
-| Contract                | Purpose                             | Dependencies           |
-| ----------------------- | ----------------------------------- | ---------------------- |
-| **DeltaNeutralVault**   | ERC-4626 vault for user deposits    | USDC token             |
-| **LiquidityManager**    | Uniswap V3 LP position management   | Uniswap V3, WETH, USDC |
-| **HedgeManager**        | GMX V2 perpetual short positions    | GMX V2, Chainlink      |
-| **RebalanceController** | Automated rebalancing via Chainlink | Vault                  |
-
-### Contract Relationships
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    DeltaNeutralVault                        │
-│                    (ERC-4626 Vault)                         │
-│                                                             │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Liquidity   │  │   Hedge      │  │    Rebalance      │  │
-│  │  Manager    │  │   Manager    │  │    Controller     │  │
-│  └──────┬──────┘  └──────┬───────┘  └─────────┬─────────┘  │
-└─────────┼────────────────┼────────────────────┼────────────┘
-          │                │                    │
-          ▼                ▼                    ▼
-    ┌──────────┐    ┌──────────┐        ┌──────────────┐
-    │Uniswap V3│    │  GMX V2  │        │  Chainlink   │
-    │   Pool   │    │ Exchange │        │  Automation  │
-    └──────────┘    └──────────┘        └──────────────┘
-```
+| Contract                | Purpose                             | Dependencies           | Upgrade Pattern |
+| ----------------------- | ----------------------------------- | ---------------------- | --------------- |
+| **DeltaNeutralVault**   | ERC-4626 vault for user deposits    | USDC token             | UUPS            |
+| **LiquidityManager**    | Uniswap V3 LP position management   | Uniswap V3, WETH, USDC | UUPS            |
+| **HedgeManager**        | GMX V2 perpetual short positions    | GMX V2, Chainlink      | UUPS            |
+| **RebalanceController** | Automated rebalancing via Chainlink | Vault                  | UUPS            |
 
 ---
 
-## Constructor Arguments
+## Initializer Parameters
+
+Since contracts use the UUPS proxy pattern, parameters are passed to an `initialize` function instead of a constructor.
 
 ### DeltaNeutralVault
 
 ```solidity
-constructor(
+function initialize(
     IERC20 _asset,        // USDC address
     string memory _name,   // Vault token name
     string memory _symbol, // Vault token symbol
@@ -98,17 +80,10 @@ constructor(
 )
 ```
 
-| Parameter | Type    | Description                    | Mainnet Value                                |
-| --------- | ------- | ------------------------------ | -------------------------------------------- |
-| `_asset`  | address | Underlying asset (USDC)        | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
-| `_name`   | string  | ERC-20 name for vault shares   | `"Harmonia Delta-Neutral Vault"`             |
-| `_symbol` | string  | ERC-20 symbol for vault shares | `"hDNV"`                                     |
-| `_owner`  | address | Owner with admin privileges    | Deployer address                             |
-
 ### LiquidityManager
 
 ```solidity
-constructor(
+function initialize(
     address _positionManager, // Uniswap V3 NFT Position Manager
     address _swapRouter,      // Uniswap V3 Swap Router
     address _factory,         // Uniswap V3 Factory
@@ -119,20 +94,10 @@ constructor(
 )
 ```
 
-| Parameter          | Type    | Description                 | Mainnet Value                                |
-| ------------------ | ------- | --------------------------- | -------------------------------------------- |
-| `_positionManager` | address | Uniswap V3 Position Manager | `0xC36442b4a4522E871399CD717aBDD847Ab11FE88` |
-| `_swapRouter`      | address | Uniswap V3 Swap Router      | `0xE592427A0AEce92De3Edee1F18E0157C05861564` |
-| `_factory`         | address | Uniswap V3 Factory          | `0x1F98431c8aD98523631AE4a59f267346ea31F984` |
-| `_baseToken`       | address | WETH address                | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
-| `_quoteToken`      | address | USDC address                | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
-| `_poolFee`         | uint24  | Pool fee tier (500 = 0.05%) | `500`                                        |
-| `_owner`           | address | Owner with admin privileges | Deployer address                             |
-
 ### HedgeManager
 
 ```solidity
-constructor(
+function initialize(
     address _exchangeRouter,   // GMX V2 Exchange Router
     address _market,           // GMX V2 market address
     address _collateralToken,  // Collateral token (USDC)
@@ -142,138 +107,63 @@ constructor(
 )
 ```
 
-| Parameter          | Type    | Description                 | Mainnet Value                                |
-| ------------------ | ------- | --------------------------- | -------------------------------------------- |
-| `_exchangeRouter`  | address | GMX V2 Exchange Router      | `0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8` |
-| `_market`          | address | GMX ETH/USD Market          | `0x70d95587d40A2caf56bd97485aB3Eec10Bee6336` |
-| `_collateralToken` | address | USDC address                | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
-| `_indexToken`      | address | WETH address                | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
-| `_priceFeed`       | address | Chainlink ETH/USD feed      | `0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612` |
-| `_owner`           | address | Owner with admin privileges | Deployer address                             |
-
 ### RebalanceController
 
 ```solidity
-constructor(
+function initialize(
     address _vault,  // DeltaNeutralVault address
     address _owner   // Initial owner address
 )
 ```
 
-| Parameter | Type    | Description                 | Mainnet Value          |
-| --------- | ------- | --------------------------- | ---------------------- |
-| `_vault`  | address | DeltaNeutralVault contract  | Deployed vault address |
-| `_owner`  | address | Owner with admin privileges | Deployer address       |
-
 ---
 
 ## Deployment Steps
-
-### Multi-Market Deployment
-
-Harmonia supports multiple token markets. Before deploying, validate your target market:
-
-```bash
-# Validate ETH market configuration (recommended first step)
-MARKET=ETH npx hardhat run scripts/validate-market.ts --network arbitrum
-
-# Available markets: ETH, BTC, ARB, LINK
-# You can also discover new markets:
-TOKEN=GMX npx hardhat run scripts/discover-markets.ts --network arbitrum
-```
-
-**Expected validation output for ETH:**
-```
-[Price Consistency]
-  ℹ Chainlink price: $3306.26
-  ℹ Uniswap price: $3306.19
-  ℹ Price deviation: 0.00%
-  ✓ Price sources are consistent
-
-Overall: ✓ VALID
-```
-
-### Deploying harmETH (Step-by-Step Walkthrough)
-
-This walkthrough deploys the primary ETH delta-neutral vault.
-
-**1. Validate market configuration:**
-```bash
-MARKET=ETH npx hardhat run scripts/validate-market.ts --network arbitrum
-```
-
-**2. Deploy all contracts:**
-```bash
-MARKET=ETH npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
-```
-
-**3. Verify deployment succeeded:**
-- Check Arbiscan for all four deployed contracts
-- Verify constructor arguments match expected values
-- Confirm manager addresses are correctly linked
 
 ### Option 1: Automated Deployment Script (Recommended)
 
 ```bash
 # Deploy all contracts for a specific market
 MARKET=ETH npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
-
-# Or for other markets:
-MARKET=BTC npx hardhat run scripts/deploy/deploy-all.ts --network arbitrum
 ```
 
-The script will:
+The script uses `@openzeppelin/hardhat-upgrades` to deploy UUPS proxies for all core contracts.
 
-1. Load market configuration from `src/markets/registry.ts`
-2. Deploy all four contracts in order with correct addresses
-3. Configure contract relationships
-4. Set initial deposit cap ($10,000 USDC)
-5. Output deployment addresses and verification commands
+### Option 2: Manual Deployment via Hardhat Upgrades
 
-### Option 2: Manual Deployment
+To deploy manually using the upgrades plugin:
 
-#### Step 1: Deploy DeltaNeutralVault
+```javascript
+const { upgrades, ethers } = require("hardhat");
 
-```bash
-npx hardhat verify --network arbitrum VAULT_ADDRESS \
-  "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" \
-  "Harmonia Delta-Neutral Vault" \
-  "hDNV" \
-  "DEPLOYER_ADDRESS"
+// Example for DeltaNeutralVault
+const Vault = await ethers.getContractFactory("DeltaNeutralVault");
+const vault = await upgrades.deployProxy(Vault, [
+  USDC_ADDRESS,
+  "Harmonia Vault",
+  "hUSDC",
+  OWNER_ADDRESS
+], { kind: 'uups' });
+await vault.waitForDeployment();
 ```
 
-#### Step 2: Deploy LiquidityManager
+---
 
-```bash
-npx hardhat verify --network arbitrum LM_ADDRESS \
-  "0xC36442b4a4522E871399CD717aBDD847Ab11FE88" \
-  "0xE592427A0AEce92De3Edee1F18E0157C05861564" \
-  "0x1F98431c8aD98523631AE4a59f267346ea31F984" \
-  "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1" \
-  "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" \
-  500 \
-  "DEPLOYER_ADDRESS"
+## Upgrading Contracts
+
+To upgrade a contract's logic:
+
+1. Update the Solidity code in the implementation contract.
+2. Run the upgrade script:
+
+```javascript
+const { upgrades, ethers } = require("hardhat");
+
+const VaultV2 = await ethers.getContractFactory("DeltaNeutralVaultV2");
+await upgrades.upgradeProxy(PROXY_ADDRESS, VaultV2);
 ```
 
-#### Step 3: Deploy HedgeManager
-
-```bash
-npx hardhat verify --network arbitrum HM_ADDRESS \
-  "0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8" \
-  "0x70d95587d40A2caf56bd97485aB3Eec10Bee6336" \
-  "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" \
-  "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1" \
-  "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612" \
-  "DEPLOYER_ADDRESS"
-```
-
-#### Step 4: Deploy RebalanceController
-
-```bash
-npx hardhat verify --network arbitrum RC_ADDRESS \
-  "VAULT_ADDRESS" \
-  "DEPLOYER_ADDRESS"
-```
+**Note**: Only the contract owner can authorize an upgrade.
 
 ---
 
