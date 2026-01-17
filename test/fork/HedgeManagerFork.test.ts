@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers, network } from "hardhat";
+import { ethers, network, upgrades } from "hardhat";
 import { HedgeManager, IERC20 } from "../../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
@@ -102,14 +102,14 @@ describeFork("HedgeManager Fork Tests", function () {
 
     // Deploy HedgeManager
     const HedgeManager = await ethers.getContractFactory("HedgeManager");
-    hedgeManager = await HedgeManager.deploy(
+    hedgeManager = (await upgrades.deployProxy(HedgeManager, [
       ARBITRUM_ADDRESSES.EXCHANGE_ROUTER,
       ARBITRUM_ADDRESSES.ETH_USD_MARKET,
       ARBITRUM_ADDRESSES.USDC,
       ARBITRUM_ADDRESSES.WETH,
       ARBITRUM_ADDRESSES.ETH_USD_FEED,
       owner.address
-    );
+    ], { kind: 'uups' })) as unknown as HedgeManager;
     await hedgeManager.waitForDeployment();
 
     // Set vault to whale for testing
