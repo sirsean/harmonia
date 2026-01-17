@@ -160,7 +160,7 @@ The [`DeltaCalculator`](contracts/libraries/DeltaCalculator.sol) library impleme
 
 ## References
 
-- Lambert, G. "Pricing Uniswap v3 LP Positions: Towards a New Options Paradigm"
+- Lambert, G. ["Pricing Uniswap v3 LP Positions: Towards a New Options Paradigm"](https://lambert-guillaume.medium.com/pricing-uniswap-v3-lp-positions-towards-a-new-options-paradigm-dce3e3b50125)
 - GMX Documentation: https://docs.gmx.io/
 - Uniswap v3 Documentation: https://docs.uniswap.org/
 - Chainlink Automation: https://docs.chain.link/chainlink-automation
