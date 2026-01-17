@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
@@ -366,9 +367,20 @@ contract MockSwapRouter {
     ) external payable returns (uint256 amountOut) {
         require(block.timestamp <= params.deadline, "Expired");
 
-        // Simple mock: convert at fixed rate
-        // Assuming WETH has 18 decimals and USDC has 6 decimals
-        amountOut = (params.amountIn * ethPriceInUsdc) / 1e18;
+        uint8 decIn = IERC20Metadata(params.tokenIn).decimals();
+        uint8 decOut = IERC20Metadata(params.tokenOut).decimals();
+
+        if (decIn == 18 && decOut == 6) {
+            // WETH -> USDC
+            amountOut = (params.amountIn * ethPriceInUsdc) / 1e18;
+        } else if (decIn == 6 && decOut == 18) {
+            // USDC -> WETH
+            // amountIn * 1e18 / price
+            amountOut = (params.amountIn * 1e18) / ethPriceInUsdc;
+        } else {
+            // Same decimals (assume 1:1) or other pair
+            amountOut = params.amountIn;
+        }
 
         require(amountOut >= params.amountOutMinimum, "Slippage");
 

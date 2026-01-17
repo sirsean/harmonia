@@ -13,6 +13,8 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
 import {IHedgeManager} from "../interfaces/IHedgeManager.sol";
 import {SecurityModule} from "../libraries/SecurityModule.sol";
+import {IUniswapV3Pool, ISwapRouter} from "../interfaces/IUniswapV3.sol";
+import {DeltaCalculator} from "../libraries/DeltaCalculator.sol";
 
 /// @title Delta Neutral Vault
 /// @notice ERC-4626 vault that deploys capital into delta-neutral yield strategy
@@ -445,12 +447,16 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
         hedgeManager = _hedgeManager;
         rebalanceController = _rebalanceController;
 
-        // Approve managers to spend asset
+        // Approve managers to spend tokens
         if (_liquidityManager != address(0)) {
-            IERC20(asset()).safeIncreaseAllowance(_liquidityManager, type(uint256).max);
+            address baseToken = ILiquidityManager(_liquidityManager).baseToken();
+            address quoteToken = ILiquidityManager(_liquidityManager).quoteToken();
+
+            IERC20(baseToken).forceApprove(_liquidityManager, type(uint256).max);
+            IERC20(quoteToken).forceApprove(_liquidityManager, type(uint256).max);
         }
         if (_hedgeManager != address(0)) {
-            IERC20(asset()).safeIncreaseAllowance(_hedgeManager, type(uint256).max);
+            IERC20(asset()).forceApprove(_hedgeManager, type(uint256).max);
         }
 
         emit ManagersUpdated(_liquidityManager, _hedgeManager, _rebalanceController);
@@ -525,22 +531,261 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     /// @dev To be implemented in Phase 4+5 with LP and hedge integration
     /// @param assets Amount of assets to deploy
     function _deployCapital(uint256 assets) internal {
-        // Phase 3: No-op, assets remain idle
-        // Phase 4+: Will deploy to Uniswap v3 LP position
-        // Phase 5+: Will also open hedge on GMX v2
+        if (liquidityManager == address(0) || hedgeManager == address(0)) {
+            emit CapitalDeployed(assets, 0, 0);
+            return;
+        }
 
-        emit CapitalDeployed(assets, 0, 0);
+        // Reserve ~15% for hedge collateral (conservative estimate for 3x leverage with ~0.5 delta)
+        uint256 collateralAmount = (assets * 15) / 100;
+        uint256 lpAmount = assets - collateralAmount;
+
+        // 1. Swap for LP
+        _swapForLP(lpAmount);
+
+        // 2. Deposit to LP
+
+        address baseToken = ILiquidityManager(liquidityManager).baseToken();
+
+        address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
+
+        // We need to know balances of this contract
+
+        uint256 balBase = IERC20(baseToken).balanceOf(address(this));
+
+        uint256 balQuote = IERC20(quoteToken).balanceOf(address(this));
+
+        // Reserve collateral if it is one of the tokens (usually asset() which is quoteToken)
+
+        if (baseToken == asset()) {
+            if (balBase > collateralAmount) balBase -= collateralAmount;
+            else balBase = 0;
+        }
+
+        if (quoteToken == asset()) {
+            if (balQuote > collateralAmount) balQuote -= collateralAmount;
+            else balQuote = 0;
+        }
+
+        if (balBase > 0 || balQuote > 0) {
+            // Determine amount0 and amount1 based on address order
+
+            uint256 amount0;
+
+            uint256 amount1;
+
+            if (baseToken < quoteToken) {
+                amount0 = balBase;
+
+                amount1 = balQuote;
+            } else {
+                amount0 = balQuote;
+
+                amount1 = balBase;
+            }
+
+            // Check if position exists
+
+            if (ILiquidityManager(liquidityManager).tokenId() != 0) {
+                ILiquidityManager(liquidityManager).increaseLiquidity(
+                    amount0,
+                    amount1,
+                    block.timestamp
+                );
+            } else {
+                // Get ticks
+
+                (int24 tickLower, int24 tickUpper) = ILiquidityManager(liquidityManager)
+                    .getRebalanceTicks(rangeWidthMultiplier);
+
+                ILiquidityManager(liquidityManager).mintPosition(
+                    tickLower,
+                    tickUpper,
+                    amount0,
+                    amount1,
+                    block.timestamp
+                );
+            }
+        }
+
+        // 3. Adjust Hedge
+        // Trigger rebalance to adjust hedge size to match new LP delta
+        // Use 0 as targetHedgeSize to force calculation based on LP delta
+        // _executeRebalance is internal, we can call it directly.
+        _executeRebalance(0);
+
+        emit CapitalDeployed(assets, _getLPValue(), _getHedgeValue());
+    }
+
+    /// @notice Helper to swap assets for LP provision
+    /// @param amountIn Amount of asset() to potentially swap
+    function _swapForLP(uint256 amountIn) internal {
+        if (amountIn == 0) return;
+
+        address liquidityMgr = liquidityManager;
+        address pool = ILiquidityManager(liquidityMgr).getPool();
+        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(pool).slot0();
+
+        // Determine range
+        int24 tickLower;
+        int24 tickUpper;
+        if (ILiquidityManager(liquidityMgr).tokenId() != 0) {
+            (, tickLower, tickUpper, ) = ILiquidityManager(liquidityMgr).getPositionInfo();
+        } else {
+            (tickLower, tickUpper) = ILiquidityManager(liquidityMgr).getRebalanceTicks(
+                rangeWidthMultiplier
+            );
+        }
+
+        uint160 sqrtPriceLowerX96 = DeltaCalculator.getSqrtRatioAtTick(tickLower);
+        uint160 sqrtPriceUpperX96 = DeltaCalculator.getSqrtRatioAtTick(tickUpper);
+
+        // Simulate ratio
+        uint128 dummyLiquidity = 1e18;
+        uint256 amt0 = DeltaCalculator.getBaseTokenAmount(
+            sqrtPriceX96,
+            sqrtPriceLowerX96,
+            sqrtPriceUpperX96,
+            dummyLiquidity
+        );
+        uint256 amt1 = DeltaCalculator.getQuoteTokenAmount(
+            sqrtPriceX96,
+            sqrtPriceLowerX96,
+            sqrtPriceUpperX96,
+            dummyLiquidity
+        );
+
+        // Convert amt0 to quote value for ratio calculation
+        // price = sqrtPrice^2 / 2^192
+        // val0 = amt0 * price
+        uint256 val0 = DeltaCalculator.mulDiv(
+            amt0,
+            uint256(sqrtPriceX96) * uint256(sqrtPriceX96),
+            uint256(1) << 192
+        );
+        uint256 totalVal = val0 + amt1;
+
+        if (totalVal == 0) return;
+
+        // Calculate swap amount
+        // If asset() is Quote Token (token1), we need to swap portion to Base Token (token0)
+        // If asset() is Base Token (token0), we need to swap portion to Quote Token (token1)
+
+        address assetToken = asset();
+        address baseToken = ILiquidityManager(liquidityMgr).baseToken();
+        address quoteToken = ILiquidityManager(liquidityMgr).quoteToken();
+
+        uint256 swapAmount;
+        address tokenIn = assetToken;
+        address tokenOut;
+
+        if (assetToken == quoteToken) {
+            // We hold Quote, need Base
+            // Portion needed in Base value is val0 / totalVal
+            swapAmount = (amountIn * val0) / totalVal;
+            tokenOut = baseToken;
+        } else {
+            // We hold Base, need Quote
+            // Portion needed in Quote value is amt1 / totalVal (wait, amt1 is value1 since it's quote)
+            // Value1 = amt1
+            swapAmount = (amountIn * amt1) / totalVal;
+            tokenOut = quoteToken;
+        }
+
+        if (swapAmount > 0) {
+            ISwapRouter router = ILiquidityManager(liquidityMgr).swapRouter();
+
+            IERC20(tokenIn).safeIncreaseAllowance(address(router), swapAmount);
+
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                fee: ILiquidityManager(liquidityMgr).poolFee(),
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: swapAmount,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+
+            router.exactInputSingle(params);
+        }
     }
 
     /// @notice Unwind capital from strategy for withdrawal
     /// @dev To be implemented in Phase 4+5 with LP and hedge integration
     /// @param assets Amount of assets to unwind
     function _unwindCapital(uint256 assets) internal {
-        // Phase 3: No-op, assets are already idle
-        // Phase 4+: Will remove liquidity from Uniswap v3
-        // Phase 5+: Will also close proportional hedge
+        if (liquidityManager == address(0) || hedgeManager == address(0)) {
+            emit CapitalWithdrawn(assets, 0, 0);
+            return;
+        }
 
-        emit CapitalWithdrawn(assets, 0, 0);
+        uint256 total = totalAssets();
+        if (total == 0) return;
+
+        // Ratio to withdraw
+        uint256 ratio = (assets * PRECISION) / total;
+
+        // 1. Decrease LP
+        uint128 currentLiquidity = ILiquidityManager(liquidityManager).liquidity();
+        if (currentLiquidity > 0) {
+            uint128 liquidityToRemove = uint128((uint256(currentLiquidity) * ratio) / PRECISION);
+            if (liquidityToRemove > 0) {
+                ILiquidityManager(liquidityManager).decreaseLiquidity(
+                    liquidityToRemove,
+                    block.timestamp
+                );
+                ILiquidityManager(liquidityManager).collectFees(); // Collect to vault
+            }
+        }
+
+        // 2. Decrease Hedge
+        // We need to reduce hedge size and collateral by `ratio`.
+        uint256 sizeUsd = IHedgeManager(hedgeManager).getPositionSizeUsd();
+        uint256 collateral = IHedgeManager(hedgeManager).getCollateralAmount();
+
+        uint256 sizeDecrease = (sizeUsd * ratio) / PRECISION;
+        uint256 collateralDecrease = (collateral * ratio) / PRECISION;
+
+        if (sizeDecrease > 0) {
+            uint256 execFee = IHedgeManager(hedgeManager).getExecutionFee();
+            // Ensure we have enough ETH for execution fee
+            if (address(this).balance >= execFee) {
+                IHedgeManager(hedgeManager).decreaseShort{value: execFee}(
+                    sizeDecrease,
+                    collateralDecrease
+                );
+            }
+        }
+
+        // 3. Swap Base Token to Asset
+        address baseToken = ILiquidityManager(liquidityManager).baseToken();
+        address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
+        address assetToken = asset();
+
+        address tokenToSell = (baseToken == assetToken) ? quoteToken : baseToken;
+        uint256 balanceToSell = IERC20(tokenToSell).balanceOf(address(this));
+
+        if (balanceToSell > 0) {
+            ISwapRouter router = ILiquidityManager(liquidityManager).swapRouter();
+            IERC20(tokenToSell).safeIncreaseAllowance(address(router), balanceToSell);
+
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenToSell,
+                tokenOut: assetToken,
+                fee: ILiquidityManager(liquidityManager).poolFee(),
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: balanceToSell,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+
+            router.exactInputSingle(params);
+        }
+
+        emit CapitalWithdrawn(assets, _getLPValue(), _getHedgeValue());
     }
 
     /// @notice Get LP position value
@@ -652,11 +897,48 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
 
     /// @notice Calculate fees in USD
     /// @dev To be implemented in Phase 4
-    function _calculateFeesInUSD(uint256 amount0, uint256 amount1) internal pure returns (uint256) {
-        // Phase 3: Return 0
-        // Phase 4+: Use price oracle to convert
-        (amount0, amount1);
-        return 0;
+    function _calculateFeesInUSD(uint256 amount0, uint256 amount1) internal view returns (uint256) {
+        if (liquidityManager == address(0)) return 0;
+
+        // Assume price is 18 decimals, Base/USD (or Quote/USD if Quote is volatile, but here Quote is USDC)
+        // Usually Oracle is for Base Token (ETH). Quote is USDC ($1).
+        // Check tokens
+        address baseToken = ILiquidityManager(liquidityManager).baseToken();
+        address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
+
+        // Get decimals
+        uint8 d0 = IERC20Metadata(baseToken).decimals();
+        uint8 d1 = IERC20Metadata(quoteToken).decimals();
+
+        uint256 price = ILiquidityManager(liquidityManager).getOraclePrice(); // 18 decimals
+
+        uint256 value0;
+        uint256 value1;
+
+        // We need to know which one is Base.
+        address token0;
+        if (baseToken < quoteToken) token0 = baseToken;
+        else token0 = quoteToken;
+
+        if (token0 == baseToken) {
+            // amount0 is Base
+            // Value0 = amount0 * price / 10^d0
+            value0 = (amount0 * price) / (10 ** d0);
+
+            // Value1 = amount1 (USDC)
+            // Scale to 18 decimals: amount1 * 10^(18-d1)
+            if (d1 <= 18) value1 = amount1 * (10 ** (18 - d1));
+            else value1 = amount1 / (10 ** (d1 - 18));
+        } else {
+            // amount0 is Quote
+            if (d0 <= 18) value0 = amount0 * (10 ** (18 - d0));
+            else value0 = amount0 / (10 ** (d0 - 18));
+
+            // amount1 is Base
+            value1 = (amount1 * price) / (10 ** d1);
+        }
+
+        return value0 + value1;
     }
 
     /// @notice Claim hedge funding
@@ -669,8 +951,11 @@ contract DeltaNeutralVault is ERC4626, ReentrancyGuard, Ownable, Pausable {
     /// @notice Compound yield
     /// @dev To be implemented in Phase 6
     function _compoundYield() internal {
-        // Phase 3: No-op
-        // Phase 6+: Reinvest fees and funding
+        // Reinvest idle assets
+        uint256 idle = IERC20(asset()).balanceOf(address(this));
+        if (idle > 0) {
+            _deployCapital(idle);
+        }
     }
 
     /// @notice Emergency unwind all positions
