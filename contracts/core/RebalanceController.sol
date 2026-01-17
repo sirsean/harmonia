@@ -135,8 +135,7 @@ contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeabl
 
         if (upkeepType == UpkeepType.Rebalance) {
             // NOTE: target hedge sizing is determined inside the vault.
-            // For now we pass 0 and let the vault compute the appropriate adjustment
-            // when _executeRebalance is fully implemented.
+            // We pass 0 and let the vault compute the appropriate adjustment.
             vault.rebalance(0);
         } else if (upkeepType == UpkeepType.Compound) {
             vault.compound();
