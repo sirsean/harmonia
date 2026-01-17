@@ -55,6 +55,9 @@ contract DeltaNeutralVault is
     /// @notice Large withdrawal threshold (10% of total assets)
     uint256 public constant LARGE_WITHDRAWAL_THRESHOLD = 10e16;
 
+    /// @notice Maximum protocol fee in basis points (50%)
+    uint256 public constant MAX_PROTOCOL_FEE_BPS = 5000;
+
     // ============ State Variables ============
 
     /// @notice Address of the liquidity manager (to be set in Phase 4)
@@ -96,8 +99,14 @@ contract DeltaNeutralVault is
     /// @notice Multiplier for tick range width during rebalance (default 20)
     int24 public rangeWidthMultiplier;
 
+    /// @notice Protocol fee in basis points
+    uint256 public protocolFeeBps;
+
+    /// @notice Treasury address for protocol fees
+    address public treasury;
+
     // ============ Gap for Upgradeability ============
-    uint256[50] private __gap;
+    uint256[48] private __gap;
 
     // ============ Events ============
 
@@ -143,6 +152,15 @@ contract DeltaNeutralVault is
 
     /// @notice Emitted when range width multiplier is updated
     event RangeWidthMultiplierUpdated(int24 oldMultiplier, int24 newMultiplier);
+
+    /// @notice Emitted when protocol fee is updated
+    event ProtocolFeeUpdated(uint256 oldFee, uint256 newFee);
+
+    /// @notice Emitted when treasury is updated
+    event TreasuryUpdated(address oldTreasury, address newTreasury);
+
+    /// @notice Emitted when protocol fee is collected
+    event ProtocolFeeCollected(uint256 assets, uint256 shares);
 
     // ============ Errors ============
 
@@ -385,7 +403,7 @@ contract DeltaNeutralVault is
 
     /// @notice Compound collected yield back into strategy
     /// @dev Reinvests fees and funding into LP + hedge
-    function compound() external {
+    function compound() external whenNotPaused {
         // Compounding will be implemented in Phase 6
         _compoundYield();
     }
@@ -490,6 +508,24 @@ contract DeltaNeutralVault is
         int24 old = rangeWidthMultiplier;
         rangeWidthMultiplier = _multiplier;
         emit RangeWidthMultiplierUpdated(old, _multiplier);
+    }
+
+    /// @notice Set the protocol fee
+    /// @param _protocolFeeBps New fee in basis points
+    function setProtocolFee(uint256 _protocolFeeBps) external onlyOwner {
+        if (_protocolFeeBps > MAX_PROTOCOL_FEE_BPS) revert("Fee too high");
+        uint256 old = protocolFeeBps;
+        protocolFeeBps = _protocolFeeBps;
+        emit ProtocolFeeUpdated(old, _protocolFeeBps);
+    }
+
+    /// @notice Set the treasury address
+    /// @param _treasury New treasury address
+    function setTreasury(address _treasury) external onlyOwner {
+        if (_treasury == address(0)) revert ZeroAddress();
+        address old = treasury;
+        treasury = _treasury;
+        emit TreasuryUpdated(old, _treasury);
     }
 
     /// @notice Pause the vault (emergency)
@@ -973,9 +1009,24 @@ contract DeltaNeutralVault is
     /// @notice Compound yield
     /// @dev To be implemented in Phase 6
     function _compoundYield() internal {
+        // Only compound if strategy is active (managers set)
+        if (liquidityManager == address(0)) return;
+
         // Reinvest idle assets
         uint256 idle = IERC20(asset()).balanceOf(address(this));
         if (idle > 0) {
+            // Calculate and mint protocol fee
+            if (protocolFeeBps > 0 && treasury != address(0)) {
+                uint256 feeAssets = (idle * protocolFeeBps) / 10000;
+                if (feeAssets > 0) {
+                    uint256 feeShares = convertToShares(feeAssets);
+                    if (feeShares > 0) {
+                        _mint(treasury, feeShares);
+                        emit ProtocolFeeCollected(feeAssets, feeShares);
+                    }
+                }
+            }
+
             _deployCapital(idle);
         }
     }

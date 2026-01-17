@@ -133,6 +133,8 @@ export interface DeploymentConfig {
   vaultName: string;
   vaultSymbol: string;
   initialDepositCap: bigint;
+  protocolFeeBps: number;
+  treasury: string;
 
   // Pool configuration
   poolFee: number; // Uniswap pool fee tier (500 = 0.05%)
