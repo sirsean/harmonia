@@ -7,16 +7,12 @@ import {ISwapRouter} from "../interfaces/IUniswapV3.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract SimpleMockSwapRouter {
-
-    function exactInputSingle(ISwapRouter.ExactInputSingleParams calldata) external payable returns (uint256) {
-
+    function exactInputSingle(
+        ISwapRouter.ExactInputSingleParams calldata
+    ) external payable returns (uint256) {
         return 0;
-
     }
-
 }
-
-
 
 contract MockPool {
     function slot0() external pure returns (uint160, int24, uint16, uint16, uint16, uint8, bool) {
