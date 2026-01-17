@@ -13,7 +13,7 @@
  */
 
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { CONSTANTS, DEFAULT_DEPLOYMENT_CONFIG } from "../../scripts/config/addresses";
 
@@ -64,24 +64,32 @@ describe("Deployment", function () {
 
     // Deploy DeltaNeutralVault
     const VaultFactory = await ethers.getContractFactory("DeltaNeutralVault");
-    const vault = await VaultFactory.deploy(
-      await usdc.getAddress(),
-      DEFAULT_DEPLOYMENT_CONFIG.vaultName!,
-      DEFAULT_DEPLOYMENT_CONFIG.vaultSymbol!,
-      deployer.address
+    const vault = await upgrades.deployProxy(
+      VaultFactory,
+      [
+        await usdc.getAddress(),
+        DEFAULT_DEPLOYMENT_CONFIG.vaultName!,
+        DEFAULT_DEPLOYMENT_CONFIG.vaultSymbol!,
+        deployer.address,
+      ],
+      { kind: "uups" }
     );
     await vault.waitForDeployment();
 
     // Deploy LiquidityManager with mock addresses
     const LiquidityManagerFactory = await ethers.getContractFactory("LiquidityManager");
-    const liquidityManager = await LiquidityManagerFactory.deploy(
-      await mockPositionManager.getAddress(), // positionManager
-      await mockSwapRouter.getAddress(), // swapRouter
-      await mockFactory.getAddress(), // factory
-      await weth.getAddress(),
-      await usdc.getAddress(),
-      DEFAULT_DEPLOYMENT_CONFIG.poolFee!,
-      deployer.address
+    const liquidityManager = await upgrades.deployProxy(
+      LiquidityManagerFactory,
+      [
+        await mockPositionManager.getAddress(), // positionManager
+        await mockSwapRouter.getAddress(), // swapRouter
+        await mockFactory.getAddress(), // factory
+        await weth.getAddress(),
+        await usdc.getAddress(),
+        DEFAULT_DEPLOYMENT_CONFIG.poolFee!,
+        deployer.address,
+      ],
+      { kind: "uups" }
     );
     await liquidityManager.waitForDeployment();
 
@@ -89,21 +97,26 @@ describe("Deployment", function () {
     // Use a separate mock address for market since it's a different concept than the router
     const mockMarketAddress = ethers.Wallet.createRandom().address;
     const HedgeManagerFactory = await ethers.getContractFactory("HedgeManager");
-    const hedgeManager = await HedgeManagerFactory.deploy(
-      await mockExchangeRouter.getAddress(), // exchangeRouter
-      mockMarketAddress, // market
-      await usdc.getAddress(),
-      await weth.getAddress(),
-      await mockPriceFeed.getAddress(),
-      deployer.address
+    const hedgeManager = await upgrades.deployProxy(
+      HedgeManagerFactory,
+      [
+        await mockExchangeRouter.getAddress(), // exchangeRouter
+        mockMarketAddress, // market
+        await usdc.getAddress(),
+        await weth.getAddress(),
+        await mockPriceFeed.getAddress(),
+        deployer.address,
+      ],
+      { kind: "uups" }
     );
     await hedgeManager.waitForDeployment();
 
     // Deploy RebalanceController
     const RebalanceControllerFactory = await ethers.getContractFactory("RebalanceController");
-    const rebalanceController = await RebalanceControllerFactory.deploy(
-      await vault.getAddress(),
-      deployer.address
+    const rebalanceController = await upgrades.deployProxy(
+      RebalanceControllerFactory,
+      [await vault.getAddress(), deployer.address],
+      { kind: "uups" }
     );
     await rebalanceController.waitForDeployment();
 

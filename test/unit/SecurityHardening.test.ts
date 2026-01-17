@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { loadFixture, time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import {
   DeltaNeutralVault,
@@ -29,12 +29,11 @@ describe("Security Hardening - Phase 7", function () {
 
     // Deploy vault
     const Vault = await ethers.getContractFactory("DeltaNeutralVault");
-    const vault = (await Vault.deploy(
-      await usdc.getAddress(),
-      "Delta Neutral Vault",
-      "dnVault",
-      owner.address
-    )) as DeltaNeutralVault;
+    const vault = (await upgrades.deployProxy(
+      Vault,
+      [await usdc.getAddress(), "Delta Neutral Vault", "dnVault", owner.address],
+      { kind: "uups" }
+    )) as unknown as DeltaNeutralVault;
     await vault.waitForDeployment();
 
     // Set guardian

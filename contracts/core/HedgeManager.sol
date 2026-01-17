@@ -3,8 +3,9 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {IExchangeRouter, IDataStore, GMXPositionUtils} from "../interfaces/IGMXV2.sol";
 import {IHedgeManager} from "../interfaces/IHedgeManager.sol";
@@ -14,7 +15,12 @@ import {SecurityModule} from "../libraries/SecurityModule.sol";
 /// @title Hedge Manager
 /// @notice Manages GMX v2 perpetual short positions for delta hedging
 /// @dev Handles opening, adjusting, and closing short positions on GMX v2
-contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
+contract HedgeManager is
+    IHedgeManager,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
 
     // ============ Constants ============
@@ -40,22 +46,22 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
     /// @notice Emergency leverage threshold (2.8x) - triggers warning
     uint256 public constant EMERGENCY_LEVERAGE_THRESHOLD = 28e17;
 
-    // ============ Immutables ============
+    // ============ Storage Variables (Converted from Immutables) ============
 
     /// @notice GMX v2 Exchange Router
-    IExchangeRouter public immutable exchangeRouter;
+    IExchangeRouter public exchangeRouter;
 
     /// @notice GMX v2 market address (e.g., ETH/USD market)
-    address public immutable override market;
+    address public override market;
 
     /// @notice Collateral token (e.g., USDC)
-    address public immutable override collateralToken;
+    address public override collateralToken;
 
     /// @notice Index token being hedged (e.g., WETH)
-    address public immutable override indexToken;
+    address public override indexToken;
 
     /// @notice Chainlink price feed for index token
-    IChainlinkPriceFeed public immutable priceFeed;
+    IChainlinkPriceFeed public priceFeed;
 
     // ============ State Variables ============
 
@@ -76,6 +82,9 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
 
     /// @notice Last order key created
     bytes32 public lastOrderKey;
+
+    // ============ Gap for Upgradeability ============
+    uint256[50] private __gap;
 
     // ============ Events ============
 
@@ -157,7 +166,7 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
         _;
     }
 
-    // ============ Constructor ============
+    // ============ Initializer ============
 
     /// @notice Initialize the hedge manager
     /// @param _exchangeRouter GMX v2 Exchange Router address
@@ -166,19 +175,23 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
     /// @param _indexToken Index token address (e.g., WETH)
     /// @param _priceFeed Chainlink price feed for index token
     /// @param _owner Owner address
-    constructor(
+    function initialize(
         address _exchangeRouter,
         address _market,
         address _collateralToken,
         address _indexToken,
         address _priceFeed,
         address _owner
-    ) Ownable(_owner) {
+    ) public initializer {
         if (_exchangeRouter == address(0)) revert ZeroAddress();
         if (_market == address(0)) revert ZeroAddress();
         if (_collateralToken == address(0)) revert ZeroAddress();
         if (_indexToken == address(0)) revert ZeroAddress();
         if (_priceFeed == address(0)) revert ZeroAddress();
+
+        __Ownable_init(_owner);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
 
         exchangeRouter = IExchangeRouter(_exchangeRouter);
         market = _market;
@@ -187,6 +200,9 @@ contract HedgeManager is IHedgeManager, Ownable, ReentrancyGuard {
         priceFeed = IChainlinkPriceFeed(_priceFeed);
         slippageTolerance = DEFAULT_SLIPPAGE;
     }
+
+    /// @dev Authorize upgrade - only owner can upgrade
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     // ============ External Functions ============
 
