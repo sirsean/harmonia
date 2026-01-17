@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import {ISwapRouter} from "./IUniswapV3.sol";
+
 /// @title Liquidity Manager Interface
 /// @notice Interface for the LiquidityManager contract
 interface ILiquidityManager {
@@ -136,4 +138,7 @@ interface ILiquidityManager {
     /// @notice Get the current price from the oracle
     /// @return price Current price (scaled by 1e18)
     function getOraclePrice() external view returns (uint256 price);
+
+    /// @notice Get the swap router address
+    function swapRouter() external view returns (ISwapRouter);
 }
