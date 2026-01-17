@@ -462,8 +462,14 @@ describe("DeltaNeutralVault", function () {
 
     describe("setManagers", function () {
       it("should allow owner to set managers", async function () {
-        const { vault, owner, rebalanceController } = await loadFixture(deployVaultFixture);
-        const liquidityManager = ethers.Wallet.createRandom().address;
+        const { vault, owner, rebalanceController, usdc } = await loadFixture(deployVaultFixture);
+        
+        // Deploy MockLiquidityManager
+        const MockLiquidityManager = await ethers.getContractFactory("MockLiquidityManager");
+        // Use USDC for both for simplicity, or deploy another mock
+        const mockLiqMgr = await MockLiquidityManager.deploy(await usdc.getAddress(), await usdc.getAddress());
+        const liquidityManager = await mockLiqMgr.getAddress();
+        
         const hedgeManager = ethers.Wallet.createRandom().address;
 
         await vault
@@ -476,8 +482,10 @@ describe("DeltaNeutralVault", function () {
       });
 
       it("should emit ManagersUpdated event", async function () {
-        const { vault, owner, rebalanceController } = await loadFixture(deployVaultFixture);
-        const liquidityManager = ethers.Wallet.createRandom().address;
+        const { vault, owner, rebalanceController, usdc } = await loadFixture(deployVaultFixture);
+        const MockLiquidityManager = await ethers.getContractFactory("MockLiquidityManager");
+        const mockLiqMgr = await MockLiquidityManager.deploy(await usdc.getAddress(), await usdc.getAddress());
+        const liquidityManager = await mockLiqMgr.getAddress();
         const hedgeManager = ethers.Wallet.createRandom().address;
 
         await expect(
