@@ -30,8 +30,6 @@ import {
 import { MarketValidator } from "../../src/markets/validator";
 import { CONSTANTS } from "../config/addresses";
 
-// ...
-
 /**
  * Main deployment function
  */
@@ -95,6 +93,8 @@ async function main(): Promise<DeploymentResult> {
     poolFee: market.uniswapPool.feeTier,
     owner: deployerAddress,
     guardian: deployerAddress, // Set guardian same as owner initially
+    protocolFeeBps: process.env.PROTOCOL_FEE_BPS ? parseInt(process.env.PROTOCOL_FEE_BPS) : 100, // Default 1%
+    treasury: process.env.TREASURY_ADDRESS || deployerAddress, // Default to deployer
   };
 
   console.log("Deployment Configuration:");
@@ -104,6 +104,8 @@ async function main(): Promise<DeploymentResult> {
   console.log("  Pool Fee:", config.poolFee / 10000, "%");
   console.log("  Owner:", config.owner);
   console.log("  Guardian:", config.guardian);
+  console.log("  Protocol Fee:", config.protocolFeeBps / 100, "%");
+  console.log("  Treasury:", config.treasury);
   console.log("");
 
   console.log("Market Configuration:");
@@ -316,6 +318,20 @@ async function configureContracts(
     console.log("  Setting guardian...");
     const setGuardianTx = await vault.setGuardian(config.guardian);
     await setGuardianTx.wait();
+  }
+
+  // Set protocol fee
+  if (config.protocolFeeBps > 0) {
+    console.log("  Setting protocol fee...");
+    const setFeeTx = await vault.setProtocolFee(config.protocolFeeBps);
+    await setFeeTx.wait();
+  }
+
+  // Set treasury
+  if (config.treasury && config.treasury !== ethers.ZeroAddress) {
+    console.log("  Setting treasury...");
+    const setTreasuryTx = await vault.setTreasury(config.treasury);
+    await setTreasuryTx.wait();
   }
 
   // Set initial deposit cap
