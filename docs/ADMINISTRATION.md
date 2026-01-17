@@ -182,6 +182,62 @@ await vault.setGuardian(guardianAddress);
 
 ---
 
+### setProtocolFee
+
+Sets the protocol fee percentage collected from yield.
+
+```solidity
+function setProtocolFee(uint256 _protocolFeeBps) external onlyOwner
+```
+
+**Usage:**
+
+```javascript
+// Set 10% fee (1000 bps)
+await vault.setProtocolFee(1000);
+
+// Disable fee
+await vault.setProtocolFee(0);
+```
+
+**When to Use:**
+
+- Adjusting revenue model
+- Reducing fees to incentivize growth
+- Increasing fees during high profitability
+
+**Constraints:**
+
+- Maximum: 50% (5000 bps)
+- Default: 0% (if not set)
+
+---
+
+### setTreasury
+
+Sets the recipient address for protocol fees.
+
+```solidity
+function setTreasury(address _treasury) external onlyOwner
+```
+
+**Usage:**
+
+```javascript
+await vault.setTreasury(treasuryAddress);
+```
+
+**When to Use:**
+
+- Initial configuration
+- Changing fee recipient (e.g. to new multisig)
+
+**Note:**
+
+- Fee shares are minted directly to this address during compounding.
+
+---
+
 ### pause / unpause
 
 Emergency halt of vault operations.
