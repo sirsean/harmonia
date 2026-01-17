@@ -21,7 +21,12 @@ import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
 /// @title Liquidity Manager
 /// @notice Manages Uniswap V3 LP positions for the delta-neutral vault
 /// @dev Handles minting, fee collection, liquidity adjustments, and range rebalancing
-contract LiquidityManager is ILiquidityManager, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
+contract LiquidityManager is
+    ILiquidityManager,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
 
     // ============ Constants ============

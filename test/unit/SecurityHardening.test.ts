@@ -29,12 +29,11 @@ describe("Security Hardening - Phase 7", function () {
 
     // Deploy vault
     const Vault = await ethers.getContractFactory("DeltaNeutralVault");
-    const vault = (await upgrades.deployProxy(Vault, [
-      await usdc.getAddress(),
-      "Delta Neutral Vault",
-      "dnVault",
-      owner.address
-    ], { kind: 'uups' })) as unknown as DeltaNeutralVault;
+    const vault = (await upgrades.deployProxy(
+      Vault,
+      [await usdc.getAddress(), "Delta Neutral Vault", "dnVault", owner.address],
+      { kind: "uups" }
+    )) as unknown as DeltaNeutralVault;
     await vault.waitForDeployment();
 
     // Set guardian

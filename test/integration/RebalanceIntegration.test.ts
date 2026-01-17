@@ -91,47 +91,55 @@ describe("Rebalance Integration", function () {
 
     // 4. Deploy Managers
     const LiquidityManager = await ethers.getContractFactory("LiquidityManager");
-    const liquidityManager = (await upgrades.deployProxy(LiquidityManager, [
-      await positionManager.getAddress(),
-      await swapRouter.getAddress(),
-      await uniFactory.getAddress(),
-      await weth.getAddress(),
-      await usdc.getAddress(),
-      500, // 0.05%
-      owner.address
-    ], { kind: 'uups' })) as unknown as LiquidityManager;
+    const liquidityManager = (await upgrades.deployProxy(
+      LiquidityManager,
+      [
+        await positionManager.getAddress(),
+        await swapRouter.getAddress(),
+        await uniFactory.getAddress(),
+        await weth.getAddress(),
+        await usdc.getAddress(),
+        500, // 0.05%
+        owner.address,
+      ],
+      { kind: "uups" }
+    )) as unknown as LiquidityManager;
     await liquidityManager.waitForDeployment();
-    
+
     // Set price feed for LiquidityManager
     await liquidityManager.setPriceFeed(await priceFeed.getAddress());
 
     const HedgeManager = await ethers.getContractFactory("HedgeManager");
-    const hedgeManager = (await upgrades.deployProxy(HedgeManager, [
-      await gmxRouter.getAddress(),
-      ethers.Wallet.createRandom().address, // random market
-      await usdc.getAddress(),
-      await weth.getAddress(),
-      await priceFeed.getAddress(),
-      owner.address
-    ], { kind: 'uups' })) as unknown as HedgeManager;
+    const hedgeManager = (await upgrades.deployProxy(
+      HedgeManager,
+      [
+        await gmxRouter.getAddress(),
+        ethers.Wallet.createRandom().address, // random market
+        await usdc.getAddress(),
+        await weth.getAddress(),
+        await priceFeed.getAddress(),
+        owner.address,
+      ],
+      { kind: "uups" }
+    )) as unknown as HedgeManager;
     await hedgeManager.waitForDeployment();
 
     // 5. Deploy Vault
     const DeltaNeutralVault = await ethers.getContractFactory("DeltaNeutralVault");
-    const vault = (await upgrades.deployProxy(DeltaNeutralVault, [
-      await usdc.getAddress(),
-      "Harmonia Vault",
-      "hUSDC",
-      owner.address
-    ], { kind: 'uups' })) as unknown as DeltaNeutralVault;
+    const vault = (await upgrades.deployProxy(
+      DeltaNeutralVault,
+      [await usdc.getAddress(), "Harmonia Vault", "hUSDC", owner.address],
+      { kind: "uups" }
+    )) as unknown as DeltaNeutralVault;
     await vault.waitForDeployment();
 
     // 6. Deploy Rebalance Controller
     const RebalanceController = await ethers.getContractFactory("RebalanceController");
-    const controller = (await upgrades.deployProxy(RebalanceController, [
-      await vault.getAddress(),
-      owner.address
-    ], { kind: 'uups' })) as unknown as RebalanceController;
+    const controller = (await upgrades.deployProxy(
+      RebalanceController,
+      [await vault.getAddress(), owner.address],
+      { kind: "uups" }
+    )) as unknown as RebalanceController;
     await controller.waitForDeployment();
 
     // 7. Wire up everything

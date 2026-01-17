@@ -19,10 +19,11 @@ describeFork("RebalanceController Fork Tests", function () {
 
     // Deploy controller
     const Controller = await ethers.getContractFactory("RebalanceController");
-    const controller = (await upgrades.deployProxy(Controller, [
-      await mockVault.getAddress(),
-      owner.address
-    ], { kind: 'uups' })) as unknown as RebalanceController;
+    const controller = (await upgrades.deployProxy(
+      Controller,
+      [await mockVault.getAddress(), owner.address],
+      { kind: "uups" }
+    )) as unknown as RebalanceController;
     await controller.waitForDeployment();
 
     return { owner, mockVault, controller };

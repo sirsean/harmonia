@@ -20,12 +20,12 @@ import {DeltaCalculator} from "../libraries/DeltaCalculator.sol";
 /// @title Delta Neutral Vault
 /// @notice ERC-4626 vault that deploys capital into delta-neutral yield strategy
 /// @dev Combines Uniswap v3 LP positions with GMX v2 perpetual hedging
-contract DeltaNeutralVault is 
-    ERC4626Upgradeable, 
-    ReentrancyGuardUpgradeable, 
-    OwnableUpgradeable, 
+contract DeltaNeutralVault is
+    ERC4626Upgradeable,
+    ReentrancyGuardUpgradeable,
+    OwnableUpgradeable,
     PausableUpgradeable,
-    UUPSUpgradeable 
+    UUPSUpgradeable
 {
     using SafeERC20 for IERC20;
 
