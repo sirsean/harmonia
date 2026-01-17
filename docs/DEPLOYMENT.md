@@ -41,6 +41,10 @@ ARBISCAN_API_KEY=your_arbiscan_api_key
 
 # Required for RPC access
 ALCHEMY_API_KEY=your_alchemy_api_key
+
+# Optional Configuration
+PROTOCOL_FEE_BPS=1000            # 10% (default 1000)
+TREASURY_ADDRESS=0x...           # Fee recipient (default deployer)
 ```
 
 ### Compile Contracts
@@ -203,11 +207,21 @@ Start with a conservative cap and increase as the system proves stable:
 await vault.setDepositCap(ethers.parseUnits("10000", 6));
 ```
 
-### 4. Register Chainlink Automation
+### 4. Configure Protocol Fee (Optional)
+
+If not set during deployment:
+
+```javascript
+// Set 10% fee and treasury address
+await vault.setProtocolFee(1000);
+await vault.setTreasury(treasuryAddress);
+```
+
+### 5. Register Chainlink Automation
 
 See [KEEPER_OPERATIONS.md](./KEEPER_OPERATIONS.md) for detailed instructions.
 
-### 5. Transfer Ownership (Recommended)
+### 6. Transfer Ownership (Recommended)
 
 For production deployments, transfer ownership to a multisig:
 
