@@ -104,52 +104,52 @@ function setDepositCap(uint256 _depositCap) external onlyOwner
 // Set 100,000 USDC cap
 await vault.setDepositCap(ethers.parseUnits("100000", 6));
 
-    // Remove cap (set to 0)
-    await vault.setDepositCap(0);
-    ```
+// Remove cap (set to 0)
+await vault.setDepositCap(0);
+```
 
-    **When to Use:**
+**When to Use:**
 
-    - Initial deployment: Start conservative
-    - Gradual scaling: Increase as system proves stable
-    - Risk mitigation: Decrease during uncertain conditions
+- Initial deployment: Start conservative
+- Gradual scaling: Increase as system proves stable
+- Risk mitigation: Decrease during uncertain conditions
 
-    **Recommended Progression:**
+**Recommended Progression:**
 
-    1. Launch: $10,000
-    2. Week 1: $50,000
-    3. Month 1: $250,000
-    4. Ongoing: Evaluate based on performance
+1. Launch: $10,000
+2. Week 1: $50,000
+3. Month 1: $250,000
+4. Ongoing: Evaluate based on performance
 
-    ---
+---
 
-    ### setDeltaThreshold
+### setDeltaThreshold
 
-    Sets the delta drift threshold for triggering rebalances.
+Sets the delta drift threshold for triggering rebalances.
 
-    ```solidity
-    function setDeltaThreshold(uint256 _deltaThreshold) external onlyOwner
-    ```
+```solidity
+function setDeltaThreshold(uint256 _deltaThreshold) external onlyOwner
+```
 
-    **Usage:**
+**Usage:**
 
-    ```javascript
-    // Set 5% threshold (5e16)
-    await vault.setDeltaThreshold(ethers.parseUnits("5", 16));
-    ```
+```javascript
+// Set 5% threshold (5e16)
+await vault.setDeltaThreshold(ethers.parseUnits("5", 16));
+```
 
-    **When to Use:**
+**When to Use:**
 
-    - Optimize rebalance frequency
-    - Adjust sensitivity to market volatility
+- Optimize rebalance frequency
+- Adjust sensitivity to market volatility
 
-    **Constraints:**
+**Constraints:**
 
-    - Default: 5% (5e16)
+- Default: 5% (5e16)
 
-    ---
+---
 
-    ### setCircuitBreakerEnabled
+### setCircuitBreakerEnabled
 Enables or disables the circuit breaker enforcement mechanism.
 
 ```solidity
@@ -719,10 +719,10 @@ If not using the plugin, the owner can call `upgradeToAndCall(newImplementation,
 
 These values are immutable and cannot be changed:
 
-    | Constant                   | Value  | Description             |
-    | -------------------------- | ------ | ----------------------- |
-    | EMERGENCY_THRESHOLD        | 20%    | Circuit breaker trigger |
-    | MAX_LEVERAGE               | 3x     | Maximum GMX leverage    || MIN_HEDGE_RATIO            | 80%    | Minimum hedge coverage  |
+| Constant                   | Value  | Description             |
+| -------------------------- | ------ | ----------------------- |
+| EMERGENCY_THRESHOLD        | 20%    | Circuit breaker trigger |
+| MAX_LEVERAGE               | 3x     | Maximum GMX leverage    || MIN_HEDGE_RATIO            | 80%    | Minimum hedge coverage  |
 | MAX_SINGLE_WITHDRAWAL      | 25%    | Per-withdrawal limit    |
 | LARGE_WITHDRAWAL_COOLDOWN  | 1 hour | Cooldown period         |
 | LARGE_WITHDRAWAL_THRESHOLD | 10%    | Cooldown trigger        |
@@ -735,11 +735,11 @@ These values are immutable and cannot be changed:
 
 | Function                     | Purpose                     |
 | ---------------------------- | --------------------------- |
-    | `setManagers()`              | Configure manager contracts |
-    | `setDepositCap()`            | Set TVL limit               |
-    | `setDeltaThreshold()`        | Set rebalance threshold     |
-    | `setCircuitBreakerEnabled()` | Toggle circuit breaker      |
-    | `setGuardian()`              | Assign guardian role        || `pause()`               | Halt deposits               |
+| `setManagers()`              | Configure manager contracts |
+| `setDepositCap()`            | Set TVL limit               |
+| `setDeltaThreshold()`        | Set rebalance threshold     |
+| `setCircuitBreakerEnabled()` | Toggle circuit breaker      |
+| `setGuardian()`              | Assign guardian role        || `pause()`               | Halt deposits               |
 | `unpause()`             | Resume deposits             |
 | `resetCircuitBreaker()` | Reset after emergency       |
 | `transferOwnership()`   | Transfer owner role         |
