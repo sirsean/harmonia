@@ -32,7 +32,7 @@ describe("DeltaNeutralVault - Configurable Threshold", function () {
       await usdc.getAddress()
     )) as unknown as MockLiquidityManager;
     await liquidityManager.waitForDeployment();
-    
+
     // Deploy MockHedgeManager
     const MockHedgeManager = await ethers.getContractFactory("MockHedgeManager");
     const mockHedgeManager = await MockHedgeManager.deploy();
@@ -41,9 +41,9 @@ describe("DeltaNeutralVault - Configurable Threshold", function () {
 
     // Set Managers
     await vault.setManagers(
-        await liquidityManager.getAddress(),
-        hedgeManager,
-        rebalanceController.address
+      await liquidityManager.getAddress(),
+      hedgeManager,
+      rebalanceController.address
     );
 
     return { vault, liquidityManager, owner, user, usdc };
@@ -70,23 +70,24 @@ describe("DeltaNeutralVault - Configurable Threshold", function () {
     const { vault, user } = await loadFixture(deployFixture);
     const newThreshold = (10n * PRECISION) / 100n;
 
-    await expect(
-      vault.connect(user).setDeltaThreshold(newThreshold)
-    ).to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
+    await expect(vault.connect(user).setDeltaThreshold(newThreshold)).to.be.revertedWithCustomError(
+      vault,
+      "OwnableUnauthorizedAccount"
+    );
   });
 
   it("should respect new threshold in rebalanceNeeded logic", async function () {
     const { vault, liquidityManager, owner } = await loadFixture(deployFixture);
-    
-    // Setup: 
+
+    // Setup:
     // Total Assets = 100 (mocked via liquidity manager value for simplicity, ignoring idle assets)
     // We want to test percentages.
-    
+
     const assets = BigInt(100) * BigInt(10) ** BigInt(USDC_DECIMALS);
     await liquidityManager.setMockValue(assets); // Position value = 100
-    // Note: totalAssets() = idle + lpValue + hedgeValue. 
+    // Note: totalAssets() = idle + lpValue + hedgeValue.
     // If we have 0 idle and 0 hedge, totalAssets = lpValue.
-    
+
     // Case 1: Default Threshold (5%)
     // Set delta to 4% (0.04 * 100 = 4)
     // Delta is int256, usually 18 decimals for ratios, but here it is absolute delta?
@@ -95,9 +96,9 @@ describe("DeltaNeutralVault - Configurable Threshold", function () {
     // So if we want ratio 0.04e18, we need:
     // (netDelta * 1e18) / 100e6 = 0.04e18
     // netDelta = 0.04 * 100e6 = 4e6.
-    
+
     // Wait, getNetDelta returns "Net delta (positive = long, negative = short)".
-    // The unit of netDelta depends on the underlying asset? 
+    // The unit of netDelta depends on the underlying asset?
     // Usually delta is unitless (e.g. 1.0 ETH exposure).
     // But getDeltaRatio calculation: `(netDelta * PRECISION) / total`
     // suggests netDelta and total have the same units (or compatible to produce a ratio).
@@ -109,21 +110,21 @@ describe("DeltaNeutralVault - Configurable Threshold", function () {
     // So `getNetDelta` likely returns delta in USD value?
     // Or `total` is in ETH? No, `totalAssets` returns USDC.
     // Let's assume `netDelta` is dollar delta.
-    
+
     const delta4Percent = (assets * 4n) / 100n; // 4% of assets
     await liquidityManager.setMockDelta(delta4Percent);
-    
+
     expect(await vault.rebalanceNeeded()).to.equal(false); // 4% < 5%
 
     const delta6Percent = (assets * 6n) / 100n; // 6% of assets
     await liquidityManager.setMockDelta(delta6Percent);
-    
+
     expect(await vault.rebalanceNeeded()).to.equal(true); // 6% > 5%
 
     // Case 2: Update Threshold to 10%
     const newThreshold = (10n * PRECISION) / 100n;
     await vault.connect(owner).setDeltaThreshold(newThreshold);
-    
+
     expect(await vault.rebalanceNeeded()).to.equal(false); // 6% < 10%
 
     const delta11Percent = (assets * 11n) / 100n; // 11% of assets
