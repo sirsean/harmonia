@@ -311,7 +311,7 @@ describe("Deployment", function () {
       const { vault } = await loadFixture(deployWithMocksFixture);
 
       expect(await vault.PRECISION()).to.equal(CONSTANTS.PRECISION);
-      expect(await vault.DELTA_THRESHOLD()).to.equal(CONSTANTS.DELTA_THRESHOLD);
+      expect(await vault.deltaThreshold()).to.equal(CONSTANTS.DELTA_THRESHOLD);
       expect(await vault.EMERGENCY_THRESHOLD()).to.equal(CONSTANTS.EMERGENCY_THRESHOLD);
       expect(await vault.MAX_LEVERAGE()).to.equal(CONSTANTS.MAX_LEVERAGE);
       expect(await vault.MIN_HEDGE_RATIO()).to.equal(CONSTANTS.MIN_HEDGE_RATIO);

@@ -65,11 +65,6 @@ contract MockRebalanceVault {
 
     // ============ Vault Interface ============
 
-    /// @notice Mirror of DeltaNeutralVault.DELTA_THRESHOLD()
-    function DELTA_THRESHOLD() external view returns (uint256) {
-        return deltaThreshold;
-    }
-
     /// @notice Mirror of DeltaNeutralVault.getDeltaRatio()
     function getDeltaRatio() external view returns (int256) {
         return deltaRatio;
