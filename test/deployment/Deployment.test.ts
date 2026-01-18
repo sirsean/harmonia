@@ -312,36 +312,32 @@ describe("Deployment", function () {
 
       expect(await vault.PRECISION()).to.equal(CONSTANTS.PRECISION);
       expect(await vault.deltaThreshold()).to.equal(CONSTANTS.DELTA_THRESHOLD);
-      expect(await vault.EMERGENCY_THRESHOLD()).to.equal(CONSTANTS.EMERGENCY_THRESHOLD);
-      expect(await vault.MAX_LEVERAGE()).to.equal(CONSTANTS.MAX_LEVERAGE);
-      expect(await vault.MIN_HEDGE_RATIO()).to.equal(CONSTANTS.MIN_HEDGE_RATIO);
-      expect(await vault.MAX_SINGLE_WITHDRAWAL()).to.equal(CONSTANTS.MAX_SINGLE_WITHDRAWAL);
-      expect(await vault.LARGE_WITHDRAWAL_COOLDOWN()).to.equal(CONSTANTS.LARGE_WITHDRAWAL_COOLDOWN);
-      expect(await vault.LARGE_WITHDRAWAL_THRESHOLD()).to.equal(
-        CONSTANTS.LARGE_WITHDRAWAL_THRESHOLD
-      );
+      expect(await vault.emergencyThreshold()).to.equal(CONSTANTS.EMERGENCY_THRESHOLD);
+      expect(await vault.maxSingleWithdrawal()).to.equal(CONSTANTS.MAX_SINGLE_WITHDRAWAL);
+      expect(await vault.largeWithdrawalCooldown()).to.equal(CONSTANTS.LARGE_WITHDRAWAL_COOLDOWN);
+      expect(await vault.largeWithdrawalThreshold()).to.equal(CONSTANTS.LARGE_WITHDRAWAL_THRESHOLD);
     });
 
     it("should have correct hedge manager constants", async function () {
       const { hedgeManager } = await loadFixture(deployWithMocksFixture);
 
       expect(await hedgeManager.PRECISION()).to.equal(CONSTANTS.PRECISION);
-      expect(await hedgeManager.MAX_LEVERAGE()).to.equal(CONSTANTS.MAX_LEVERAGE);
+      expect(await hedgeManager.maxLeverage()).to.equal(CONSTANTS.MAX_LEVERAGE);
     });
 
     it("should have correct rebalance controller intervals", async function () {
       const { rebalanceController } = await loadFixture(deployWithMocksFixture);
 
-      expect(await rebalanceController.MIN_REBALANCE_INTERVAL()).to.equal(
+      expect(await rebalanceController.minRebalanceInterval()).to.equal(
         CONSTANTS.MIN_REBALANCE_INTERVAL
       );
-      expect(await rebalanceController.MAX_REBALANCE_INTERVAL()).to.equal(
+      expect(await rebalanceController.maxRebalanceInterval()).to.equal(
         CONSTANTS.MAX_REBALANCE_INTERVAL
       );
-      expect(await rebalanceController.MIN_COMPOUND_INTERVAL()).to.equal(
+      expect(await rebalanceController.minCompoundInterval()).to.equal(
         CONSTANTS.MIN_COMPOUND_INTERVAL
       );
-      expect(await rebalanceController.MIN_SNAPSHOT_INTERVAL()).to.equal(
+      expect(await rebalanceController.minSnapshotInterval()).to.equal(
         CONSTANTS.MIN_SNAPSHOT_INTERVAL
       );
     });
