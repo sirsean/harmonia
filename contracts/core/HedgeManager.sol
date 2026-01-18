@@ -31,20 +31,8 @@ contract HedgeManager is
     /// @notice GMX USD precision (30 decimals)
     uint256 public constant GMX_USD_PRECISION = 1e30;
 
-    /// @notice Maximum leverage allowed (3x = 3e18)
-    uint256 public constant MAX_LEVERAGE = 3e18;
-
-    /// @notice Minimum position size in USD (30 decimals) - $100
-    uint256 public constant MIN_POSITION_SIZE = 100 * GMX_USD_PRECISION;
-
     /// @notice Default acceptable price slippage (1% = 1e16)
     uint256 public constant DEFAULT_SLIPPAGE = 1e16;
-
-    /// @notice Maximum oracle staleness for price feeds (1 hour)
-    uint256 public constant MAX_ORACLE_STALENESS = 1 hours;
-
-    /// @notice Emergency leverage threshold (2.8x) - triggers warning
-    uint256 public constant EMERGENCY_LEVERAGE_THRESHOLD = 28e17;
 
     // ============ Storage Variables (Converted from Immutables) ============
 
@@ -64,6 +52,18 @@ contract HedgeManager is
     IChainlinkPriceFeed public priceFeed;
 
     // ============ State Variables ============
+
+    /// @notice Maximum leverage allowed (default 3x)
+    uint256 public maxLeverage;
+
+    /// @notice Minimum position size in USD (default $100)
+    uint256 public minPositionSize;
+
+    /// @notice Maximum oracle staleness for price feeds (default 1 hour)
+    uint256 public maxOracleStaleness;
+
+    /// @notice Emergency leverage threshold (default 2.8x)
+    uint256 public emergencyLeverageThreshold;
 
     /// @notice Address of the vault that owns this manager
     address public override vault;
@@ -114,6 +114,18 @@ contract HedgeManager is
 
     /// @notice Emitted when execution fee override is updated
     event ExecutionFeeUpdated(uint256 oldFee, uint256 newFee);
+
+    /// @notice Emitted when max leverage is updated
+    event MaxLeverageUpdated(uint256 oldLeverage, uint256 newLeverage);
+
+    /// @notice Emitted when min position size is updated
+    event MinPositionSizeUpdated(uint256 oldSize, uint256 newSize);
+
+    /// @notice Emitted when max oracle staleness is updated
+    event MaxOracleStalenessUpdated(uint256 oldStaleness, uint256 newStaleness);
+
+    /// @notice Emitted when emergency leverage threshold is updated
+    event EmergencyLeverageThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
 
     // ============ Errors ============
 
@@ -199,6 +211,12 @@ contract HedgeManager is
         indexToken = _indexToken;
         priceFeed = IChainlinkPriceFeed(_priceFeed);
         slippageTolerance = DEFAULT_SLIPPAGE;
+
+        // Initialize configurable parameters
+        maxLeverage = 3e18; // 3x
+        minPositionSize = 100 * GMX_USD_PRECISION; // $100
+        maxOracleStaleness = 1 hours;
+        emergencyLeverageThreshold = 28e17; // 2.8x
     }
 
     /// @dev Authorize upgrade - only owner can upgrade
@@ -232,13 +250,45 @@ contract HedgeManager is
         emit ExecutionFeeUpdated(oldFee, _fee);
     }
 
+    /// @notice Set max leverage
+    /// @param _maxLeverage New max leverage (scaled by 1e18)
+    function setMaxLeverage(uint256 _maxLeverage) external onlyOwner {
+        uint256 old = maxLeverage;
+        maxLeverage = _maxLeverage;
+        emit MaxLeverageUpdated(old, _maxLeverage);
+    }
+
+    /// @notice Set minimum position size
+    /// @param _minPositionSize New minimum position size (in USD 30 decimals)
+    function setMinPositionSize(uint256 _minPositionSize) external onlyOwner {
+        uint256 old = minPositionSize;
+        minPositionSize = _minPositionSize;
+        emit MinPositionSizeUpdated(old, _minPositionSize);
+    }
+
+    /// @notice Set max oracle staleness
+    /// @param _maxOracleStaleness New max staleness in seconds
+    function setMaxOracleStaleness(uint256 _maxOracleStaleness) external onlyOwner {
+        uint256 old = maxOracleStaleness;
+        maxOracleStaleness = _maxOracleStaleness;
+        emit MaxOracleStalenessUpdated(old, _maxOracleStaleness);
+    }
+
+    /// @notice Set emergency leverage threshold
+    /// @param _threshold New emergency leverage threshold (scaled by 1e18)
+    function setEmergencyLeverageThreshold(uint256 _threshold) external onlyOwner {
+        uint256 old = emergencyLeverageThreshold;
+        emergencyLeverageThreshold = _threshold;
+        emit EmergencyLeverageThresholdUpdated(old, _threshold);
+    }
+
     /// @inheritdoc IHedgeManager
     function openShort(
         uint256 sizeDeltaUsd,
         uint256 collateralAmount
     ) external payable override onlyVaultOrOwner nonReentrant returns (bytes32 orderKey) {
         if (hasPosition()) revert PositionExists();
-        if (sizeDeltaUsd < MIN_POSITION_SIZE) revert PositionTooSmall();
+        if (sizeDeltaUsd < minPositionSize) revert PositionTooSmall();
         if (collateralAmount == 0) revert ZeroAmount();
 
         // Check leverage
@@ -354,7 +404,7 @@ contract HedgeManager is
 
             if (!hasPosition()) {
                 // Open new position
-                if (targetDeltaUsd < MIN_POSITION_SIZE) revert PositionTooSmall();
+                if (targetDeltaUsd < minPositionSize) revert PositionTooSmall();
 
                 IERC20(collateralToken).safeTransferFrom(
                     msg.sender,
@@ -641,7 +691,7 @@ contract HedgeManager is
     }
 
     /// @notice Validate leverage is within limits
-    function _validateLeverage(uint256 sizeUsd, uint256 collateralAmount) internal pure {
+    function _validateLeverage(uint256 sizeUsd, uint256 collateralAmount) internal view {
         if (collateralAmount == 0) revert ZeroAmount();
 
         // Convert collateral to USD (30 decimals)
@@ -650,7 +700,7 @@ contract HedgeManager is
 
         uint256 leverage = (sizeUsd * PRECISION) / collateralUsd;
 
-        if (leverage > MAX_LEVERAGE) revert LeverageTooHigh();
+        if (leverage > maxLeverage) revert LeverageTooHigh();
     }
 
     /// @notice Calculate required collateral for a position size
@@ -670,7 +720,7 @@ contract HedgeManager is
         // Use SecurityModule for comprehensive oracle validation
         uint256 price = SecurityModule.getOraclePriceWithStalenessCheck(
             priceFeed,
-            MAX_ORACLE_STALENESS
+            maxOracleStaleness
         );
 
         // Convert to 18 decimals
@@ -692,10 +742,10 @@ contract HedgeManager is
     }
 
     /// @notice Check if oracle price is stale
-    /// @return isStale True if price is older than MAX_ORACLE_STALENESS
+    /// @return isStale True if price is older than maxOracleStaleness
     function isOracleStale() external view returns (bool isStale) {
         (, , , uint256 updatedAt, ) = priceFeed.latestRoundData();
-        return block.timestamp - updatedAt > MAX_ORACLE_STALENESS;
+        return block.timestamp - updatedAt > maxOracleStaleness;
     }
 
     /// @notice Get oracle last update timestamp
@@ -708,7 +758,7 @@ contract HedgeManager is
     /// @return isApproaching True if leverage is above emergency threshold
     function isLeverageApproachingLiquidation() external view returns (bool isApproaching) {
         uint256 currentLeverage = getCurrentLeverage();
-        return currentLeverage > EMERGENCY_LEVERAGE_THRESHOLD;
+        return currentLeverage > emergencyLeverageThreshold;
     }
 
     /// @notice Get the distance to liquidation as a percentage
@@ -719,9 +769,9 @@ contract HedgeManager is
 
         // Liquidation happens around 100x leverage for GMX
         // Return how far we are from max leverage as a percentage
-        if (currentLeverage >= MAX_LEVERAGE) return 0;
+        if (currentLeverage >= maxLeverage) return 0;
 
-        margin = ((MAX_LEVERAGE - currentLeverage) * PRECISION) / MAX_LEVERAGE;
+        margin = ((maxLeverage - currentLeverage) * PRECISION) / maxLeverage;
     }
 
     /// @notice Validate position health before operations
@@ -730,7 +780,7 @@ contract HedgeManager is
         if (!hasPosition()) return;
 
         uint256 currentLeverage = getCurrentLeverage();
-        if (currentLeverage > EMERGENCY_LEVERAGE_THRESHOLD) {
+        if (currentLeverage > emergencyLeverageThreshold) {
             revert LeverageApproachingLiquidation(currentLeverage);
         }
     }
