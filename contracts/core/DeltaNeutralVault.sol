@@ -34,28 +34,22 @@ contract DeltaNeutralVault is
     /// @notice Precision for percentage calculations (1e18 = 100%)
     uint256 public constant PRECISION = 1e18;
 
-    /// @notice Maximum leverage on perpetual position (3x)
-    uint256 public constant MAX_LEVERAGE = 3e18;
-
-    /// @notice Minimum hedge ratio required (80%)
-    uint256 public constant MIN_HEDGE_RATIO = 80e16;
-
-    /// @notice Emergency threshold for circuit breaker (20%)
-    uint256 public constant EMERGENCY_THRESHOLD = 20e16;
-
-    /// @notice Maximum single withdrawal percentage (25%)
-    uint256 public constant MAX_SINGLE_WITHDRAWAL = 25e16;
-
-    /// @notice Minimum interval between large withdrawals (1 hour)
-    uint256 public constant LARGE_WITHDRAWAL_COOLDOWN = 1 hours;
-
-    /// @notice Large withdrawal threshold (10% of total assets)
-    uint256 public constant LARGE_WITHDRAWAL_THRESHOLD = 10e16;
-
     /// @notice Maximum protocol fee in basis points (50%)
     uint256 public constant MAX_PROTOCOL_FEE_BPS = 5000;
 
     // ============ State Variables ============
+
+    /// @notice Emergency threshold for circuit breaker (default 20%)
+    uint256 public emergencyThreshold;
+
+    /// @notice Maximum single withdrawal percentage (default 25%)
+    uint256 public maxSingleWithdrawal;
+
+    /// @notice Minimum interval between large withdrawals (default 1 hour)
+    uint256 public largeWithdrawalCooldown;
+
+    /// @notice Large withdrawal threshold (default 10% of total assets)
+    uint256 public largeWithdrawalThreshold;
 
     /// @notice Delta threshold for triggering rebalance (default 5%)
     uint256 public deltaThreshold;
@@ -156,6 +150,16 @@ contract DeltaNeutralVault is
     /// @notice Emitted when delta threshold is updated
     event DeltaThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
 
+    /// @notice Emitted when emergency threshold is updated
+    event EmergencyThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
+
+    /// @notice Emitted when withdrawal limits are updated
+    event WithdrawalLimitsUpdated(
+        uint256 maxSingleWithdrawal,
+        uint256 largeWithdrawalThreshold,
+        uint256 largeWithdrawalCooldown
+    );
+
     /// @notice Emitted when protocol fee is updated
     event ProtocolFeeUpdated(uint256 oldFee, uint256 newFee);
 
@@ -219,6 +223,12 @@ contract DeltaNeutralVault is
         circuitBreakerEnabled = true;
         rangeWidthMultiplier = 20;
         deltaThreshold = 5e16;
+        
+        // Initialize configurable parameters with original constant values
+        emergencyThreshold = 20e16; // 20%
+        maxSingleWithdrawal = 25e16; // 25%
+        largeWithdrawalThreshold = 10e16; // 10%
+        largeWithdrawalCooldown = 1 hours;
     }
 
     /// @dev Authorize upgrade - only owner can upgrade
@@ -455,7 +465,7 @@ contract DeltaNeutralVault is
     function isEmergency() external view returns (bool emergency) {
         int256 deltaRatio = this.getDeltaRatio();
         int256 absRatio = deltaRatio >= 0 ? deltaRatio : -deltaRatio;
-        return uint256(absRatio) > EMERGENCY_THRESHOLD;
+        return uint256(absRatio) > emergencyThreshold;
     }
 
     // ============ Admin Functions ============
@@ -517,6 +527,33 @@ contract DeltaNeutralVault is
         uint256 old = deltaThreshold;
         deltaThreshold = _deltaThreshold;
         emit DeltaThresholdUpdated(old, _deltaThreshold);
+    }
+
+    /// @notice Set the emergency threshold
+    /// @param _emergencyThreshold New threshold (scaled by 1e18, e.g. 20e16 = 20%)
+    function setEmergencyThreshold(uint256 _emergencyThreshold) external onlyOwner {
+        uint256 old = emergencyThreshold;
+        emergencyThreshold = _emergencyThreshold;
+        emit EmergencyThresholdUpdated(old, _emergencyThreshold);
+    }
+
+    /// @notice Set withdrawal limits
+    /// @param _maxSingleWithdrawal Maximum percentage for single withdrawal
+    /// @param _largeWithdrawalThreshold Threshold for large withdrawal cooldown
+    /// @param _largeWithdrawalCooldown Cooldown period in seconds
+    function setWithdrawalLimits(
+        uint256 _maxSingleWithdrawal,
+        uint256 _largeWithdrawalThreshold,
+        uint256 _largeWithdrawalCooldown
+    ) external onlyOwner {
+        maxSingleWithdrawal = _maxSingleWithdrawal;
+        largeWithdrawalThreshold = _largeWithdrawalThreshold;
+        largeWithdrawalCooldown = _largeWithdrawalCooldown;
+        emit WithdrawalLimitsUpdated(
+            _maxSingleWithdrawal,
+            _largeWithdrawalThreshold,
+            _largeWithdrawalCooldown
+        );
     }
 
     /// @notice Set the protocol fee
@@ -1056,7 +1093,7 @@ contract DeltaNeutralVault is
 
         int256 deltaRatio = this.getDeltaRatio();
 
-        if (SecurityModule.checkEmergencyDelta(deltaRatio, EMERGENCY_THRESHOLD)) {
+        if (SecurityModule.checkEmergencyDelta(deltaRatio, emergencyThreshold)) {
             circuitBreakerTriggered = true;
             _pause();
             emit CircuitBreakerTriggered(deltaRatio, block.timestamp);
@@ -1072,17 +1109,17 @@ contract DeltaNeutralVault is
         uint256 withdrawPercent = (assets * PRECISION) / total;
 
         // Check maximum single withdrawal
-        if (withdrawPercent > MAX_SINGLE_WITHDRAWAL) {
-            uint256 maxAllowed = (total * MAX_SINGLE_WITHDRAWAL) / PRECISION;
+        if (withdrawPercent > maxSingleWithdrawal) {
+            uint256 maxAllowed = (total * maxSingleWithdrawal) / PRECISION;
             revert WithdrawalTooLarge(assets, maxAllowed);
         }
 
         // Check large withdrawal cooldown
-        if (withdrawPercent > LARGE_WITHDRAWAL_THRESHOLD) {
+        if (withdrawPercent > largeWithdrawalThreshold) {
             if (
-                !SecurityModule.checkRateLimit(lastLargeWithdrawalTime, LARGE_WITHDRAWAL_COOLDOWN)
+                !SecurityModule.checkRateLimit(lastLargeWithdrawalTime, largeWithdrawalCooldown)
             ) {
-                uint256 cooldownEnd = lastLargeWithdrawalTime + LARGE_WITHDRAWAL_COOLDOWN;
+                uint256 cooldownEnd = lastLargeWithdrawalTime + largeWithdrawalCooldown;
                 emit LargeWithdrawalCooldownEnforced(assets, cooldownEnd);
                 revert WithdrawalCooldownActive(cooldownEnd);
             }

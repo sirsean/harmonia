@@ -42,19 +42,19 @@ contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeabl
     /// @notice Precision for percentage calculations (1e18 = 100%)
     uint256 public constant PRECISION = 1e18;
 
-    /// @notice Minimum interval between rebalances under normal conditions
-    uint256 public constant MIN_REBALANCE_INTERVAL = 1 hours;
+    // ============ State Variables ============
 
-    /// @notice Maximum interval between rebalances (safety backstop)
-    uint256 public constant MAX_REBALANCE_INTERVAL = 24 hours;
+    /// @notice Minimum interval between rebalances under normal conditions (default 1 hour)
+    uint256 public minRebalanceInterval;
 
-    /// @notice Minimum interval between compound operations
-    uint256 public constant MIN_COMPOUND_INTERVAL = 1 days;
+    /// @notice Maximum interval between rebalances (safety backstop) (default 24 hours)
+    uint256 public maxRebalanceInterval;
 
-    /// @notice Minimum interval between yield snapshots
-    uint256 public constant MIN_SNAPSHOT_INTERVAL = 6 hours;
+    /// @notice Minimum interval between compound operations (default 1 day)
+    uint256 public minCompoundInterval;
 
-    // ============ State ============
+    /// @notice Minimum interval between yield snapshots (default 6 hours)
+    uint256 public minSnapshotInterval;
 
     /// @notice Delta-neutral vault controlled by this keeper
     IDeltaNeutralVaultMinimal public vault;
@@ -88,6 +88,18 @@ contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeabl
         uint256 timestamp
     );
 
+    /// @notice Emitted when vault address is updated
+    event VaultUpdated(address indexed oldVault, address indexed newVault);
+
+    /// @notice Emitted when rebalance intervals are updated
+    event RebalanceIntervalsUpdated(uint256 minInterval, uint256 maxInterval);
+
+    /// @notice Emitted when compound interval is updated
+    event CompoundIntervalUpdated(uint256 oldInterval, uint256 newInterval);
+
+    /// @notice Emitted when snapshot interval is updated
+    event SnapshotIntervalUpdated(uint256 oldInterval, uint256 newInterval);
+
     /// @notice Thrown when a zero address is provided where not allowed
     error ZeroAddress();
 
@@ -102,10 +114,53 @@ contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeabl
         __UUPSUpgradeable_init();
 
         vault = IDeltaNeutralVaultMinimal(_vault);
+
+        // Initialize configurable parameters
+        minRebalanceInterval = 1 hours;
+        maxRebalanceInterval = 24 hours;
+        minCompoundInterval = 1 days;
+        minSnapshotInterval = 6 hours;
     }
 
     /// @dev Authorize upgrade - only owner can upgrade
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    // ============ External Functions ============
+
+    /// @notice Set the vault address
+    /// @param _vault New vault address
+    function setVault(address _vault) external onlyOwner {
+        if (_vault == address(0)) revert ZeroAddress();
+        address oldVault = address(vault);
+        vault = IDeltaNeutralVaultMinimal(_vault);
+        emit VaultUpdated(oldVault, _vault);
+    }
+
+    /// @notice Set rebalance intervals
+    /// @param _minInterval Minimum interval between rebalances
+    /// @param _maxInterval Maximum interval between rebalances
+    function setRebalanceIntervals(uint256 _minInterval, uint256 _maxInterval) external onlyOwner {
+        require(_minInterval <= _maxInterval, "Invalid intervals");
+        minRebalanceInterval = _minInterval;
+        maxRebalanceInterval = _maxInterval;
+        emit RebalanceIntervalsUpdated(_minInterval, _maxInterval);
+    }
+
+    /// @notice Set compound interval
+    /// @param _interval New compound interval
+    function setCompoundInterval(uint256 _interval) external onlyOwner {
+        uint256 oldInterval = minCompoundInterval;
+        minCompoundInterval = _interval;
+        emit CompoundIntervalUpdated(oldInterval, _interval);
+    }
+
+    /// @notice Set snapshot interval
+    /// @param _interval New snapshot interval
+    function setSnapshotInterval(uint256 _interval) external onlyOwner {
+        uint256 oldInterval = minSnapshotInterval;
+        minSnapshotInterval = _interval;
+        emit SnapshotIntervalUpdated(oldInterval, _interval);
+    }
 
     // ============ Chainlink Automation Interface ============
 
@@ -170,8 +225,8 @@ contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeabl
         bool hasRebalanced = lastRebalance != 0;
         uint256 timeSinceRebalance = hasRebalanced ? block.timestamp - lastRebalance : 0;
         bool deltaExceeded = absRatio > threshold;
-        bool minIntervalPassed = !hasRebalanced || timeSinceRebalance >= MIN_REBALANCE_INTERVAL;
-        bool maxIntervalExceeded = hasRebalanced && timeSinceRebalance >= MAX_REBALANCE_INTERVAL;
+        bool minIntervalPassed = !hasRebalanced || timeSinceRebalance >= minRebalanceInterval;
+        bool maxIntervalExceeded = hasRebalanced && timeSinceRebalance >= maxRebalanceInterval;
 
         // Priority 1: Rebalance when delta drift or max interval reached
         if ((deltaExceeded && minIntervalPassed) || maxIntervalExceeded) {
@@ -182,7 +237,7 @@ contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeabl
         uint256 timeSinceCompound = lastCompoundTime == 0
             ? type(uint256).max
             : block.timestamp - lastCompoundTime;
-        if (timeSinceCompound >= MIN_COMPOUND_INTERVAL) {
+        if (timeSinceCompound >= minCompoundInterval) {
             return (true, UpkeepType.Compound, deltaRatio);
         }
 
@@ -190,7 +245,7 @@ contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeabl
         uint256 timeSinceSnapshot = lastSnapshotTime == 0
             ? type(uint256).max
             : block.timestamp - lastSnapshotTime;
-        if (timeSinceSnapshot >= MIN_SNAPSHOT_INTERVAL) {
+        if (timeSinceSnapshot >= minSnapshotInterval) {
             return (true, UpkeepType.Snapshot, deltaRatio);
         }
 

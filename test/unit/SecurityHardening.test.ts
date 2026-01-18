@@ -321,10 +321,10 @@ describe("Security Hardening - Phase 7", function () {
       const { vault } = await loadFixture(deployVaultFixture);
 
       expect(await vault.deltaThreshold()).to.equal(DELTA_THRESHOLD);
-      expect(await vault.EMERGENCY_THRESHOLD()).to.equal(EMERGENCY_THRESHOLD);
-      expect(await vault.MAX_SINGLE_WITHDRAWAL()).to.equal(MAX_SINGLE_WITHDRAWAL);
-      expect(await vault.LARGE_WITHDRAWAL_THRESHOLD()).to.equal(LARGE_WITHDRAWAL_THRESHOLD);
-      expect(await vault.LARGE_WITHDRAWAL_COOLDOWN()).to.equal(BigInt(LARGE_WITHDRAWAL_COOLDOWN));
+      expect(await vault.emergencyThreshold()).to.equal(EMERGENCY_THRESHOLD);
+      expect(await vault.maxSingleWithdrawal()).to.equal(MAX_SINGLE_WITHDRAWAL);
+      expect(await vault.largeWithdrawalThreshold()).to.equal(LARGE_WITHDRAWAL_THRESHOLD);
+      expect(await vault.largeWithdrawalCooldown()).to.equal(BigInt(LARGE_WITHDRAWAL_COOLDOWN));
     });
   });
 });

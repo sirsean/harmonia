@@ -40,12 +40,6 @@ contract LiquidityManager is
     /// @notice Default slippage tolerance (0.5% = 5e15)
     uint256 public constant DEFAULT_SLIPPAGE = 5e15;
 
-    /// @notice TWAP observation period for price validation (30 minutes)
-    uint32 public constant TWAP_PERIOD = 30 minutes;
-
-    /// @notice Maximum acceptable TWAP deviation from spot (3%)
-    uint256 public constant MAX_TWAP_DEVIATION = 3e16;
-
     // ============ Storage Variables (Converted from Immutables) ============
 
     /// @notice Uniswap V3 NonfungiblePositionManager
@@ -67,6 +61,12 @@ contract LiquidityManager is
     uint24 public poolFee;
 
     // ============ State Variables ============
+
+    /// @notice TWAP observation period for price validation (default 30 minutes)
+    uint32 public twapPeriod;
+
+    /// @notice Maximum acceptable TWAP deviation from spot (default 3%)
+    uint256 public maxTwapDeviation;
 
     /// @notice Address of the vault that owns this manager
     address public vault;
@@ -154,8 +154,14 @@ contract LiquidityManager is
     /// @notice Emitted when TWAP validation status changes
     event TWAPValidationUpdated(bool enabled);
 
-    /// @notice Emitted when price feed is set
+    /// @notice Emitted when PriceFeedUpdated is emitted
     event PriceFeedUpdated(address indexed oldFeed, address indexed newFeed);
+
+    /// @notice Emitted when TWAP period is updated
+    event TWAPPeriodUpdated(uint32 oldPeriod, uint32 newPeriod);
+
+    /// @notice Emitted when max TWAP deviation is updated
+    event MaxTWAPDeviationUpdated(uint256 oldDeviation, uint256 newDeviation);
 
     // ============ Errors ============
 
@@ -238,6 +244,10 @@ contract LiquidityManager is
         quoteToken = _quoteToken;
         poolFee = _poolFee;
         slippageTolerance = DEFAULT_SLIPPAGE;
+
+        // Initialize configurable parameters
+        twapPeriod = 30 minutes;
+        maxTwapDeviation = 3e16; // 3%
     }
 
     /// @dev Authorize upgrade - only owner can upgrade
@@ -276,6 +286,22 @@ contract LiquidityManager is
     function setTWAPValidation(bool _enabled) external onlyOwner {
         twapValidationEnabled = _enabled;
         emit TWAPValidationUpdated(_enabled);
+    }
+
+    /// @notice Set TWAP period
+    /// @param _twapPeriod New TWAP period in seconds
+    function setTWAPPeriod(uint32 _twapPeriod) external onlyOwner {
+        uint32 oldPeriod = twapPeriod;
+        twapPeriod = _twapPeriod;
+        emit TWAPPeriodUpdated(oldPeriod, _twapPeriod);
+    }
+
+    /// @notice Set max TWAP deviation
+    /// @param _maxTwapDeviation New max deviation (scaled by 1e18)
+    function setMaxTwapDeviation(uint256 _maxTwapDeviation) external onlyOwner {
+        uint256 oldDeviation = maxTwapDeviation;
+        maxTwapDeviation = _maxTwapDeviation;
+        emit MaxTWAPDeviationUpdated(oldDeviation, _maxTwapDeviation);
     }
 
     /// @notice Mint a new LP position
@@ -822,7 +848,7 @@ contract LiquidityManager is
         if (pool == address(0)) revert TWAPNotAvailable();
 
         uint32[] memory secondsAgos = new uint32[](2);
-        secondsAgos[0] = TWAP_PERIOD;
+        secondsAgos[0] = twapPeriod;
         secondsAgos[1] = 0;
 
         try IUniswapV3Pool(pool).observe(secondsAgos) returns (
@@ -831,11 +857,11 @@ contract LiquidityManager is
         ) {
             // Calculate time-weighted average tick
             int56 tickCumulativesDelta = tickCumulatives[1] - tickCumulatives[0];
-            int24 arithmeticMeanTick = int24(tickCumulativesDelta / int56(int32(TWAP_PERIOD)));
+            int24 arithmeticMeanTick = int24(tickCumulativesDelta / int56(int32(twapPeriod)));
 
             // Round to negative infinity
             if (
-                tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(TWAP_PERIOD)) != 0)
+                tickCumulativesDelta < 0 && (tickCumulativesDelta % int56(int32(twapPeriod)) != 0)
             ) {
                 arithmeticMeanTick--;
             }
@@ -866,7 +892,7 @@ contract LiquidityManager is
             deviation = ((twapPrice - spotPrice) * PRECISION) / twapPrice;
         }
 
-        if (deviation > MAX_TWAP_DEVIATION) {
+        if (deviation > maxTwapDeviation) {
             revert TWAPDeviationTooHigh(spotPrice, twapPrice, deviation);
         }
     }
@@ -933,7 +959,7 @@ contract LiquidityManager is
             deviation = ((poolPrice8Decimals - oraclePrice) * PRECISION) / poolPrice8Decimals;
         }
 
-        return deviation <= MAX_TWAP_DEVIATION;
+        return deviation <= maxTwapDeviation;
     }
 
     /// @inheritdoc ILiquidityManager
