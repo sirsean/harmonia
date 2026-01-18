@@ -315,9 +315,7 @@ describe("Deployment", function () {
       expect(await vault.emergencyThreshold()).to.equal(CONSTANTS.EMERGENCY_THRESHOLD);
       expect(await vault.maxSingleWithdrawal()).to.equal(CONSTANTS.MAX_SINGLE_WITHDRAWAL);
       expect(await vault.largeWithdrawalCooldown()).to.equal(CONSTANTS.LARGE_WITHDRAWAL_COOLDOWN);
-      expect(await vault.largeWithdrawalThreshold()).to.equal(
-        CONSTANTS.LARGE_WITHDRAWAL_THRESHOLD
-      );
+      expect(await vault.largeWithdrawalThreshold()).to.equal(CONSTANTS.LARGE_WITHDRAWAL_THRESHOLD);
     });
 
     it("should have correct hedge manager constants", async function () {
