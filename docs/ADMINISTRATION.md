@@ -722,7 +722,8 @@ These values are immutable and cannot be changed:
 | Constant                   | Value  | Description             |
 | -------------------------- | ------ | ----------------------- |
 | EMERGENCY_THRESHOLD        | 20%    | Circuit breaker trigger |
-| MAX_LEVERAGE               | 3x     | Maximum GMX leverage    || MIN_HEDGE_RATIO            | 80%    | Minimum hedge coverage  |
+| MAX_LEVERAGE               | 3x     | Maximum GMX leverage    |
+| MIN_HEDGE_RATIO            | 80%    | Minimum hedge coverage  |
 | MAX_SINGLE_WITHDRAWAL      | 25%    | Per-withdrawal limit    |
 | LARGE_WITHDRAWAL_COOLDOWN  | 1 hour | Cooldown period         |
 | LARGE_WITHDRAWAL_THRESHOLD | 10%    | Cooldown trigger        |
@@ -739,7 +740,8 @@ These values are immutable and cannot be changed:
 | `setDepositCap()`            | Set TVL limit               |
 | `setDeltaThreshold()`        | Set rebalance threshold     |
 | `setCircuitBreakerEnabled()` | Toggle circuit breaker      |
-| `setGuardian()`              | Assign guardian role        || `pause()`               | Halt deposits               |
+| `setGuardian()`              | Assign guardian role        |
+| `pause()`               | Halt deposits               |
 | `unpause()`             | Resume deposits             |
 | `resetCircuitBreaker()` | Reset after emergency       |
 | `transferOwnership()`   | Transfer owner role         |
