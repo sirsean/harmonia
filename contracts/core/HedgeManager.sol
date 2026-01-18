@@ -787,5 +787,4 @@ contract HedgeManager is
 
     /// @notice Receive ETH for execution fee refunds
     receive() external payable {}
-
 }

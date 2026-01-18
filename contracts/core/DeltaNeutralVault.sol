@@ -223,7 +223,7 @@ contract DeltaNeutralVault is
         circuitBreakerEnabled = true;
         rangeWidthMultiplier = 20;
         deltaThreshold = 5e16;
-        
+
         // Initialize configurable parameters with original constant values
         emergencyThreshold = 20e16; // 20%
         maxSingleWithdrawal = 25e16; // 25%
@@ -1116,9 +1116,7 @@ contract DeltaNeutralVault is
 
         // Check large withdrawal cooldown
         if (withdrawPercent > largeWithdrawalThreshold) {
-            if (
-                !SecurityModule.checkRateLimit(lastLargeWithdrawalTime, largeWithdrawalCooldown)
-            ) {
+            if (!SecurityModule.checkRateLimit(lastLargeWithdrawalTime, largeWithdrawalCooldown)) {
                 uint256 cooldownEnd = lastLargeWithdrawalTime + largeWithdrawalCooldown;
                 emit LargeWithdrawalCooldownEnforced(assets, cooldownEnd);
                 revert WithdrawalCooldownActive(cooldownEnd);
