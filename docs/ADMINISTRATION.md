@@ -123,8 +123,33 @@ await vault.setDepositCap(0);
 
 ---
 
-### setCircuitBreakerEnabled
+### setDeltaThreshold
 
+Sets the delta drift threshold for triggering rebalances.
+
+```solidity
+function setDeltaThreshold(uint256 _deltaThreshold) external onlyOwner
+```
+
+**Usage:**
+
+```javascript
+// Set 5% threshold (5e16)
+await vault.setDeltaThreshold(ethers.parseUnits("5", 16));
+```
+
+**When to Use:**
+
+- Optimize rebalance frequency
+- Adjust sensitivity to market volatility
+
+**Constraints:**
+
+- Default: 5% (5e16)
+
+---
+
+### setCircuitBreakerEnabled
 Enables or disables the circuit breaker enforcement mechanism.
 
 ```solidity
@@ -696,7 +721,6 @@ These values are immutable and cannot be changed:
 
 | Constant                   | Value  | Description             |
 | -------------------------- | ------ | ----------------------- |
-| DELTA_THRESHOLD            | 5%     | Rebalance trigger       |
 | EMERGENCY_THRESHOLD        | 20%    | Circuit breaker trigger |
 | MAX_LEVERAGE               | 3x     | Maximum GMX leverage    |
 | MIN_HEDGE_RATIO            | 80%    | Minimum hedge coverage  |
@@ -714,6 +738,7 @@ These values are immutable and cannot be changed:
 | ---------------------------- | --------------------------- |
 | `setManagers()`              | Configure manager contracts |
 | `setDepositCap()`            | Set TVL limit               |
+| `setDeltaThreshold()`        | Set rebalance threshold     |
 | `setCircuitBreakerEnabled()` | Toggle circuit breaker      |
 | `setGuardian()`              | Assign guardian role        |
 | `pause()`               | Halt deposits               |

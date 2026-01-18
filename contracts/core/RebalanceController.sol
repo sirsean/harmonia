@@ -9,7 +9,7 @@ import {AutomationCompatibleInterface} from "../interfaces/IChainlink.sol";
 interface IDeltaNeutralVaultMinimal {
     function getDeltaRatio() external view returns (int256);
 
-    function DELTA_THRESHOLD() external view returns (uint256);
+    function deltaThreshold() external view returns (uint256);
 
     function lastRebalanceTime() external view returns (uint256);
 
@@ -164,7 +164,7 @@ contract RebalanceController is AutomationCompatibleInterface, OwnableUpgradeabl
         int256 absRatioSigned = deltaRatio >= 0 ? deltaRatio : -deltaRatio;
         uint256 absRatio = uint256(absRatioSigned);
 
-        uint256 threshold = vault.DELTA_THRESHOLD();
+        uint256 threshold = vault.deltaThreshold();
         uint256 lastRebalance = vault.lastRebalanceTime();
 
         bool hasRebalanced = lastRebalance != 0;

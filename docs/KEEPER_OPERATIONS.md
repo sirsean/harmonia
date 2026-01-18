@@ -267,7 +267,7 @@ async function checkKeeperHealth(provider, controllerAddress, upkeepId) {
     [
       "function getDeltaRatio() view returns (int256)",
       "function lastRebalanceTime() view returns (uint256)",
-      "function DELTA_THRESHOLD() view returns (uint256)",
+      "function deltaThreshold() view returns (uint256)",
     ],
     provider
   );
@@ -275,7 +275,7 @@ async function checkKeeperHealth(provider, controllerAddress, upkeepId) {
   const [upkeepNeeded, performData] = await controller.checkUpkeep("0x");
   const deltaRatio = await vault.getDeltaRatio();
   const lastRebalance = await vault.lastRebalanceTime();
-  const threshold = await vault.DELTA_THRESHOLD();
+  const threshold = await vault.deltaThreshold();
 
   console.log("=== Keeper Health Check ===");
   console.log("Upkeep Needed:", upkeepNeeded);
