@@ -110,8 +110,8 @@ describe("HedgeManager", function () {
 
       expect(await hedgeManager.PRECISION()).to.equal(PRECISION);
       expect(await hedgeManager.GMX_USD_PRECISION()).to.equal(GMX_USD_PRECISION);
-      expect(await hedgeManager.MAX_LEVERAGE()).to.equal(3n * PRECISION); // 3x
-      expect(await hedgeManager.MIN_POSITION_SIZE()).to.equal(100n * GMX_USD_PRECISION); // $100
+      expect(await hedgeManager.maxLeverage()).to.equal(3n * PRECISION); // 3x
+      expect(await hedgeManager.minPositionSize()).to.equal(100n * GMX_USD_PRECISION); // $100
       expect(await hedgeManager.DEFAULT_SLIPPAGE()).to.equal(BigInt(1e16)); // 1%
     });
 

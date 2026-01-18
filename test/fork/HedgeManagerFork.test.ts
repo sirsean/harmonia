@@ -319,7 +319,7 @@ describeFork("HedgeManager Fork Tests", function () {
 
   describe("Leverage Validation", function () {
     it("should correctly validate leverage limits", async function () {
-      const maxLeverage = await hedgeManager.MAX_LEVERAGE();
+      const maxLeverage = await hedgeManager.maxLeverage();
       expect(maxLeverage).to.equal(3n * BigInt(1e18)); // 3x
 
       // Test that 2x leverage is well within limits
@@ -347,7 +347,7 @@ describeFork("HedgeManager Fork Tests", function () {
     });
 
     it("should have reasonable minimum position size", async function () {
-      const minSize = await hedgeManager.MIN_POSITION_SIZE();
+      const minSize = await hedgeManager.minPositionSize();
       // $100 minimum (in 30 decimals)
       const expected = BigInt(100) * BigInt(10) ** BigInt(30);
       // Allow some precision tolerance

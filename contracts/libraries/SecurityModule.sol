@@ -9,12 +9,6 @@ import {IChainlinkPriceFeed} from "../interfaces/IChainlink.sol";
 library SecurityModule {
     // ============ Constants ============
 
-    /// @notice Maximum acceptable oracle staleness (1 hour)
-    uint256 public constant MAX_ORACLE_STALENESS = 1 hours;
-
-    /// @notice Maximum oracle price deviation from TWAP (5%)
-    uint256 public constant MAX_ORACLE_DEVIATION = 5e16;
-
     /// @notice Precision for percentage calculations (1e18 = 100%)
     uint256 public constant PRECISION = 1e18;
 
@@ -45,16 +39,18 @@ library SecurityModule {
 
     /// @notice Validate Chainlink oracle price data
     /// @param priceFeed The Chainlink price feed to validate
+    /// @param maxStaleness Maximum acceptable staleness in seconds
     /// @return price The validated price (8 decimals for most feeds)
     function validateOraclePrice(
-        IChainlinkPriceFeed priceFeed
+        IChainlinkPriceFeed priceFeed,
+        uint256 maxStaleness
     ) internal view returns (uint256 price) {
         (uint80 roundId, int256 answer, , uint256 updatedAt, uint80 answeredInRound) = priceFeed
             .latestRoundData();
 
         // Check for stale price
-        if (block.timestamp - updatedAt > MAX_ORACLE_STALENESS) {
-            revert OracleStale(updatedAt, MAX_ORACLE_STALENESS);
+        if (block.timestamp - updatedAt > maxStaleness) {
+            revert OracleStale(updatedAt, maxStaleness);
         }
 
         // Check for invalid price
@@ -78,10 +74,12 @@ library SecurityModule {
     /// @notice Validate oracle price against a reference (TWAP)
     /// @param oraclePrice Current oracle price
     /// @param referencePrice Reference price (e.g., TWAP)
+    /// @param maxDeviation Maximum acceptable deviation (scaled by 1e18)
     /// @return isValid True if price deviation is acceptable
     function validatePriceDeviation(
         uint256 oraclePrice,
-        uint256 referencePrice
+        uint256 referencePrice,
+        uint256 maxDeviation
     ) internal pure returns (bool isValid) {
         if (referencePrice == 0) return false;
 
@@ -92,7 +90,7 @@ library SecurityModule {
             deviation = ((referencePrice - oraclePrice) * PRECISION) / referencePrice;
         }
 
-        if (deviation > MAX_ORACLE_DEVIATION) {
+        if (deviation > maxDeviation) {
             revert OraclePriceDeviation(oraclePrice, referencePrice, deviation);
         }
 
