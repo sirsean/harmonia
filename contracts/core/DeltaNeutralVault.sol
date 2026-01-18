@@ -34,9 +34,6 @@ contract DeltaNeutralVault is
     /// @notice Precision for percentage calculations (1e18 = 100%)
     uint256 public constant PRECISION = 1e18;
 
-    /// @notice Delta threshold for triggering rebalance (5%)
-    uint256 public constant DELTA_THRESHOLD = 5e16;
-
     /// @notice Maximum leverage on perpetual position (3x)
     uint256 public constant MAX_LEVERAGE = 3e18;
 
@@ -59,6 +56,9 @@ contract DeltaNeutralVault is
     uint256 public constant MAX_PROTOCOL_FEE_BPS = 5000;
 
     // ============ State Variables ============
+
+    /// @notice Delta threshold for triggering rebalance (default 5%)
+    uint256 public deltaThreshold;
 
     /// @notice Address of the liquidity manager
     address public liquidityManager;
@@ -153,6 +153,9 @@ contract DeltaNeutralVault is
     /// @notice Emitted when range width multiplier is updated
     event RangeWidthMultiplierUpdated(int24 oldMultiplier, int24 newMultiplier);
 
+    /// @notice Emitted when delta threshold is updated
+    event DeltaThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
+
     /// @notice Emitted when protocol fee is updated
     event ProtocolFeeUpdated(uint256 oldFee, uint256 newFee);
 
@@ -215,6 +218,7 @@ contract DeltaNeutralVault is
 
         circuitBreakerEnabled = true;
         rangeWidthMultiplier = 20;
+        deltaThreshold = 5e16;
     }
 
     /// @dev Authorize upgrade - only owner can upgrade
@@ -443,7 +447,7 @@ contract DeltaNeutralVault is
     function rebalanceNeeded() external view returns (bool needed) {
         int256 deltaRatio = this.getDeltaRatio();
         int256 absRatio = deltaRatio >= 0 ? deltaRatio : -deltaRatio;
-        return uint256(absRatio) > DELTA_THRESHOLD;
+        return uint256(absRatio) > deltaThreshold;
     }
 
     /// @notice Check if position is in emergency state
@@ -505,6 +509,14 @@ contract DeltaNeutralVault is
         int24 old = rangeWidthMultiplier;
         rangeWidthMultiplier = _multiplier;
         emit RangeWidthMultiplierUpdated(old, _multiplier);
+    }
+
+    /// @notice Set the delta threshold for rebalancing
+    /// @param _deltaThreshold New threshold (scaled by 1e18, e.g. 5e16 = 5%)
+    function setDeltaThreshold(uint256 _deltaThreshold) external onlyOwner {
+        uint256 old = deltaThreshold;
+        deltaThreshold = _deltaThreshold;
+        emit DeltaThresholdUpdated(old, _deltaThreshold);
     }
 
     /// @notice Set the protocol fee
@@ -574,7 +586,7 @@ contract DeltaNeutralVault is
         int256 absRatio = deltaRatio >= 0 ? deltaRatio : -deltaRatio;
 
         // Only allow reset if delta is below rebalance threshold
-        require(uint256(absRatio) <= DELTA_THRESHOLD, "Delta still too high");
+        require(uint256(absRatio) <= deltaThreshold, "Delta still too high");
 
         circuitBreakerTriggered = false;
         emit CircuitBreakerReset(block.timestamp);

@@ -320,7 +320,7 @@ describe("Security Hardening - Phase 7", function () {
     it("should have correct security constants", async function () {
       const { vault } = await loadFixture(deployVaultFixture);
 
-      expect(await vault.DELTA_THRESHOLD()).to.equal(DELTA_THRESHOLD);
+      expect(await vault.deltaThreshold()).to.equal(DELTA_THRESHOLD);
       expect(await vault.EMERGENCY_THRESHOLD()).to.equal(EMERGENCY_THRESHOLD);
       expect(await vault.MAX_SINGLE_WITHDRAWAL()).to.equal(MAX_SINGLE_WITHDRAWAL);
       expect(await vault.LARGE_WITHDRAWAL_THRESHOLD()).to.equal(LARGE_WITHDRAWAL_THRESHOLD);
