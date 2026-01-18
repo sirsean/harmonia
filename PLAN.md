@@ -253,7 +253,7 @@ The RebalanceController implements Chainlink Automation for autonomous delta reb
 
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
-| `DELTA_THRESHOLD` | 5% (5e16) | Trigger rebalance when exceeded |
+| `deltaThreshold` | 5% (5e16) | Default rebalance trigger (configurable) |
 | `MIN_REBALANCE_INTERVAL` | 1 hour | Prevent excessive rebalancing |
 | `MAX_REBALANCE_INTERVAL` | 24 hours | Force periodic check |
 

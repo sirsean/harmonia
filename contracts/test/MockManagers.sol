@@ -28,6 +28,9 @@ contract MockLiquidityManager is ILiquidityManager {
     address public vault;
     SimpleMockSwapRouter public router;
 
+    int256 public mockDelta;
+    uint256 public mockValue;
+
     constructor(address _baseToken, address _quoteToken) {
         baseToken = _baseToken;
         quoteToken = _quoteToken;
@@ -37,6 +40,14 @@ contract MockLiquidityManager is ILiquidityManager {
 
     function setVault(address _vault) external {
         vault = _vault;
+    }
+
+    function setMockDelta(int256 _delta) external {
+        mockDelta = _delta;
+    }
+
+    function setMockValue(uint256 _value) external {
+        mockValue = _value;
     }
 
     // Dummy implementations
@@ -77,11 +88,11 @@ contract MockLiquidityManager is ILiquidityManager {
     function closePosition() external pure returns (uint256, uint256) {
         return (0, 0);
     }
-    function getPositionValue() external pure returns (uint256) {
-        return 0;
+    function getPositionValue() external view returns (uint256) {
+        return mockValue;
     }
-    function getPositionDelta() external pure returns (int256) {
-        return 0;
+    function getPositionDelta() external view returns (int256) {
+        return mockDelta;
     }
     function getPositionDeltaRatio() external pure returns (uint256) {
         return 0;

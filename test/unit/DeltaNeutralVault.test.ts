@@ -56,7 +56,7 @@ describe("DeltaNeutralVault", function () {
       const { vault } = await loadFixture(deployVaultFixture);
 
       expect(await vault.PRECISION()).to.equal(PRECISION);
-      expect(await vault.DELTA_THRESHOLD()).to.equal((5n * PRECISION) / 100n); // 5%
+      expect(await vault.deltaThreshold()).to.equal((5n * PRECISION) / 100n); // 5%
       expect(await vault.MAX_LEVERAGE()).to.equal(3n * PRECISION); // 3x
       expect(await vault.MIN_HEDGE_RATIO()).to.equal((80n * PRECISION) / 100n); // 80%
       expect(await vault.EMERGENCY_THRESHOLD()).to.equal((20n * PRECISION) / 100n); // 20%
