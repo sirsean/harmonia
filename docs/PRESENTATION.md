@@ -123,17 +123,32 @@ Markets are dynamic. As prices shift, the Uniswap position's delta changes (due 
     }
 
     function _executeRebalance(uint256 targetHedgeSize) internal {
-        // 1. Check if LP position is in range and adjust if needed
-        if (liquidityManager != address(0)) {
-            bool inRange = ILiquidityManager(liquidityManager).isInRange();
-            if (!inRange) {
-                 // ... close current, mint new range ...
+        // ... range checks ...
+
+        // 2. Adjust hedge to match new LP delta
+        // If targetHedgeSize is 0, we calculate it based on LP delta
+        if (hedgeTarget == 0) {
+            int256 lpDelta = ILiquidityManager(liquidityManager).getPositionDelta();
+
+            // If LP delta is positive (long exposure), we need to short
+            if (lpDelta > 0) {
+                // Complex unit conversion:
+                // GMX uses 30 decimals for USD value
+                // Uniswap/Chainlink price is 18 decimals
+                // Token decimals vary (USDC=6, WETH=18)
+                
+                uint256 price = ILiquidityManager(liquidityManager).getOraclePrice();
+                uint256 deltaAbs = uint256(lpDelta);
+                
+                if (decimals <= 12) {
+                    hedgeTarget = deltaAbs * price * (10 ** (12 - decimals));
+                } else {
+                    hedgeTarget = (deltaAbs * price) / (10 ** (decimals - 12));
+                }
             }
         }
 
-        // 2. Adjust hedge to match new LP delta
-        // ... calculation logic ...
-
+        // Execute the hedge adjustment on GMX
         if (hedgeManager != address(0)) {
             IHedgeManager(hedgeManager).adjustHedge{value: execFee}(hedgeTarget);
         }
