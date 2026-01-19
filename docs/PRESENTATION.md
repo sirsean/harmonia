@@ -169,8 +169,8 @@ xychart-beta
     title "Portfolio Value vs Asset Price"
     x-axis "Time" [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     y-axis "Value" 0 --> 150
-    line [100, 105, 90, 110, 85, 120, 80, 115, 95, 100] "ETH Price (Volatile)"
-    line [100, 101, 102, 103, 104, 105, 106, 107, 108, 109] "Harmonia Vault (Stable Yield)"
+    line "ETH Price (Volatile)" [100, 105, 90, 110, 85, 120, 80, 115, 95, 100]
+    line "Harmonia Vault (Stable Yield)" [100, 101, 102, 103, 104, 105, 106, 107, 108, 109]
 ```
 
 ### Safety First
