@@ -166,9 +166,9 @@ export const BTC_MARKET: MarketConfig = {
   quoteToken: ARBITRUM_TOKENS.USDC,
 
   uniswapPool: {
-    address: "0xac70bD92F89e6739B3a08Db9B6081a923912f73D", // WBTC/USDC 0.3%
-    feeTier: 3000, // 0.3%
-    tickSpacing: 60,
+    address: "0x0E4831319A50228B9e450861297aB92dee15B44F", // WBTC/USDC 0.05%
+    feeTier: 500, // 0.05%
+    tickSpacing: 10,
     token0: ARBITRUM_TOKENS.WBTC, // WBTC < USDC by address
     token1: ARBITRUM_TOKENS.USDC,
   },
