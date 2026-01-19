@@ -83,8 +83,10 @@ A script has been implemented at `scripts/analyze-vault-size.ts` to calculate th
   - **Conclusion:** Uniswap liquidity is the primary constraint. **Max Recommended Size: ~$9.5M**.
 
 - **BTC Market (Arbitrum):**
-  - **Dominance Limit:** Very low (~$26k) due to low liquidity in the target pool (0.3% tier).
-  - **Action:** Investigate switching to 0.05% WBTC/USDC pool or accept higher slippage.
+  - **Pool Update:** Switched to 0.05% WBTC/USDC pool which has significantly deeper liquidity.
+  - **Dominance Limit:** Improved to **~$2.06M** (up from $26k).
+  - **Economic Limit:** ~$6.1M.
+  - **Conclusion:** Uniswap liquidity is the primary constraint. **Max Recommended Size: ~$2.06M**.
 
 ### Usage
 To run the analysis:
