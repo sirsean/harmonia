@@ -170,6 +170,8 @@ xychart-beta
     x-axis "Time" [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     y-axis "Value" 0 --> 150
     line "ETH Price (Volatile)" [100, 105, 90, 110, 85, 120, 80, 115, 95, 100]
+    line "LP Position (Long)" [100, 104, 92, 108, 88, 116, 84, 112, 96, 100]
+    line "Hedge Position (Short)" [100, 96, 108, 92, 112, 84, 116, 88, 104, 100]
     line "Harmonia Vault (Stable Yield)" [100, 101, 102, 103, 104, 105, 106, 107, 108, 109]
 ```
 
