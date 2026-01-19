@@ -220,9 +220,18 @@ async function analyzeVaultSize(marketId: string) {
   }
   
   // Fee vs Funding Logic
+  const MIN_YIELD_APY = 5.0; // We require at least 5% net APY
   const expectedFeeApy = (config.characteristics.expectedFeeApy[0] + config.characteristics.expectedFeeApy[1]) / 2;
   console.log(`  Expected Uniswap Fee APY: ~${expectedFeeApy}%`);
+  console.log(`  Minimum Target Yield:     ${MIN_YIELD_APY}%`);
   
+  // We can tolerate funding cost up to (FeeAPY - MinYield)
+  let maxAcceptableFundingAPY = expectedFeeApy - MIN_YIELD_APY;
+  if (maxAcceptableFundingAPY < 0) {
+      console.log(`  !! Fees (${expectedFeeApy}%) are below target yield (${MIN_YIELD_APY}%). No economic capacity.`);
+      maxAcceptableFundingAPY = 0;
+  }
+
   // Heuristic: $5M imbalance often creates ~10-20% APR funding in major markets.
   // Let's assume $1M imbalance = 2% Funding APR for ETH/BTC (Deep markets).
   // For ARB/LINK (Shallower), $1M imbalance = 5% Funding APR.
@@ -231,13 +240,12 @@ async function analyzeVaultSize(marketId: string) {
   if (config.characteristics.liquidityRating === "medium") fundingSensitivity = 5;
   if (config.characteristics.liquidityRating === "low") fundingSensitivity = 10;
   
-  const maxAcceptableFundingAPY = expectedFeeApy;
   const additionalCapacityUSD = (maxAcceptableFundingAPY / fundingSensitivity) * 1_000_000;
   
   const economicMaxShortOI = (Number(fundingFlipCapacity) / 1e30) + additionalCapacityUSD;
   const economicMaxTVL = economicMaxShortOI / HEDGE_RATIO;
 
-  console.log(`  Max Tolerable Funding Cost: ${maxAcceptableFundingAPY}% APY`);
+  console.log(`  Max Tolerable Funding Cost: ${maxAcceptableFundingAPY.toFixed(2)}% APY`);
   console.log(`  Est. Extra Capacity via Fees: $${additionalCapacityUSD.toLocaleString()} (Sensitivity: ${fundingSensitivity}%/$1M)`);
   
   console.log(`  -> Economic Break-Even TVL: $${economicMaxTVL.toLocaleString()}`);

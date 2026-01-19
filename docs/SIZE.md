@@ -45,17 +45,16 @@ The vault pays or receives funding on its short position.
 *   **Mechanism:** In GMX V2, funding balances Long vs. Short OI.
     *   If `Longs > Shorts`, Shorts receive funding.
     *   If `Shorts > Longs`, Shorts pay funding.
-*   **Trade-off:** We can tolerate paying funding as long as the **Uniswap Fee APR** exceeds the **Funding Cost APR**.
-*   **Break-Even Point:**
-    $$ MaxAcceptableFundingRate = ExpectedUniswapFeeAPR $$
-    We estimate how much additional Short OI would push the funding rate to this break-even point.
+*   **Trade-off:** We can tolerate paying funding as long as the **Net Yield** meets our target.
+*   **Target:** `ExpectedUniswapFeeAPR - FundingCostAPR >= MinYieldAPR (5%)`
+*   **Capacity:** We estimate how much additional Short OI would push the funding rate to the max acceptable level (where `FundingCostAPR = ExpectedFeeAPR - 5%`).
 *   **Sensitivity:** We assume a funding sensitivity (e.g., 2% APY increase per $1M OI imbalance for deep markets) to project this capacity.
 
 ## 3. Calculating the Limits
 
 We can define the **Maximum Effective Vault Size** as the minimum of all constraints:
 
-$$ MaxSize = \min(Limit_{GMX\_Hard}, Limit_{PoolDominance}, Limit_{EconomicBreakEven}) $$
+$$ MaxSize = \min(Limit_{GMX\_Hard}, Limit_{PoolDominance}, Limit_{EconomicTarget}) $$
 
 ### Algorithm
 
@@ -67,9 +66,10 @@ $$ MaxSize = \min(Limit_{GMX\_Hard}, Limit_{PoolDominance}, Limit_{EconomicBreak
     *   `Limit_GMX = AvailableShorts / HedgeRatio`
 3.  **Calculate Uniswap Dominance Cap:**
     *   Convert `Liquidity * 20%` into USD value using standard V3 formulas for the vault's specific range width.
-4.  **Calculate Economic Break-Even:**
+4.  **Calculate Economic Limit (Min 5% Yield):**
     *   `FundingFlipCap = max(0, Longs - Shorts)` (Zero cost capacity).
-    *   `ExtraCapacity = (ExpectedFeeAPR / FundingSensitivity) * $1M` (Capacity with acceptable cost).
+    *   `MaxFundingCost = ExpectedFeeAPR - 5%`.
+    *   `ExtraCapacity = (MaxFundingCost / FundingSensitivity) * $1M`.
     *   `Limit_Economic = (FundingFlipCap + ExtraCapacity) / HedgeRatio`.
 
 ## 4. Findings & Analysis Tool
@@ -78,14 +78,13 @@ A script has been implemented at `scripts/analyze-vault-size.ts` to calculate th
 
 ### Key Findings (Jan 2026):
 - **ETH Market (Arbitrum):**
-  - **Dominance Limit:** The vault is constrained by the Uniswap pool size. The 20% dominance limit is approximately **~$9.5M**.
-  - **Economic Capacity:** The vault can grow to **~$19M** before funding costs outweigh expected Uniswap fees (assuming 12.5% Fee APY).
-  - **Recommendation:** Cap the vault at **$9.5M** to ensure low slippage rebalancing.
+  - **Dominance Limit:** ~$9.5M (20% of Uniswap Pool).
+  - **Economic Limit:** ~$13.8M (Yield remains >5%).
+  - **Conclusion:** Uniswap liquidity is the primary constraint. **Max Recommended Size: ~$9.5M**.
 
 - **BTC Market (Arbitrum):**
-  - **Dominance Limit:** The specific WBTC/USDC pool (0.3%) appears to have low liquidity, resulting in a dominance limit of only **~$26k**.
-  - **Action:** Consider finding a deeper liquidity pool (e.g., 0.05% tier) or accepting higher slippage for BTC.
-  - **Economic Capacity:** ~$8.4M break-even capacity despite paying funding.
+  - **Dominance Limit:** Very low (~$26k) due to low liquidity in the target pool (0.3% tier).
+  - **Action:** Investigate switching to 0.05% WBTC/USDC pool or accept higher slippage.
 
 ### Usage
 To run the analysis:
