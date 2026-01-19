@@ -57,15 +57,79 @@ async function analyzeVaultSize(marketId: string) {
   } else {
     priceBaseToQuote = (1 / rawPrice) * (10 ** (baseDecimals - quoteDecimals));
   }
+  
+  // Calculate accurate Uniswap TVL Capacity for 20% dominance
+  const width = config.strategyParams.defaultRangeWidth || 0.1;
+  const sqrtP = Math.sqrt(priceBaseToQuote);
+  const sqrtPa = Math.sqrt(priceBaseToQuote * (1 - width));
+  const sqrtPb = Math.sqrt(priceBaseToQuote * (1 + width));
+  
+  // Calculate value of 1 unit of Liquidity (L=1) in USD
+  // Note: These formulas assume price is Quote/Base.
+  let valPerLiquidity = 0;
+
+  if (config.baseTokenIsToken0) {
+      // P = Quote/Base. sqrtP matches sqrtPriceX96 roughly (scaled).
+      // Amount0 (Base) needed for L=1
+      const amt0 = (sqrtPb - sqrtP) / (sqrtP * sqrtPb);
+      // Amount1 (Quote) needed for L=1
+      const amt1 = (sqrtP - sqrtPa);
+      
+      valPerLiquidity = amt0 * priceBaseToQuote + amt1;
+  } else {
+      // !baseTokenIsToken0: Token0=Quote, Token1=Base.
+      const P_t1_t0 = 1 / priceBaseToQuote; // Base per Quote (Token1 per Token0)
+      const sqrt_P_t1_t0 = Math.sqrt(P_t1_t0);
+      
+      const amtBase = 1 * sqrt_P_t1_t0 * (1 - Math.sqrt(1 - width));
+      const amtQuote = 1 * (1/sqrt_P_t1_t0) * (1 - 1/Math.sqrt(1 + width));
+      
+      valPerLiquidity = amtBase * priceBaseToQuote + amtQuote;
+  }
+  
+  // Adjust for decimals in L?
+  // No, standard V3 formulas work with "Raw" units if P is "Raw" price (Token1/Token0).
+  // Let's redo with Raw units to be safe, then convert to USD.
+  
+  // sqrtPriceX96 is raw sqrt(T1/T0) * 2^96.
+  const sqrtRatioAX96 = BigInt(Math.floor(Number(sqrtPriceX96) * Math.sqrt(1 - width)));
+  const sqrtRatioBX96 = BigInt(Math.floor(Number(sqrtPriceX96) * Math.sqrt(1 + width)));
+  const sqrtRatioX96 = BigInt(sqrtPriceX96);
+  
+  // Helper for amounts (Raw Units)
+  // We use Number for estimation to avoid BigInt division complexity in script
+  const L_num = Number(liquidity);
+  const P_num = Number(sqrtRatioX96) / 2**96;
+  const Pa_num = Number(sqrtRatioAX96) / 2**96;
+  const Pb_num = Number(sqrtRatioBX96) / 2**96;
+  
+  // Amount0 (Token0)
+  const amt0_raw = L_num * (Pb_num - P_num) / (P_num * Pb_num);
+  // Amount1 (Token1)
+  const amt1_raw = L_num * (P_num - Pa_num);
+  
+  // Value in USD
+  let tvlUSD = 0;
+  if (config.baseTokenIsToken0) {
+      const val0 = (amt0_raw / 10**baseDecimals) * priceBaseToQuote;
+      const val1 = (amt1_raw / 10**quoteDecimals); // USDC = 1
+      tvlUSD = val0 + val1;
+  } else {
+      // Token0 is Quote (USDC), Token1 is Base.
+      const val0 = (amt0_raw / 10**quoteDecimals);
+      const val1 = (amt1_raw / 10**baseDecimals) * priceBaseToQuote;
+      tvlUSD = val0 + val1;
+  }
+  
+  // Scale to Max Dominance
+  const MAX_DOMINANCE = 0.20; // 20%
+  const maxVaultTVL_Dominance = tvlUSD * MAX_DOMINANCE;
 
   console.log(`  Pool Address: ${config.uniswapPool.address}`);
   console.log(`  Current Liquidity (L): ${liquidity}`);
   console.log(`  Approx Price: $${priceBaseToQuote.toFixed(2)}`);
-
-  // Max Dominance (Soft Limit)
-  const MAX_DOMINANCE = 0.20; // 20%
-  const maxLiquidityVault = BigInt(Math.floor(Number(liquidity) * MAX_DOMINANCE));
-  console.log(`  Soft Limit (20% Dominance): L=${maxLiquidityVault}`);
+  console.log(`  Pool TVL (est): $${tvlUSD.toLocaleString()}`);
+  console.log(`  Soft Limit (20% Dominance): $${maxVaultTVL_Dominance.toLocaleString()}`);
 
   // 2. GMX Open Interest Analysis
   // =========================================================================
@@ -134,15 +198,14 @@ async function analyzeVaultSize(marketId: string) {
     console.log(`  Max Short OI:      ${formatUSD(maxShortOI)}`);
   }
   console.log(`  Current Short OI:  ${formatUSD(currentShortOI)}`);
-  console.log(`  Available Short OI:${maxShortOI === 0n ? "UNLIMITED" : formatUSD(availableShortOI)}`);
   console.log(`  Current Long OI:   ${formatUSD(currentLongOI)}`);
-
+  
   // Funding Flip Capacity
   let fundingFlipCapacity = 0n;
   if (currentLongOI > currentShortOI) {
     fundingFlipCapacity = currentLongOI - currentShortOI;
   }
-  console.log(`  Funding Flip Cap:  ${formatUSD(fundingFlipCapacity)} (Amount before paying funding)`);
+  console.log(`  Funding Flip Cap:  ${formatUSD(fundingFlipCapacity)} (Zero funding cost point)`);
 
   // 3. Synthesis & Recommendations
   // =========================================================================
@@ -155,14 +218,35 @@ async function analyzeVaultSize(marketId: string) {
   } else {
     maxTvLGMX = Number(availableShortOI) / 1e30 / HEDGE_RATIO;
   }
+  
+  // Fee vs Funding Logic
+  const expectedFeeApy = (config.characteristics.expectedFeeApy[0] + config.characteristics.expectedFeeApy[1]) / 2;
+  console.log(`  Expected Uniswap Fee APY: ~${expectedFeeApy}%`);
+  
+  // Heuristic: $5M imbalance often creates ~10-20% APR funding in major markets.
+  // Let's assume $1M imbalance = 2% Funding APR for ETH/BTC (Deep markets).
+  // For ARB/LINK (Shallower), $1M imbalance = 5% Funding APR.
 
-  const maxTvLGMX_Soft = Number(fundingFlipCapacity) / 1e30 / HEDGE_RATIO;
+  let fundingSensitivity = 2; // % per $1M
+  if (config.characteristics.liquidityRating === "medium") fundingSensitivity = 5;
+  if (config.characteristics.liquidityRating === "low") fundingSensitivity = 10;
+  
+  const maxAcceptableFundingAPY = expectedFeeApy;
+  const additionalCapacityUSD = (maxAcceptableFundingAPY / fundingSensitivity) * 1_000_000;
+  
+  const economicMaxShortOI = (Number(fundingFlipCapacity) / 1e30) + additionalCapacityUSD;
+  const economicMaxTVL = economicMaxShortOI / HEDGE_RATIO;
 
-  console.log(`  Theoretical Max TVL (GMX Hard Limit):    ${maxTvLGMX === Infinity ? "Unlimited" : "$" + maxTvLGMX.toLocaleString()}`);
-  console.log(`  Economic Max TVL (GMX Funding Flip):     $${maxTvLGMX_Soft.toLocaleString()}`);
+  console.log(`  Max Tolerable Funding Cost: ${maxAcceptableFundingAPY}% APY`);
+  console.log(`  Est. Extra Capacity via Fees: $${additionalCapacityUSD.toLocaleString()} (Sensitivity: ${fundingSensitivity}%/$1M)`);
+  
+  console.log(`  -> Economic Break-Even TVL: $${economicMaxTVL.toLocaleString()}`);
+  console.log(`  -> Dominance Soft Limit:    $${maxVaultTVL_Dominance.toLocaleString()}`);
 
-  const recommendedLimit = maxTvLGMX_Soft > 0 ? maxTvLGMX_Soft : 0;
-  console.log(`\n  >> Recommended Max Vault Size (Economic): $${recommendedLimit.toLocaleString()} (plus Uniswap liquidity constraints)`);
+  const recommendedLimit = Math.min(economicMaxTVL, maxVaultTVL_Dominance);
+  
+  console.log(`\n  >> Recommended Max Vault Size: $${recommendedLimit.toLocaleString()}`);
+  console.log(`     (Constrained by: ${economicMaxTVL < maxVaultTVL_Dominance ? 'Funding Costs' : 'Uniswap Dominance'})`);
 }
 
 // Run
