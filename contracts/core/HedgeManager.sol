@@ -83,8 +83,11 @@ contract HedgeManager is
     /// @notice Last order key created
     bytes32 public lastOrderKey;
 
+    /// @notice GMX Order Vault address
+    address public orderVault;
+
     // ============ Gap for Upgradeability ============
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     // ============ Events ============
 
@@ -126,6 +129,9 @@ contract HedgeManager is
 
     /// @notice Emitted when emergency leverage threshold is updated
     event EmergencyLeverageThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
+
+    /// @notice Emitted when order vault is updated
+    event OrderVaultUpdated(address oldVault, address newVault);
 
     // ============ Errors ============
 
@@ -274,6 +280,15 @@ contract HedgeManager is
         uint256 old = emergencyLeverageThreshold;
         emergencyLeverageThreshold = _threshold;
         emit EmergencyLeverageThresholdUpdated(old, _threshold);
+    }
+
+    /// @notice Set GMX Order Vault address
+    /// @param _orderVault New order vault address
+    function setOrderVault(address _orderVault) external onlyOwner {
+        if (_orderVault == address(0)) revert ZeroAddress();
+        address old = orderVault;
+        orderVault = _orderVault;
+        emit OrderVaultUpdated(old, _orderVault);
     }
 
     /// @inheritdoc IHedgeManager
@@ -616,8 +631,8 @@ contract HedgeManager is
         if (msg.value < execFee) revert InsufficientExecutionFee();
 
         // Approve collateral to order vault
-        address orderVault = exchangeRouter.orderVault();
         if (collateralDeltaAmount > 0) {
+            if (orderVault == address(0)) revert ZeroAddress();
             IERC20(collateralToken).safeIncreaseAllowance(orderVault, collateralDeltaAmount);
             IERC20(collateralToken).safeTransfer(orderVault, collateralDeltaAmount);
         }
@@ -627,11 +642,11 @@ contract HedgeManager is
         uint256 acceptablePrice;
 
         if (orderType == IExchangeRouter.OrderType.MarketIncrease && !isLong) {
-            // Opening/increasing short: accept higher price (worse for us)
-            acceptablePrice = (currentPrice * (PRECISION + slippageTolerance)) / PRECISION;
-        } else if (orderType == IExchangeRouter.OrderType.MarketDecrease && !isLong) {
-            // Closing/decreasing short: accept lower price (worse for us)
+            // Opening/increasing short (Selling): acceptablePrice is MINIMUM price
             acceptablePrice = (currentPrice * (PRECISION - slippageTolerance)) / PRECISION;
+        } else if (orderType == IExchangeRouter.OrderType.MarketDecrease && !isLong) {
+            // Closing/decreasing short (Buying): acceptablePrice is MAXIMUM price
+            acceptablePrice = (currentPrice * (PRECISION + slippageTolerance)) / PRECISION;
         } else {
             acceptablePrice = currentPrice;
         }
@@ -717,9 +732,9 @@ contract HedgeManager is
             maxOracleStaleness
         );
 
-        // Convert to 18 decimals
+        // Convert to 30 decimals (GMX precision)
         // Chainlink ETH/USD has 8 decimals
-        return price * 1e10;
+        return price * 1e22;
     }
 
     /// @notice Get current price without staleness check (for view functions)
@@ -730,9 +745,9 @@ contract HedgeManager is
             revert SecurityModule.InvalidOraclePrice(answer);
         }
 
-        // Convert to 18 decimals
+        // Convert to 30 decimals (GMX precision)
         // Chainlink ETH/USD has 8 decimals
-        return uint256(answer) * 1e10;
+        return uint256(answer) * 1e22;
     }
 
     /// @notice Check if oracle price is stale
