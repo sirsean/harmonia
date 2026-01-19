@@ -452,9 +452,16 @@ contract DeltaNeutralVault is
         int256 netDelta = getNetDelta();
         uint256 price = ILiquidityManager(liquidityManager).getOraclePrice();
         
-        // Calculate delta value in 18 decimals
-        // netDelta (18 dec) * price (18 dec) / 1e18 = value (18 dec)
+        // Calculate delta value in base token decimals
+        // netDelta (base dec) * price (18 dec) / 1e18 = value (base dec)
         int256 valueDelta = (netDelta * int256(price)) / 1e18;
+
+        // Scale valueDelta to 18 decimals
+        address baseToken = ILiquidityManager(liquidityManager).baseToken();
+        uint8 baseDecimals = IERC20Metadata(baseToken).decimals();
+        if (baseDecimals < 18) {
+            valueDelta = valueDelta * int256(10 ** (18 - baseDecimals));
+        }
 
         // Convert total assets to 18 decimals for comparison
         uint8 assetDecimals = IERC20Metadata(asset()).decimals();
