@@ -88,7 +88,7 @@ async function main(): Promise<DeploymentResult> {
   // Build deployment config
   const config: DeploymentConfig = {
     vaultName: `Harmonia ${market.id} Vault`,
-    vaultSymbol: `h${market.id}`,
+    vaultSymbol: `harm${market.id}`,
     initialDepositCap: BigInt(10_000) * BigInt(10 ** market.quoteToken.decimals), // $10k initial cap
     poolFee: market.uniswapPool.feeTier,
     owner: deployerAddress,

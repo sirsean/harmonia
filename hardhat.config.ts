@@ -121,10 +121,7 @@ const config: HardhatUserConfig = {
     },
   },
   etherscan: {
-    apiKey: {
-      arbitrumOne: process.env.ARBISCAN_API_KEY || "",
-      arbitrumSepolia: process.env.ARBISCAN_API_KEY || "",
-    },
+    apiKey: process.env.ARBISCAN_API_KEY || "",
   },
   gasReporter: {
     enabled: process.env.REPORT_GAS !== undefined,

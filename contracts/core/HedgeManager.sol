@@ -159,12 +159,6 @@ contract HedgeManager is
     /// @notice Thrown when ETH transfer fails
     error ETHTransferFailed();
 
-    /// @notice Thrown when oracle price is stale
-    error OracleStale(uint256 lastUpdate, uint256 maxAge);
-
-    /// @notice Thrown when oracle returns invalid price
-    error InvalidOraclePrice(int256 price);
-
     /// @notice Thrown when leverage approaches liquidation threshold
     error LeverageApproachingLiquidation(uint256 currentLeverage);
 
@@ -733,7 +727,7 @@ contract HedgeManager is
     function _getCurrentPriceUnchecked() internal view returns (uint256) {
         (, int256 answer, , , ) = priceFeed.latestRoundData();
         if (answer <= 0) {
-            revert InvalidOraclePrice(answer);
+            revert SecurityModule.InvalidOraclePrice(answer);
         }
 
         // Convert to 18 decimals
