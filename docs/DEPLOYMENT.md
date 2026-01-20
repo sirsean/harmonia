@@ -158,16 +158,44 @@ await vault.waitForDeployment();
 To upgrade a contract's logic:
 
 1. Update the Solidity code in the implementation contract.
-2. Run the upgrade script:
+2. If this is the first upgrade from this repo checkout, register the existing proxy:
 
-```javascript
-const { upgrades, ethers } = require("hardhat");
-
-const VaultV2 = await ethers.getContractFactory("DeltaNeutralVaultV2");
-await upgrades.upgradeProxy(PROXY_ADDRESS, VaultV2);
+```bash
+CONTRACT=DeltaNeutralVault PROXY_ADDRESS=0x... \
+  npx hardhat run scripts/upgrade/force-import.ts --network arbitrum
 ```
 
-**Note**: Only the contract owner can authorize an upgrade.
+3. Run the UUPS upgrade helper (recommended):
+
+```bash
+# Prepare an upgrade (deploy implementation + emit calldata)
+CONTRACT=DeltaNeutralVault PROXY_ADDRESS=0x... MODE=prepare \
+  npx hardhat run scripts/upgrade/upgrade-proxy.ts --network arbitrum
+
+# Execute an upgrade directly (EOA owner)
+CONTRACT=DeltaNeutralVault PROXY_ADDRESS=0x... MODE=upgrade \
+  npx hardhat run scripts/upgrade/upgrade-proxy.ts --network arbitrum
+```
+
+If the new implementation needs an initializer, pass it explicitly:
+
+```bash
+CONTRACT=DeltaNeutralVault PROXY_ADDRESS=0x... MODE=upgrade \
+  INIT_FUNCTION=initializeV2 INIT_ARGS='[123, "0x..."]' \
+  npx hardhat run scripts/upgrade/upgrade-proxy.ts --network arbitrum
+```
+
+**Note**: Only the contract owner can authorize an upgrade; when using an EOA, run with `MODE=upgrade`.
+
+After an upgrade, copy the generated `.openzeppelin/<network>.json` manifest into `deployments/` with a timestamped name (e.g., `upgrade-manifest.arbitrum-one.2026-01-20T02-29-54Z.json`) to preserve history, and keep `.openzeppelin/` ignored to avoid test issues.
+
+You can use the helper script to archive the manifest:
+
+```bash
+npx hardhat run scripts/upgrade/archive-manifest.ts --network arbitrum
+```
+
+If upgrading HedgeManager, verify the GMX ExchangeRouter address and ensure the underlying `router()` is approved for collateral transfers (handled in the latest implementation).
 
 ---
 

@@ -652,22 +652,35 @@ Only the **Owner** of the contract can authorize an upgrade. The `_authorizeUpgr
 
 ### Upgrade Process via Hardhat
 
-The recommended way to upgrade implementation logic is using the OpenZeppelin Hardhat Upgrades plugin:
+The recommended way to upgrade implementation logic is using the OpenZeppelin Hardhat Upgrades plugin and the repo's helper scripts:
 
 1. **Develop New Implementation**: Create a new version of the contract (e.g., `DeltaNeutralVaultV2.sol`).
 2. **Validate Upgrade**: Ensure the new implementation is upgrade-compatible (no storage layout changes, etc.).
 3. **Execute Upgrade**:
 
-```javascript
-const { upgrades, ethers } = require("hardhat");
+```bash
+# If this is the first upgrade from this checkout, register the proxy
+CONTRACT=DeltaNeutralVault PROXY_ADDRESS=0x... \
+  npx hardhat run scripts/upgrade/force-import.ts --network arbitrum
 
-const PROXY_ADDRESS = "0x..."; // The address of the existing proxy
-const VaultV2 = await ethers.getContractFactory("DeltaNeutralVaultV2");
+# Prepare (deploy implementation + emit calldata)
+CONTRACT=DeltaNeutralVault PROXY_ADDRESS=0x... MODE=prepare \
+  npx hardhat run scripts/upgrade/upgrade-proxy.ts --network arbitrum
 
-console.log("Upgrading vault...");
-await upgrades.upgradeProxy(PROXY_ADDRESS, VaultV2);
-console.log("Vault upgraded successfully");
+# Execute directly (EOA owner)
+CONTRACT=DeltaNeutralVault PROXY_ADDRESS=0x... MODE=upgrade \
+  npx hardhat run scripts/upgrade/upgrade-proxy.ts --network arbitrum
 ```
+
+After an upgrade, copy the generated `.openzeppelin/<network>.json` manifest into `deployments/` with a timestamped name (e.g., `upgrade-manifest.arbitrum-one.2026-01-20T02-29-54Z.json`) to preserve history, and keep `.openzeppelin/` ignored to avoid test issues.
+
+You can use the helper script to archive the manifest:
+
+```bash
+npx hardhat run scripts/upgrade/archive-manifest.ts --network arbitrum
+```
+
+If upgrading HedgeManager, ensure the GMX ExchangeRouter address is correct and note that the router's underlying `router()` address must be approved for collateral transfers. This is handled in the latest HedgeManager implementation.
 
 ### Manual Upgrade
 

@@ -55,6 +55,10 @@ contract MockExchangeRouter is IExchangeRouter {
         executionFee = _fee;
     }
 
+    function router() external pure override returns (address) {
+        return address(0);
+    }
+
     function createOrder(
         CreateOrderParams calldata params
     ) external payable override returns (bytes32 orderKey) {

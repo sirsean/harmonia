@@ -132,6 +132,7 @@ contract HedgeManager is
 
     /// @notice Emitted when order vault is updated
     event OrderVaultUpdated(address oldVault, address newVault);
+    event ExchangeRouterUpdated(address indexed oldRouter, address indexed newRouter);
 
     // ============ Errors ============
 
@@ -289,6 +290,15 @@ contract HedgeManager is
         address old = orderVault;
         orderVault = _orderVault;
         emit OrderVaultUpdated(old, _orderVault);
+    }
+
+    /// @notice Set GMX Exchange Router address
+    /// @param _exchangeRouter New exchange router address
+    function setExchangeRouter(address _exchangeRouter) external onlyOwner {
+        if (_exchangeRouter == address(0)) revert ZeroAddress();
+        address old = address(exchangeRouter);
+        exchangeRouter = IExchangeRouter(_exchangeRouter);
+        emit ExchangeRouterUpdated(old, _exchangeRouter);
     }
 
     /// @inheritdoc IHedgeManager
@@ -633,6 +643,10 @@ contract HedgeManager is
         // Approve collateral to router and send to order vault
         if (collateralDeltaAmount > 0) {
             if (orderVault == address(0)) revert ZeroAddress();
+            address router = exchangeRouter.router();
+            if (router != address(0)) {
+                IERC20(collateralToken).safeIncreaseAllowance(router, collateralDeltaAmount);
+            }
             IERC20(collateralToken).safeIncreaseAllowance(
                 address(exchangeRouter),
                 collateralDeltaAmount

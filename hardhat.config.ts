@@ -44,6 +44,7 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x000000000000000000000000000000
 const FORK_BLOCK_NUMBER = process.env.FORK_BLOCK_NUMBER
   ? parseInt(process.env.FORK_BLOCK_NUMBER)
   : HISTORICAL_BLOCKS.RECENT;
+const FORK_DIAGNOSTICS = process.env.FORK_DIAGNOSTICS === "true";
 
 // Test scope - defaults to 'test' if not specified
 const testDir = process.env.TEST_SCOPE || "test";
@@ -90,12 +91,37 @@ const config: HardhatUserConfig = {
     hardhat: {
       // Force hardfork to bypass Ethereum mainnet block number lookup
       // (Arbitrum has much higher block numbers than Ethereum mainnet)
-      hardfork: "shanghai",
-      forking: ALCHEMY_API_KEY ? {
-        url: `https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
-        blockNumber: FORK_BLOCK_NUMBER,
-      } : undefined,
+      // For diagnostics, use latest fork block and mainnet chainId to avoid hardfork history issues.
+      hardfork: FORK_DIAGNOSTICS ? "cancun" : "shanghai",
+      forking: ALCHEMY_API_KEY
+        ? {
+            url: `https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
+            blockNumber: FORK_DIAGNOSTICS ? undefined : FORK_BLOCK_NUMBER,
+          }
+        : undefined,
       chainId: 42161,
+      chains: FORK_DIAGNOSTICS
+        ? {
+            42161: {
+              hardforkHistory: {
+                byzantium: 0,
+                constantinople: 0,
+                petersburg: 0,
+                istanbul: 0,
+                muirGlacier: 0,
+                berlin: 0,
+                london: 0,
+                arrowGlacier: 0,
+                grayGlacier: 0,
+                merge: 0,
+                shanghai: 0,
+                cancun: 0,
+                prague: 0,
+                osaka: 0,
+              },
+            },
+          }
+        : undefined,
       accounts: {
         count: 10,
         accountsBalance: "10000000000000000000000", // 10000 ETH
