@@ -190,8 +190,17 @@ describe("Rebalance Integration", function () {
   }
 
   it("should detect out-of-range and rebalance", async function () {
-    const { vault, liquidityManager, hedgeManager, uniPool, owner, controller, weth, usdc, swapRouter } =
-      await loadFixture(deployFixture);
+    const {
+      vault,
+      liquidityManager,
+      hedgeManager,
+      uniPool,
+      owner,
+      controller,
+      weth,
+      usdc,
+      swapRouter,
+    } = await loadFixture(deployFixture);
 
     // 1. Initial position is already created by vault.deposit in fixture
     expect(await liquidityManager.isInRange()).to.be.true;
@@ -274,7 +283,8 @@ describe("Rebalance Integration", function () {
   });
 
   it("should respect range width multiplier", async function () {
-    const { vault, liquidityManager, uniPool, owner, swapRouter } = await loadFixture(deployFixture);
+    const { vault, liquidityManager, uniPool, owner, swapRouter } =
+      await loadFixture(deployFixture);
 
     // Set wider multiplier: 100 (half width 1000 ticks)
     await vault.setRangeWidthMultiplier(100);

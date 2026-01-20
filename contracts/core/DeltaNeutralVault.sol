@@ -451,7 +451,7 @@ contract DeltaNeutralVault is
 
         int256 netDelta = getNetDelta();
         uint256 price = ILiquidityManager(liquidityManager).getOraclePrice();
-        
+
         // Calculate delta value in base token decimals
         // netDelta (base dec) * price (18 dec) / 1e18 = value (base dec)
         int256 valueDelta = (netDelta * int256(price)) / 1e18;

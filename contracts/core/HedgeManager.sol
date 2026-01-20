@@ -630,15 +630,18 @@ contract HedgeManager is
         uint256 execFee = getExecutionFee();
         if (msg.value < execFee) revert InsufficientExecutionFee();
 
-        // Approve collateral to order vault
+        // Approve collateral to router and send to order vault
         if (collateralDeltaAmount > 0) {
             if (orderVault == address(0)) revert ZeroAddress();
-            IERC20(collateralToken).safeIncreaseAllowance(orderVault, collateralDeltaAmount);
-            IERC20(collateralToken).safeTransfer(orderVault, collateralDeltaAmount);
+            IERC20(collateralToken).safeIncreaseAllowance(
+                address(exchangeRouter),
+                collateralDeltaAmount
+            );
+            exchangeRouter.sendTokens(collateralToken, orderVault, collateralDeltaAmount);
         }
 
         // Calculate acceptable price with slippage
-        uint256 currentPrice = _getCurrentPrice();
+        uint256 currentPrice = _getCurrentPrice12();
         uint256 acceptablePrice;
 
         if (orderType == IExchangeRouter.OrderType.MarketIncrease && !isLong) {
@@ -664,32 +667,42 @@ contract HedgeManager is
             orderReceiver = vault != address(0) ? vault : msg.sender;
         }
 
+        if (orderVault == address(0)) revert ZeroAddress();
+        // Send execution fee to order vault
+        exchangeRouter.sendWnt{value: execFee}(orderVault, execFee);
+
         // Create order params
         IExchangeRouter.CreateOrderParams memory params = IExchangeRouter.CreateOrderParams({
-            receiver: orderReceiver,
-            cancellationReceiver: address(this),
-            callbackContract: address(0),
-            uiFeeReceiver: address(0),
-            market: market,
-            initialCollateralToken: collateralToken,
-            swapPath: new address[](0),
+            addresses: IExchangeRouter.CreateOrderParamsAddresses({
+                receiver: orderReceiver,
+                cancellationReceiver: address(this),
+                callbackContract: address(0),
+                uiFeeReceiver: address(0),
+                market: market,
+                initialCollateralToken: collateralToken,
+                swapPath: new address[](0)
+            }),
+            numbers: IExchangeRouter.CreateOrderParamsNumbers({
+                sizeDeltaUsd: sizeDeltaUsd,
+                initialCollateralDeltaAmount: collateralDeltaAmount,
+                triggerPrice: 0,
+                acceptablePrice: acceptablePrice,
+                executionFee: execFee,
+                callbackGasLimit: 0,
+                minOutputAmount: 0,
+                validFromTime: 0
+            }),
             orderType: orderType,
             decreasePositionSwapType: IExchangeRouter.DecreasePositionSwapType.NoSwap,
-            sizeDeltaUsd: sizeDeltaUsd,
-            initialCollateralDeltaAmount: collateralDeltaAmount,
-            triggerPrice: 0,
-            acceptablePrice: acceptablePrice,
-            executionFee: execFee,
-            callbackGasLimit: 0,
-            minOutputAmount: 0,
             isLong: isLong,
             shouldUnwrapNativeToken: false,
             autoCancel: false,
-            referralCode: bytes32(0)
+            referralCode: bytes32(0),
+            dataList: new bytes32[](0)
         });
 
         // Create the order
-        orderKey = exchangeRouter.createOrder{value: execFee}(params);
+        orderKey = exchangeRouter.createOrder(params);
         lastOrderKey = orderKey;
 
         // Refund excess ETH
@@ -725,16 +738,16 @@ contract HedgeManager is
     }
 
     /// @notice Get current price from price feed with full validation
-    function _getCurrentPrice() internal view returns (uint256) {
+    function _getCurrentPrice12() internal view returns (uint256) {
         // Use SecurityModule for comprehensive oracle validation
         uint256 price = SecurityModule.getOraclePriceWithStalenessCheck(
             priceFeed,
             maxOracleStaleness
         );
 
-        // Convert to 30 decimals (GMX precision)
+        // Convert to 12 decimals for GMX acceptablePrice
         // Chainlink ETH/USD has 8 decimals
-        return price * 1e22;
+        return price * 1e4;
     }
 
     /// @notice Get current price without staleness check (for view functions)

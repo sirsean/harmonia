@@ -58,7 +58,9 @@ contract MockExchangeRouter is IExchangeRouter {
     function createOrder(
         CreateOrderParams calldata params
     ) external payable override returns (bytes32 orderKey) {
-        require(msg.value >= executionFee, "Insufficient execution fee");
+        if (msg.value > 0) {
+            require(msg.value >= params.numbers.executionFee, "Insufficient execution fee");
+        }
 
         _orderNonce++;
         orderKey = keccak256(abi.encode(msg.sender, _orderNonce, block.timestamp));
@@ -75,9 +77,9 @@ contract MockExchangeRouter is IExchangeRouter {
 
     function _executeOrder(bytes32 orderKey, CreateOrderParams memory params) internal {
         bytes32 positionKey = _getPositionKey(
-            params.receiver,
-            params.market,
-            params.initialCollateralToken,
+            params.addresses.receiver,
+            params.addresses.market,
+            params.addresses.initialCollateralToken,
             params.isLong
         );
 
@@ -88,9 +90,9 @@ contract MockExchangeRouter is IExchangeRouter {
             params.orderType == OrderType.LimitIncrease
         ) {
             // Increase position
-            position.sizeInUsd += params.sizeDeltaUsd;
-            position.sizeInTokens += (params.sizeDeltaUsd * 1e18) / _getMockPrice(); // Simplified
-            position.collateralAmount += params.initialCollateralDeltaAmount;
+            position.sizeInUsd += params.numbers.sizeDeltaUsd;
+            position.sizeInTokens += (params.numbers.sizeDeltaUsd * 1e18) / _getMockPrice(); // Simplified
+            position.collateralAmount += params.numbers.initialCollateralDeltaAmount;
             position.isLong = params.isLong;
             position.exists = true;
         } else if (
@@ -98,17 +100,17 @@ contract MockExchangeRouter is IExchangeRouter {
             params.orderType == OrderType.LimitDecrease
         ) {
             // Decrease position
-            if (params.sizeDeltaUsd >= position.sizeInUsd) {
+            if (params.numbers.sizeDeltaUsd >= position.sizeInUsd) {
                 // Close position
                 position.sizeInUsd = 0;
                 position.sizeInTokens = 0;
                 position.collateralAmount = 0;
                 position.exists = false;
             } else {
-                position.sizeInUsd -= params.sizeDeltaUsd;
-                position.sizeInTokens -= (params.sizeDeltaUsd * 1e18) / _getMockPrice();
-                if (params.initialCollateralDeltaAmount > 0) {
-                    position.collateralAmount -= params.initialCollateralDeltaAmount;
+                position.sizeInUsd -= params.numbers.sizeDeltaUsd;
+                position.sizeInTokens -= (params.numbers.sizeDeltaUsd * 1e18) / _getMockPrice();
+                if (params.numbers.initialCollateralDeltaAmount > 0) {
+                    position.collateralAmount -= params.numbers.initialCollateralDeltaAmount;
                 }
             }
         }
@@ -143,11 +145,30 @@ contract MockExchangeRouter is IExchangeRouter {
     ) external payable override {
         require(!orderExecuted[key], "Order already executed");
         CreateOrderParams storage order = orders[key];
-        order.sizeDeltaUsd = sizeDeltaUsd;
-        order.acceptablePrice = acceptablePrice;
-        order.triggerPrice = triggerPrice;
-        order.minOutputAmount = minOutputAmount;
+        order.numbers.sizeDeltaUsd = sizeDeltaUsd;
+        order.numbers.acceptablePrice = acceptablePrice;
+        order.numbers.triggerPrice = triggerPrice;
+        order.numbers.minOutputAmount = minOutputAmount;
         order.autoCancel = autoCancel;
+    }
+
+    function sendTokens(address token, address receiver, uint256 amount) external payable override {
+        IERC20(token).safeTransferFrom(msg.sender, receiver, amount);
+    }
+
+    function sendWnt(address receiver, uint256 amount) external payable override {
+        (receiver, amount);
+    }
+
+    function multicall(
+        bytes[] calldata data
+    ) external payable override returns (bytes[] memory results) {
+        results = new bytes[](data.length);
+        for (uint256 i = 0; i < data.length; i++) {
+            (bool success, bytes memory result) = address(this).delegatecall(data[i]);
+            require(success, "Multicall failed");
+            results[i] = result;
+        }
     }
 
     function claimFundingFees(
