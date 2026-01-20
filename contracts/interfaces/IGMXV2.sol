@@ -21,7 +21,7 @@ interface IExchangeRouter {
         SwapCollateralTokenToPnlToken
     }
 
-    struct CreateOrderParams {
+    struct CreateOrderParamsAddresses {
         address receiver;
         address cancellationReceiver;
         address callbackContract;
@@ -29,8 +29,9 @@ interface IExchangeRouter {
         address market;
         address initialCollateralToken;
         address[] swapPath;
-        OrderType orderType;
-        DecreasePositionSwapType decreasePositionSwapType;
+    }
+
+    struct CreateOrderParamsNumbers {
         uint256 sizeDeltaUsd;
         uint256 initialCollateralDeltaAmount;
         uint256 triggerPrice;
@@ -38,10 +39,19 @@ interface IExchangeRouter {
         uint256 executionFee;
         uint256 callbackGasLimit;
         uint256 minOutputAmount;
+        uint256 validFromTime;
+    }
+
+    struct CreateOrderParams {
+        CreateOrderParamsAddresses addresses;
+        CreateOrderParamsNumbers numbers;
+        OrderType orderType;
+        DecreasePositionSwapType decreasePositionSwapType;
         bool isLong;
         bool shouldUnwrapNativeToken;
         bool autoCancel;
         bytes32 referralCode;
+        bytes32[] dataList;
     }
 
     /// @notice Creates a new order
@@ -61,6 +71,12 @@ interface IExchangeRouter {
         uint256 minOutputAmount,
         bool autoCancel
     ) external payable;
+
+    function sendTokens(address token, address receiver, uint256 amount) external payable;
+
+    function sendWnt(address receiver, uint256 amount) external payable;
+
+    function multicall(bytes[] calldata data) external payable returns (bytes[] memory results);
 
     /// @notice Claims funding fees for a position
     function claimFundingFees(

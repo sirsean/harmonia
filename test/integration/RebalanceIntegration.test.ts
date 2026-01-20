@@ -151,6 +151,11 @@ describe("Rebalance Integration", function () {
     await liquidityManager.setVault(await vault.getAddress());
     await hedgeManager.setVault(await vault.getAddress());
 
+    // Set Order Vault (mock address)
+    await hedgeManager.connect(owner).setOrderVault(ethers.Wallet.createRandom().address);
+    // Set min position size to $1 to accommodate mock liquidity inaccuracies
+    await hedgeManager.connect(owner).setMinPositionSize(BigInt(10) ** BigInt(30));
+
     // 8. Fund Vault & Users
     await usdc.mint(owner.address, INITIAL_VAULT_ASSETS * 2n);
     await weth.mint(owner.address, BigInt(100) * BigInt(10) ** BigInt(18));
@@ -170,8 +175,6 @@ describe("Rebalance Integration", function () {
     // Deposit into vault
     await vault.deposit(INITIAL_VAULT_ASSETS, owner.address);
 
-    // Fund Managers with tokens to simulate holding positions (Mock PM usually holds tokens but we need to approve)
-
     return {
       vault,
       liquidityManager,
@@ -182,12 +185,22 @@ describe("Rebalance Integration", function () {
       weth,
       priceFeed,
       owner,
+      swapRouter,
     };
   }
 
   it("should detect out-of-range and rebalance", async function () {
-    const { vault, liquidityManager, hedgeManager, uniPool, owner, controller, weth, usdc } =
-      await loadFixture(deployFixture);
+    const {
+      vault,
+      liquidityManager,
+      hedgeManager,
+      uniPool,
+      owner,
+      controller,
+      weth,
+      usdc,
+      swapRouter,
+    } = await loadFixture(deployFixture);
 
     // 1. Initial position is already created by vault.deposit in fixture
     expect(await liquidityManager.isInRange()).to.be.true;
@@ -217,6 +230,10 @@ describe("Rebalance Integration", function () {
     const oldSqrtPrice = (await uniPool.slot0())[0];
     const newSqrtPrice = (oldSqrtPrice * 1414n) / 1000n;
     await uniPool.setSqrtPriceX96(newSqrtPrice);
+
+    // Update MockSwapRouter price to match (~$4000)
+    const mockRouter = await ethers.getContractAt("MockSwapRouter", await swapRouter.getAddress());
+    await mockRouter.setEthPrice(BigInt(4000) * BigInt(10) ** BigInt(6));
 
     expect(await liquidityManager.isInRange()).to.be.false;
 
@@ -266,7 +283,8 @@ describe("Rebalance Integration", function () {
   });
 
   it("should respect range width multiplier", async function () {
-    const { vault, liquidityManager, uniPool, owner } = await loadFixture(deployFixture);
+    const { vault, liquidityManager, uniPool, owner, swapRouter } =
+      await loadFixture(deployFixture);
 
     // Set wider multiplier: 100 (half width 1000 ticks)
     await vault.setRangeWidthMultiplier(100);
@@ -289,6 +307,10 @@ describe("Rebalance Integration", function () {
     const oldSqrtPrice = (await uniPool.slot0())[0];
     const newSqrtPrice = (oldSqrtPrice * 110n) / 100n; // +10%
     await uniPool.setSqrtPriceX96(newSqrtPrice);
+
+    // Update MockSwapRouter price to match (~$2420)
+    const mockRouter = await ethers.getContractAt("MockSwapRouter", await swapRouter.getAddress());
+    await mockRouter.setEthPrice(BigInt(2420) * BigInt(10) ** BigInt(6));
 
     // Fund Vault with ETH
     await owner.sendTransaction({

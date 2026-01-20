@@ -68,6 +68,10 @@ describe("HedgeManager", function () {
     // Set vault
     await hedgeManager.connect(owner).setVault(vault.address);
 
+    // Set Order Vault (mock address)
+    const orderVaultAddress = ethers.Wallet.createRandom().address;
+    await hedgeManager.connect(owner).setOrderVault(orderVaultAddress);
+
     // Mint USDC to vault
     await usdc.mint(vault.address, INITIAL_COLLATERAL);
 

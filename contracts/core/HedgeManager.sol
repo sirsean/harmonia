@@ -83,8 +83,11 @@ contract HedgeManager is
     /// @notice Last order key created
     bytes32 public lastOrderKey;
 
+    /// @notice GMX Order Vault address
+    address public orderVault;
+
     // ============ Gap for Upgradeability ============
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     // ============ Events ============
 
@@ -126,6 +129,9 @@ contract HedgeManager is
 
     /// @notice Emitted when emergency leverage threshold is updated
     event EmergencyLeverageThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
+
+    /// @notice Emitted when order vault is updated
+    event OrderVaultUpdated(address oldVault, address newVault);
 
     // ============ Errors ============
 
@@ -274,6 +280,15 @@ contract HedgeManager is
         uint256 old = emergencyLeverageThreshold;
         emergencyLeverageThreshold = _threshold;
         emit EmergencyLeverageThresholdUpdated(old, _threshold);
+    }
+
+    /// @notice Set GMX Order Vault address
+    /// @param _orderVault New order vault address
+    function setOrderVault(address _orderVault) external onlyOwner {
+        if (_orderVault == address(0)) revert ZeroAddress();
+        address old = orderVault;
+        orderVault = _orderVault;
+        emit OrderVaultUpdated(old, _orderVault);
     }
 
     /// @inheritdoc IHedgeManager
@@ -615,23 +630,26 @@ contract HedgeManager is
         uint256 execFee = getExecutionFee();
         if (msg.value < execFee) revert InsufficientExecutionFee();
 
-        // Approve collateral to order vault
-        address orderVault = exchangeRouter.orderVault();
+        // Approve collateral to router and send to order vault
         if (collateralDeltaAmount > 0) {
-            IERC20(collateralToken).safeIncreaseAllowance(orderVault, collateralDeltaAmount);
-            IERC20(collateralToken).safeTransfer(orderVault, collateralDeltaAmount);
+            if (orderVault == address(0)) revert ZeroAddress();
+            IERC20(collateralToken).safeIncreaseAllowance(
+                address(exchangeRouter),
+                collateralDeltaAmount
+            );
+            exchangeRouter.sendTokens(collateralToken, orderVault, collateralDeltaAmount);
         }
 
         // Calculate acceptable price with slippage
-        uint256 currentPrice = _getCurrentPrice();
+        uint256 currentPrice = _getCurrentPrice12();
         uint256 acceptablePrice;
 
         if (orderType == IExchangeRouter.OrderType.MarketIncrease && !isLong) {
-            // Opening/increasing short: accept higher price (worse for us)
-            acceptablePrice = (currentPrice * (PRECISION + slippageTolerance)) / PRECISION;
-        } else if (orderType == IExchangeRouter.OrderType.MarketDecrease && !isLong) {
-            // Closing/decreasing short: accept lower price (worse for us)
+            // Opening/increasing short (Selling): acceptablePrice is MINIMUM price
             acceptablePrice = (currentPrice * (PRECISION - slippageTolerance)) / PRECISION;
+        } else if (orderType == IExchangeRouter.OrderType.MarketDecrease && !isLong) {
+            // Closing/decreasing short (Buying): acceptablePrice is MAXIMUM price
+            acceptablePrice = (currentPrice * (PRECISION + slippageTolerance)) / PRECISION;
         } else {
             acceptablePrice = currentPrice;
         }
@@ -649,32 +667,42 @@ contract HedgeManager is
             orderReceiver = vault != address(0) ? vault : msg.sender;
         }
 
+        if (orderVault == address(0)) revert ZeroAddress();
+        // Send execution fee to order vault
+        exchangeRouter.sendWnt{value: execFee}(orderVault, execFee);
+
         // Create order params
         IExchangeRouter.CreateOrderParams memory params = IExchangeRouter.CreateOrderParams({
-            receiver: orderReceiver,
-            cancellationReceiver: address(this),
-            callbackContract: address(0),
-            uiFeeReceiver: address(0),
-            market: market,
-            initialCollateralToken: collateralToken,
-            swapPath: new address[](0),
+            addresses: IExchangeRouter.CreateOrderParamsAddresses({
+                receiver: orderReceiver,
+                cancellationReceiver: address(this),
+                callbackContract: address(0),
+                uiFeeReceiver: address(0),
+                market: market,
+                initialCollateralToken: collateralToken,
+                swapPath: new address[](0)
+            }),
+            numbers: IExchangeRouter.CreateOrderParamsNumbers({
+                sizeDeltaUsd: sizeDeltaUsd,
+                initialCollateralDeltaAmount: collateralDeltaAmount,
+                triggerPrice: 0,
+                acceptablePrice: acceptablePrice,
+                executionFee: execFee,
+                callbackGasLimit: 0,
+                minOutputAmount: 0,
+                validFromTime: 0
+            }),
             orderType: orderType,
             decreasePositionSwapType: IExchangeRouter.DecreasePositionSwapType.NoSwap,
-            sizeDeltaUsd: sizeDeltaUsd,
-            initialCollateralDeltaAmount: collateralDeltaAmount,
-            triggerPrice: 0,
-            acceptablePrice: acceptablePrice,
-            executionFee: execFee,
-            callbackGasLimit: 0,
-            minOutputAmount: 0,
             isLong: isLong,
             shouldUnwrapNativeToken: false,
             autoCancel: false,
-            referralCode: bytes32(0)
+            referralCode: bytes32(0),
+            dataList: new bytes32[](0)
         });
 
         // Create the order
-        orderKey = exchangeRouter.createOrder{value: execFee}(params);
+        orderKey = exchangeRouter.createOrder(params);
         lastOrderKey = orderKey;
 
         // Refund excess ETH
@@ -710,16 +738,16 @@ contract HedgeManager is
     }
 
     /// @notice Get current price from price feed with full validation
-    function _getCurrentPrice() internal view returns (uint256) {
+    function _getCurrentPrice12() internal view returns (uint256) {
         // Use SecurityModule for comprehensive oracle validation
         uint256 price = SecurityModule.getOraclePriceWithStalenessCheck(
             priceFeed,
             maxOracleStaleness
         );
 
-        // Convert to 18 decimals
+        // Convert to 12 decimals for GMX acceptablePrice
         // Chainlink ETH/USD has 8 decimals
-        return price * 1e10;
+        return price * 1e4;
     }
 
     /// @notice Get current price without staleness check (for view functions)
@@ -730,9 +758,9 @@ contract HedgeManager is
             revert SecurityModule.InvalidOraclePrice(answer);
         }
 
-        // Convert to 18 decimals
+        // Convert to 30 decimals (GMX precision)
         // Chainlink ETH/USD has 8 decimals
-        return uint256(answer) * 1e10;
+        return uint256(answer) * 1e22;
     }
 
     /// @notice Check if oracle price is stale

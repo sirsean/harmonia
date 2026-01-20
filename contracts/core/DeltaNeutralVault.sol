@@ -447,9 +447,32 @@ contract DeltaNeutralVault is
     function getDeltaRatio() external view returns (int256 deltaRatio) {
         uint256 total = totalAssets();
         if (total == 0) return 0;
+        if (liquidityManager == address(0)) return 0;
 
         int256 netDelta = getNetDelta();
-        deltaRatio = (netDelta * int256(PRECISION)) / int256(total);
+        uint256 price = ILiquidityManager(liquidityManager).getOraclePrice();
+
+        // Calculate delta value in base token decimals
+        // netDelta (base dec) * price (18 dec) / 1e18 = value (base dec)
+        int256 valueDelta = (netDelta * int256(price)) / 1e18;
+
+        // Scale valueDelta to 18 decimals
+        address baseToken = ILiquidityManager(liquidityManager).baseToken();
+        uint8 baseDecimals = IERC20Metadata(baseToken).decimals();
+        if (baseDecimals < 18) {
+            valueDelta = valueDelta * int256(10 ** (18 - baseDecimals));
+        }
+
+        // Convert total assets to 18 decimals for comparison
+        uint8 assetDecimals = IERC20Metadata(asset()).decimals();
+        uint256 total18;
+        if (assetDecimals < 18) {
+            total18 = total * (10 ** (18 - assetDecimals));
+        } else {
+            total18 = total; // Assuming not > 18 for now
+        }
+
+        deltaRatio = (valueDelta * int256(PRECISION)) / int256(total18);
     }
 
     /// @notice Check if rebalance is needed
@@ -639,8 +662,8 @@ contract DeltaNeutralVault is
             return;
         }
 
-        // Reserve ~15% for hedge collateral (conservative estimate for 3x leverage with ~0.5 delta)
-        uint256 collateralAmount = (assets * 15) / 100;
+        // Reserve ~30% for hedge collateral (conservative estimate for 2x leverage with ~0.5 delta)
+        uint256 collateralAmount = (assets * 30) / 100;
         uint256 lpAmount = assets - collateralAmount;
 
         // 1. Swap for LP

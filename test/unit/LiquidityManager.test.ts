@@ -134,7 +134,7 @@ describe("LiquidityManager", function () {
       const { liquidityManager } = await loadFixture(deployFixture);
 
       expect(await liquidityManager.PRECISION()).to.equal(PRECISION);
-      expect(await liquidityManager.MAX_SLIPPAGE()).to.equal(BigInt(1e16)); // 1%
+      expect(await liquidityManager.MAX_SLIPPAGE()).to.equal(BigInt(1e17)); // 10%
       expect(await liquidityManager.DEFAULT_SLIPPAGE()).to.equal(BigInt(5e15)); // 0.5%
     });
 
@@ -240,7 +240,7 @@ describe("LiquidityManager", function () {
     it("should reject slippage above maximum", async function () {
       const { liquidityManager, owner } = await loadFixture(deployFixture);
 
-      const tooHighSlippage = BigInt(2e16); // 2% > MAX_SLIPPAGE (1%)
+      const tooHighSlippage = BigInt(11e16); // 11% > MAX_SLIPPAGE (10%)
       await expect(
         liquidityManager.connect(owner).setSlippageTolerance(tooHighSlippage)
       ).to.be.revertedWithCustomError(liquidityManager, "SlippageTooHigh");
