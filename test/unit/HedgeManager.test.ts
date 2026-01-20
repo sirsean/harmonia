@@ -235,9 +235,7 @@ describe("HedgeManager", function () {
       const newRouter = await MockExchangeRouter.deploy();
       await newRouter.waitForDeployment();
 
-      await expect(
-        hedgeManager.connect(owner).setExchangeRouter(await newRouter.getAddress())
-      )
+      await expect(hedgeManager.connect(owner).setExchangeRouter(await newRouter.getAddress()))
         .to.emit(hedgeManager, "ExchangeRouterUpdated")
         .withArgs(await exchangeRouter.getAddress(), await newRouter.getAddress());
     });
