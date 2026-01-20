@@ -19,7 +19,7 @@ describeFork("HedgeManager Fork Tests", function () {
   // Arbitrum mainnet addresses (from PLAN.md Appendix A)
   const ARBITRUM_ADDRESSES = {
     // GMX v2
-    EXCHANGE_ROUTER: "0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8",
+    EXCHANGE_ROUTER: "0x1C3fa76e6E1088bCE750f23a5BFcffa1efEF6A41",
     ORDER_VAULT: "0x31eF83a530Fde1B38EE9A18093A333D8Bbbc40D5",
     DATA_STORE: "0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8",
     ETH_USD_MARKET: "0x70d95587d40A2caf56bd97485aB3Eec10Bee6336",
@@ -137,6 +137,17 @@ describeFork("HedgeManager Fork Tests", function () {
       expect(await hedgeManager.market()).to.equal(ARBITRUM_ADDRESSES.ETH_USD_MARKET);
       expect(await hedgeManager.collateralToken()).to.equal(ARBITRUM_ADDRESSES.USDC);
       expect(await hedgeManager.indexToken()).to.equal(ARBITRUM_ADDRESSES.WETH);
+    });
+
+    it("should expose a valid underlying router", async function () {
+      const exchangeRouter = await ethers.getContractAt(
+        "IExchangeRouter",
+        ARBITRUM_ADDRESSES.EXCHANGE_ROUTER
+      );
+      const router = await exchangeRouter.router();
+      expect(router).to.not.equal(ethers.ZeroAddress);
+      const code = await ethers.provider.getCode(router);
+      expect(code).to.not.equal("0x");
     });
 
     it("should connect to real Chainlink price feed", async function () {

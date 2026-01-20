@@ -12,6 +12,7 @@ contract MockExchangeRouter is IExchangeRouter {
 
     address public override dataStore;
     address public override orderVault;
+    address public override router;
 
     uint256 private _orderNonce;
     uint256 public executionFee = 0.001 ether;
@@ -41,6 +42,7 @@ contract MockExchangeRouter is IExchangeRouter {
     constructor() {
         dataStore = address(new MockDataStore());
         orderVault = address(new MockOrderVault());
+        router = address(0);
     }
 
     function setDataStore(address _dataStore) external {
@@ -53,6 +55,10 @@ contract MockExchangeRouter is IExchangeRouter {
 
     function setExecutionFee(uint256 _fee) external {
         executionFee = _fee;
+    }
+
+    function setRouter(address _router) external {
+        router = _router;
     }
 
     function createOrder(

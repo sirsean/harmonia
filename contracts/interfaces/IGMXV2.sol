@@ -90,6 +90,9 @@ interface IExchangeRouter {
 
     /// @notice Returns the address of the order vault
     function orderVault() external view returns (address);
+
+    /// @notice Returns the address of the GMX Router
+    function router() external view returns (address);
 }
 
 /// @title GMX V2 Order Vault Interface
