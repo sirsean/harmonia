@@ -40,6 +40,8 @@ describe("HedgeManager", function () {
     const MockExchangeRouter = await ethers.getContractFactory("MockExchangeRouter");
     const exchangeRouter = await MockExchangeRouter.deploy();
     await exchangeRouter.waitForDeployment();
+    const mockRouterAddress = ethers.Wallet.createRandom().address;
+    await exchangeRouter.setRouter(mockRouterAddress);
 
     // Deploy mock price feed
     const MockPriceFeed = await ethers.getContractFactory("MockGMXPriceFeed");
@@ -93,6 +95,7 @@ describe("HedgeManager", function () {
       vault,
       user1,
       marketAddress,
+      mockRouterAddress,
     };
   }
 
@@ -215,6 +218,50 @@ describe("HedgeManager", function () {
     });
   });
 
+  describe("Exchange Router Management", function () {
+    it("should allow owner to set exchange router", async function () {
+      const { hedgeManager, owner } = await loadFixture(deployFixture);
+      const MockExchangeRouter = await ethers.getContractFactory("MockExchangeRouter");
+      const newRouter = await MockExchangeRouter.deploy();
+      await newRouter.waitForDeployment();
+
+      await hedgeManager.connect(owner).setExchangeRouter(await newRouter.getAddress());
+      expect(await hedgeManager.exchangeRouter()).to.equal(await newRouter.getAddress());
+    });
+
+    it("should emit ExchangeRouterUpdated event", async function () {
+      const { hedgeManager, owner, exchangeRouter } = await loadFixture(deployFixture);
+      const MockExchangeRouter = await ethers.getContractFactory("MockExchangeRouter");
+      const newRouter = await MockExchangeRouter.deploy();
+      await newRouter.waitForDeployment();
+
+      await expect(
+        hedgeManager.connect(owner).setExchangeRouter(await newRouter.getAddress())
+      )
+        .to.emit(hedgeManager, "ExchangeRouterUpdated")
+        .withArgs(await exchangeRouter.getAddress(), await newRouter.getAddress());
+    });
+
+    it("should reject non-owner setting exchange router", async function () {
+      const { hedgeManager, user1 } = await loadFixture(deployFixture);
+      const MockExchangeRouter = await ethers.getContractFactory("MockExchangeRouter");
+      const newRouter = await MockExchangeRouter.deploy();
+      await newRouter.waitForDeployment();
+
+      await expect(
+        hedgeManager.connect(user1).setExchangeRouter(await newRouter.getAddress())
+      ).to.be.revertedWithCustomError(hedgeManager, "OwnableUnauthorizedAccount");
+    });
+
+    it("should reject zero address exchange router", async function () {
+      const { hedgeManager, owner } = await loadFixture(deployFixture);
+
+      await expect(
+        hedgeManager.connect(owner).setExchangeRouter(ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(hedgeManager, "ZeroAddress");
+    });
+  });
+
   describe("Slippage Management", function () {
     it("should allow owner to set slippage tolerance", async function () {
       const { hedgeManager, owner } = await loadFixture(deployFixture);
@@ -317,6 +364,17 @@ describe("HedgeManager", function () {
         .openShort(POSITION_SIZE_USD, COLLATERAL_AMOUNT, { value: EXECUTION_FEE });
 
       expect(await hedgeManager.totalCollateralDeposited()).to.equal(COLLATERAL_AMOUNT);
+    });
+
+    it("should approve the underlying router for collateral", async function () {
+      const { hedgeManager, vault, usdc, mockRouterAddress } = await loadFixture(deployFixture);
+
+      await hedgeManager
+        .connect(vault)
+        .openShort(POSITION_SIZE_USD, COLLATERAL_AMOUNT, { value: EXECUTION_FEE });
+
+      const allowance = await usdc.allowance(await hedgeManager.getAddress(), mockRouterAddress);
+      expect(allowance).to.equal(COLLATERAL_AMOUNT);
     });
 
     it("should reject if position already exists", async function () {
