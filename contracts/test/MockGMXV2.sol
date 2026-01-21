@@ -25,6 +25,15 @@ contract MockExchangeRouter is IExchangeRouter {
     // Mock position state
     mapping(bytes32 => MockPosition) public positions;
 
+    // GMX V2 DataStore Keys (Must match HedgeManager)
+    bytes32 public constant POSITION_SIZE_IN_USD = keccak256(abi.encode("POSITION_SIZE_IN_USD"));
+    bytes32 public constant POSITION_SIZE_IN_TOKENS =
+        keccak256(abi.encode("POSITION_SIZE_IN_TOKENS"));
+    bytes32 public constant POSITION_COLLATERAL_AMOUNT =
+        keccak256(abi.encode("POSITION_COLLATERAL_AMOUNT"));
+    bytes32 public constant POSITION_FUNDING_FEE_AMOUNT =
+        keccak256(abi.encode("POSITION_FUNDING_FEE_AMOUNT"));
+
     struct MockPosition {
         uint256 sizeInUsd;
         uint256 sizeInTokens;
@@ -122,9 +131,9 @@ contract MockExchangeRouter is IExchangeRouter {
         }
 
         // Update DataStore so HedgeManager can read it
-        bytes32 sizeUsdKey = keccak256(abi.encode(positionKey, "sizeInUsd"));
-        bytes32 sizeTokensKey = keccak256(abi.encode(positionKey, "sizeInTokens"));
-        bytes32 collateralKey = keccak256(abi.encode(positionKey, "collateralAmount"));
+        bytes32 sizeUsdKey = keccak256(abi.encode(POSITION_SIZE_IN_USD, positionKey));
+        bytes32 sizeTokensKey = keccak256(abi.encode(POSITION_SIZE_IN_TOKENS, positionKey));
+        bytes32 collateralKey = keccak256(abi.encode(POSITION_COLLATERAL_AMOUNT, positionKey));
 
         IDataStore(dataStore).setUint(sizeUsdKey, position.sizeInUsd);
         IDataStore(dataStore).setUint(sizeTokensKey, position.sizeInTokens);
@@ -219,6 +228,17 @@ contract MockExchangeRouter is IExchangeRouter {
             isLong: isLong,
             exists: sizeInUsd > 0
         });
+
+        // Update DataStore
+        bytes32 sizeUsdKey = keccak256(abi.encode(POSITION_SIZE_IN_USD, positionKey));
+        bytes32 sizeTokensKey = keccak256(abi.encode(POSITION_SIZE_IN_TOKENS, positionKey));
+        bytes32 collateralKey = keccak256(abi.encode(POSITION_COLLATERAL_AMOUNT, positionKey));
+        bytes32 fundingKey = keccak256(abi.encode(POSITION_FUNDING_FEE_AMOUNT, positionKey));
+
+        IDataStore(dataStore).setUint(sizeUsdKey, sizeInUsd);
+        IDataStore(dataStore).setUint(sizeTokensKey, sizeInTokens);
+        IDataStore(dataStore).setUint(collateralKey, collateralAmount);
+        IDataStore(dataStore).setInt(fundingKey, fundingFeeAmount);
     }
 
     function setPositionPnL(
@@ -230,6 +250,7 @@ contract MockExchangeRouter is IExchangeRouter {
     ) external {
         bytes32 positionKey = _getPositionKey(account, market, collateralToken, isLong);
         positions[positionKey].unrealizedPnl = pnl;
+        // PnL is not stored in DataStore for HedgeManager calculation
     }
 
     function setPositionFunding(
@@ -241,6 +262,9 @@ contract MockExchangeRouter is IExchangeRouter {
     ) external {
         bytes32 positionKey = _getPositionKey(account, market, collateralToken, isLong);
         positions[positionKey].fundingFeeAmount = funding;
+
+        bytes32 fundingKey = keccak256(abi.encode(POSITION_FUNDING_FEE_AMOUNT, positionKey));
+        IDataStore(dataStore).setInt(fundingKey, funding);
     }
 
     function getPosition(
