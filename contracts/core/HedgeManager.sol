@@ -31,6 +31,12 @@ contract HedgeManager is
     /// @notice GMX USD precision (30 decimals)
     uint256 public constant GMX_USD_PRECISION = 1e30;
 
+    /// @notice GMX V2 DataStore Keys
+    bytes32 public constant POSITION_SIZE_IN_USD = keccak256(abi.encode("POSITION_SIZE_IN_USD"));
+    bytes32 public constant POSITION_SIZE_IN_TOKENS = keccak256(abi.encode("POSITION_SIZE_IN_TOKENS"));
+    bytes32 public constant POSITION_COLLATERAL_AMOUNT = keccak256(abi.encode("POSITION_COLLATERAL_AMOUNT"));
+    bytes32 public constant POSITION_FUNDING_FEE_AMOUNT = keccak256(abi.encode("POSITION_FUNDING_FEE_AMOUNT"));
+
     /// @notice Default acceptable price slippage (1% = 1e16)
     uint256 public constant DEFAULT_SLIPPAGE = 1e16;
 
@@ -509,7 +515,7 @@ contract HedgeManager is
         IDataStore dataStore = IDataStore(exchangeRouter.dataStore());
 
         // GMX stores position size at specific key
-        bytes32 sizeKey = keccak256(abi.encode(positionKey, "sizeInUsd"));
+        bytes32 sizeKey = keccak256(abi.encode(POSITION_SIZE_IN_USD, positionKey));
         sizeUsd = dataStore.getUint(sizeKey);
     }
 
@@ -518,7 +524,7 @@ contract HedgeManager is
         bytes32 positionKey = getPositionKey();
         IDataStore dataStore = IDataStore(exchangeRouter.dataStore());
 
-        bytes32 sizeKey = keccak256(abi.encode(positionKey, "sizeInTokens"));
+        bytes32 sizeKey = keccak256(abi.encode(POSITION_SIZE_IN_TOKENS, positionKey));
         sizeTokens = dataStore.getUint(sizeKey);
     }
 
@@ -527,7 +533,7 @@ contract HedgeManager is
         bytes32 positionKey = getPositionKey();
         IDataStore dataStore = IDataStore(exchangeRouter.dataStore());
 
-        bytes32 collateralKey = keccak256(abi.encode(positionKey, "collateralAmount"));
+        bytes32 collateralKey = keccak256(abi.encode(POSITION_COLLATERAL_AMOUNT, positionKey));
         collateral = dataStore.getUint(collateralKey);
     }
 
@@ -585,7 +591,7 @@ contract HedgeManager is
         bytes32 positionKey = getPositionKey();
         IDataStore dataStore = IDataStore(exchangeRouter.dataStore());
 
-        bytes32 fundingKey = keccak256(abi.encode(positionKey, "fundingFeeAmount"));
+        bytes32 fundingKey = keccak256(abi.encode(POSITION_FUNDING_FEE_AMOUNT, positionKey));
         fundingAmount = dataStore.getInt(fundingKey);
     }
 
@@ -740,15 +746,32 @@ contract HedgeManager is
     }
 
     /// @notice Calculate required collateral for a position size
-    function _calculateRequiredCollateral(uint256 sizeDeltaUsd) internal pure returns (uint256) {
+    function _calculateRequiredCollateral(uint256 sizeDeltaUsd) internal view returns (uint256) {
         // Target 2x leverage by default
         uint256 targetLeverage = 2e18;
 
         // collateral (in USD 30 decimals) = size / leverage
         uint256 collateralUsd = (sizeDeltaUsd * PRECISION) / targetLeverage;
+        uint256 requiredAmount = collateralUsd / 1e24; // 6 decimals
 
-        // Convert from 30 decimals to 6 decimals (USDC)
-        return collateralUsd / 1e24;
+        // Check available balance of the payer (msg.sender, usually the vault)
+        uint256 available = IERC20(collateralToken).balanceOf(msg.sender);
+
+        if (requiredAmount > available) {
+            // Check if available collateral allows us to stay within maxLeverage
+            // minCollateral = size / maxLeverage
+            uint256 minCollateralUsd = (sizeDeltaUsd * PRECISION) / maxLeverage;
+            uint256 minCollateral = minCollateralUsd / 1e24;
+
+            if (available >= minCollateral) {
+                // Use what we have
+                return available;
+            }
+            // If not enough even for maxLeverage, returns available (will likely fail on GMX or _validateLeverage)
+            return available;
+        }
+
+        return requiredAmount;
     }
 
     /// @notice Get current price from price feed with full validation
