@@ -997,4 +997,89 @@ contract LiquidityManager is
         // Convert 8 decimals (Chainlink) to 18 decimals
         return uint256(answer) * 1e10;
     }
+
+    /// @inheritdoc ILiquidityManager
+    function swapForLP(
+        address tokenIn,
+        uint256 amountIn,
+        int24 rangeWidthMultiplier,
+        uint256 deadline
+    ) external onlyVault returns (uint256 amountOut) {
+        if (amountIn == 0) return 0;
+
+        address pool = getPool();
+        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(pool).slot0();
+
+        // Determine range
+        int24 _tickLower;
+        int24 _tickUpper;
+        if (tokenId != 0) {
+            _tickLower = tickLower;
+            _tickUpper = tickUpper;
+        } else {
+            (_tickLower, _tickUpper) = this.getRebalanceTicks(rangeWidthMultiplier);
+        }
+
+        uint160 sqrtPriceLowerX96 = DeltaCalculator.getSqrtRatioAtTick(_tickLower);
+        uint160 sqrtPriceUpperX96 = DeltaCalculator.getSqrtRatioAtTick(_tickUpper);
+
+        // Simulate ratio
+        uint128 dummyLiquidity = 1e18;
+        uint256 amt0 = DeltaCalculator.getBaseTokenAmount(
+            sqrtPriceX96,
+            sqrtPriceLowerX96,
+            sqrtPriceUpperX96,
+            dummyLiquidity
+        );
+        uint256 amt1 = DeltaCalculator.getQuoteTokenAmount(
+            sqrtPriceX96,
+            sqrtPriceLowerX96,
+            sqrtPriceUpperX96,
+            dummyLiquidity
+        );
+
+        // Convert amt0 to quote value for ratio calculation
+        // price = sqrtPrice^2 / 2^192
+        // val0 = amt0 * price
+        uint256 val0 = DeltaCalculator.mulDiv(
+            amt0,
+            uint256(sqrtPriceX96) * uint256(sqrtPriceX96),
+            uint256(1) << 192
+        );
+        uint256 totalVal = val0 + amt1;
+
+        if (totalVal == 0) return 0;
+
+        // Calculate swap amount
+        address tokenOut;
+        uint256 swapAmount;
+
+        if (tokenIn == quoteToken) {
+            // We hold Quote, need Base
+            swapAmount = (amountIn * val0) / totalVal;
+            tokenOut = baseToken;
+        } else {
+            // We hold Base, need Quote
+            swapAmount = (amountIn * amt1) / totalVal;
+            tokenOut = quoteToken;
+        }
+
+        if (swapAmount > 0) {
+            IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), swapAmount);
+            IERC20(tokenIn).safeIncreaseAllowance(address(swapRouter), swapAmount);
+
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                fee: poolFee,
+                recipient: msg.sender, // Refund to Vault
+                deadline: deadline,
+                amountIn: swapAmount,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            });
+
+            amountOut = swapRouter.exactInputSingle(params);
+        }
+    }
 }

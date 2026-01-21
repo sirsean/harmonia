@@ -105,4 +105,11 @@ interface IHedgeManager {
 
     /// @notice Get total collateral deposited
     function totalCollateralDeposited() external view returns (uint256);
+
+    /// @notice Sweep idle tokens back to vault
+    /// @param token Token to sweep
+    function sweep(address token) external;
+
+    /// @notice Sweep ETH back to vault
+    function sweepEth() external;
 }

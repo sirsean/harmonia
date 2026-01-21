@@ -155,4 +155,51 @@ library YieldMath {
             z = (x / z + z) / 2;
         }
     }
+
+    /// @notice Convert a token amount to the equivalent value in another token
+    /// @param amount Amount of the token to convert
+    /// @param tokenDecimals Decimals of the token to convert
+    /// @param targetDecimals Decimals of the target token
+    /// @param price Price of the base token in USD (18 decimals)
+    /// @param isBaseToQuote True if converting from base token to quote token
+    /// @return convertedAmount Equivalent amount in target token
+    function convertTokenValue(
+        uint256 amount,
+        uint8 tokenDecimals,
+        uint8 targetDecimals,
+        uint256 price,
+        bool isBaseToQuote
+    ) internal pure returns (uint256 convertedAmount) {
+        if (isBaseToQuote) {
+            // amount is Base (e.g. WETH), price is USD/Base
+            // ValueInUSD = (amount * price) / 10^tokenDecimals
+            uint256 value18 = (amount * price) / (10 ** tokenDecimals);
+
+            // Convert from 18 decimals to target decimals
+            if (targetDecimals <= 18) {
+                convertedAmount = value18 / (10 ** (18 - targetDecimals));
+            } else {
+                convertedAmount = value18 * (10 ** (targetDecimals - 18));
+            }
+        } else {
+            // amount is Quote (e.g. USDC), target is Base (e.g. WETH)
+            // amount18 = amount * 10^(18-tokenDecimals)
+            // ValueInBase18 = amount18 * 1e18 / price
+            uint256 amount18;
+            if (tokenDecimals <= 18) {
+                amount18 = amount * (10 ** (18 - tokenDecimals));
+            } else {
+                amount18 = amount / (10 ** (tokenDecimals - 18));
+            }
+
+            uint256 valueBase18 = (amount18 * PRECISION) / price;
+
+            // Convert from 18 decimals to target decimals
+            if (targetDecimals <= 18) {
+                convertedAmount = valueBase18 / (10 ** (18 - targetDecimals));
+            } else {
+                convertedAmount = valueBase18 * (10 ** (targetDecimals - 18));
+            }
+        }
+    }
 }

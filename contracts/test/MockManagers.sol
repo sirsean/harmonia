@@ -30,12 +30,14 @@ contract MockLiquidityManager is ILiquidityManager {
 
     int256 public mockDelta;
     uint256 public mockValue;
+    uint256 public mockPrice;
 
     constructor(address _baseToken, address _quoteToken) {
         baseToken = _baseToken;
         quoteToken = _quoteToken;
         router = new SimpleMockSwapRouter();
         pool = address(new MockPool());
+        mockPrice = 1e18;
     }
 
     function setVault(address _vault) external {
@@ -48,6 +50,10 @@ contract MockLiquidityManager is ILiquidityManager {
 
     function setMockValue(uint256 _value) external {
         mockValue = _value;
+    }
+
+    function setMockPrice(uint256 _price) external {
+        mockPrice = _price;
     }
 
     // Dummy implementations
@@ -124,11 +130,15 @@ contract MockLiquidityManager is ILiquidityManager {
     function getRebalanceTicks(int24) external pure returns (int24, int24) {
         return (-100, 100);
     }
-    function getOraclePrice() external pure returns (uint256) {
-        return 1e18;
+    function getOraclePrice() external view returns (uint256) {
+        return mockPrice;
     }
     function swapRouter() external view returns (ISwapRouter) {
         return ISwapRouter(address(router));
+    }
+
+    function swapForLP(address, uint256, int24, uint256) external pure returns (uint256) {
+        return 0;
     }
 }
 
@@ -204,4 +214,7 @@ contract MockHedgeManager is IHedgeManager {
     function totalCollateralDeposited() external pure returns (uint256) {
         return 0;
     }
+
+    function sweep(address) external pure {}
+    function sweepEth() external pure {}
 }

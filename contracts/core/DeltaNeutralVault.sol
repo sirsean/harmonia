@@ -14,6 +14,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {ILiquidityManager} from "../interfaces/ILiquidityManager.sol";
 import {IHedgeManager} from "../interfaces/IHedgeManager.sol";
 import {SecurityModule} from "../libraries/SecurityModule.sol";
+import {YieldMath} from "../libraries/YieldMath.sol";
 import {IUniswapV3Pool, ISwapRouter} from "../interfaces/IUniswapV3.sol";
 import {DeltaCalculator} from "../libraries/DeltaCalculator.sol";
 
@@ -243,8 +244,54 @@ contract DeltaNeutralVault is
         uint256 idleAssets = IERC20(asset()).balanceOf(address(this));
         uint256 lpValue = _getLPValue();
         uint256 hedgeValue = _getHedgeValue();
+        uint256 otherTokensValue = _getOtherTokensValue();
 
-        return idleAssets + lpValue + hedgeValue;
+        return idleAssets + lpValue + hedgeValue + otherTokensValue;
+    }
+
+    /// @notice Get the value of tokens in the vault other than the main asset
+    /// @return value Value of other tokens in asset terms
+    function _getOtherTokensValue() internal view returns (uint256 value) {
+        if (liquidityManager == address(0)) return 0;
+
+        address assetToken = asset();
+        address baseToken = ILiquidityManager(liquidityManager).baseToken();
+        address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
+
+        address otherToken = (assetToken == baseToken) ? quoteToken : baseToken;
+
+        // Prevent double counting if base/quote tokens are the same (e.g. in tests)
+        if (otherToken == assetToken) return 0;
+
+        uint256 balance = IERC20(otherToken).balanceOf(address(this));
+
+        if (balance == 0) return 0;
+
+        return _convertTokenToAsset(otherToken, balance);
+    }
+
+    /// @notice Convert a token amount to the equivalent value in the vault's asset
+    function _convertTokenToAsset(
+        address token,
+        uint256 amount
+    ) internal view returns (uint256 assetAmount) {
+        address assetToken = asset();
+        if (token == assetToken) return amount;
+
+        address baseToken = ILiquidityManager(liquidityManager).baseToken();
+        uint256 price = ILiquidityManager(liquidityManager).getOraclePrice();
+
+        uint8 tokenDecimals = IERC20Metadata(token).decimals();
+        uint8 assetDecimals = IERC20Metadata(assetToken).decimals();
+
+        return
+            YieldMath.convertTokenValue(
+                amount,
+                tokenDecimals,
+                assetDecimals,
+                price,
+                token == baseToken
+            );
     }
 
     /// @notice Deposit assets and receive vault shares
@@ -655,62 +702,72 @@ contract DeltaNeutralVault is
     // ============ Internal Functions ============
 
     /// @notice Deploy capital to the delta-neutral strategy
-    /// @param assets Amount of assets to deploy
+    /// @param assets Amount of assets to deploy (newly added)
     function _deployCapital(uint256 assets) internal {
         if (liquidityManager == address(0) || hedgeManager == address(0)) {
             emit CapitalDeployed(assets, 0, 0);
             return;
         }
 
-        // Reserve ~30% for hedge collateral (conservative estimate for 2x leverage with ~0.5 delta)
-        uint256 collateralAmount = (assets * 30) / 100;
-        uint256 lpAmount = assets - collateralAmount;
-
-        // 1. Swap for LP
-        _swapForLP(lpAmount);
-
-        // 2. Deposit to LP
+        // Sweep idle funds from hedge manager (e.g. from cancelled orders)
+        try IHedgeManager(hedgeManager).sweep(asset()) {} catch {}
 
         address baseToken = ILiquidityManager(liquidityManager).baseToken();
-
         address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
 
-        // We need to know balances of this contract
+        // Get total idle value including other tokens (e.g. WETH)
+        uint256 idleAsset = IERC20(asset()).balanceOf(address(this));
+        uint256 otherValue = _getOtherTokensValue();
+        uint256 totalIdle = idleAsset + otherValue;
 
+        if (totalIdle == 0) return;
+
+        // Reserve ~30% for hedge collateral
+        uint256 collateralAmount = (totalIdle * 30) / 100;
+
+        // Ensure we have enough of the asset token for collateral
+        if (idleAsset < collateralAmount) {
+            // Need to swap some other tokens to asset token
+            _swapOtherToAsset();
+            idleAsset = IERC20(asset()).balanceOf(address(this));
+        }
+
+        uint256 lpAmount = (idleAsset > collateralAmount) ? idleAsset - collateralAmount : 0;
+
+        // 1. Swap for LP
+        if (lpAmount > 0) {
+            ILiquidityManager(liquidityManager).swapForLP(
+                asset(),
+                lpAmount,
+                rangeWidthMultiplier,
+                block.timestamp
+            );
+        }
+
+        // 2. Deposit to LP
         uint256 balBase = IERC20(baseToken).balanceOf(address(this));
-
         uint256 balQuote = IERC20(quoteToken).balanceOf(address(this));
 
-        // Reserve collateral if it is one of the tokens (usually asset() which is quoteToken)
-
+        // Reserve collateral
         if (baseToken == asset()) {
             if (balBase > collateralAmount) balBase -= collateralAmount;
             else balBase = 0;
         }
-
         if (quoteToken == asset()) {
             if (balQuote > collateralAmount) balQuote -= collateralAmount;
             else balQuote = 0;
         }
 
         if (balBase > 0 || balQuote > 0) {
-            // Determine amount0 and amount1 based on address order
-
             uint256 amount0;
-
             uint256 amount1;
-
             if (baseToken < quoteToken) {
                 amount0 = balBase;
-
                 amount1 = balQuote;
             } else {
                 amount0 = balQuote;
-
                 amount1 = balBase;
             }
-
-            // Check if position exists
 
             if (ILiquidityManager(liquidityManager).tokenId() != 0) {
                 ILiquidityManager(liquidityManager).increaseLiquidity(
@@ -719,8 +776,6 @@ contract DeltaNeutralVault is
                     block.timestamp
                 );
             } else {
-                // Get ticks
-
                 (int24 tickLower, int24 tickUpper) = ILiquidityManager(liquidityManager)
                     .getRebalanceTicks(rangeWidthMultiplier);
 
@@ -735,107 +790,36 @@ contract DeltaNeutralVault is
         }
 
         // 3. Adjust Hedge
-        // Trigger rebalance to adjust hedge size to match new LP delta
-        // Use 0 as targetHedgeSize to force calculation based on LP delta
-        // _executeRebalance is internal, we can call it directly.
         _executeRebalance(0);
 
         emit CapitalDeployed(assets, _getLPValue(), _getHedgeValue());
     }
 
-    /// @notice Helper to swap assets for LP provision
-    /// @param amountIn Amount of asset() to potentially swap
-    function _swapForLP(uint256 amountIn) internal {
-        if (amountIn == 0) return;
-
-        address liquidityMgr = liquidityManager;
-        address pool = ILiquidityManager(liquidityMgr).getPool();
-        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(pool).slot0();
-
-        // Determine range
-        int24 tickLower;
-        int24 tickUpper;
-        if (ILiquidityManager(liquidityMgr).tokenId() != 0) {
-            (, tickLower, tickUpper, ) = ILiquidityManager(liquidityMgr).getPositionInfo();
-        } else {
-            (tickLower, tickUpper) = ILiquidityManager(liquidityMgr).getRebalanceTicks(
-                rangeWidthMultiplier
-            );
-        }
-
-        uint160 sqrtPriceLowerX96 = DeltaCalculator.getSqrtRatioAtTick(tickLower);
-        uint160 sqrtPriceUpperX96 = DeltaCalculator.getSqrtRatioAtTick(tickUpper);
-
-        // Simulate ratio
-        uint128 dummyLiquidity = 1e18;
-        uint256 amt0 = DeltaCalculator.getBaseTokenAmount(
-            sqrtPriceX96,
-            sqrtPriceLowerX96,
-            sqrtPriceUpperX96,
-            dummyLiquidity
-        );
-        uint256 amt1 = DeltaCalculator.getQuoteTokenAmount(
-            sqrtPriceX96,
-            sqrtPriceLowerX96,
-            sqrtPriceUpperX96,
-            dummyLiquidity
-        );
-
-        // Convert amt0 to quote value for ratio calculation
-        // price = sqrtPrice^2 / 2^192
-        // val0 = amt0 * price
-        uint256 val0 = DeltaCalculator.mulDiv(
-            amt0,
-            uint256(sqrtPriceX96) * uint256(sqrtPriceX96),
-            uint256(1) << 192
-        );
-        uint256 totalVal = val0 + amt1;
-
-        if (totalVal == 0) return;
-
-        // Calculate swap amount
-        // If asset() is Quote Token (token1), we need to swap portion to Base Token (token0)
-        // If asset() is Base Token (token0), we need to swap portion to Quote Token (token1)
-
+    /// @notice Helper to swap other tokens to asset token
+    function _swapOtherToAsset() internal {
         address assetToken = asset();
-        address baseToken = ILiquidityManager(liquidityMgr).baseToken();
-        address quoteToken = ILiquidityManager(liquidityMgr).quoteToken();
+        address baseToken = ILiquidityManager(liquidityManager).baseToken();
+        address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
+        address otherToken = (assetToken == baseToken) ? quoteToken : baseToken;
 
-        uint256 swapAmount;
-        address tokenIn = assetToken;
-        address tokenOut;
+        uint256 otherBalance = IERC20(otherToken).balanceOf(address(this));
+        if (otherBalance == 0) return;
 
-        if (assetToken == quoteToken) {
-            // We hold Quote, need Base
-            // Portion needed in Base value is val0 / totalVal
-            swapAmount = (amountIn * val0) / totalVal;
-            tokenOut = baseToken;
-        } else {
-            // We hold Base, need Quote
-            // Portion needed in Quote value is amt1 / totalVal (wait, amt1 is value1 since it's quote)
-            // Value1 = amt1
-            swapAmount = (amountIn * amt1) / totalVal;
-            tokenOut = quoteToken;
-        }
+        ISwapRouter router = ILiquidityManager(liquidityManager).swapRouter();
+        IERC20(otherToken).safeIncreaseAllowance(address(router), otherBalance);
 
-        if (swapAmount > 0) {
-            ISwapRouter router = ILiquidityManager(liquidityMgr).swapRouter();
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: otherToken,
+            tokenOut: assetToken,
+            fee: ILiquidityManager(liquidityManager).poolFee(),
+            recipient: address(this),
+            deadline: block.timestamp,
+            amountIn: otherBalance, // Just swap all of it to be sure we have enough collateral
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
 
-            IERC20(tokenIn).safeIncreaseAllowance(address(router), swapAmount);
-
-            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-                tokenIn: tokenIn,
-                tokenOut: tokenOut,
-                fee: ILiquidityManager(liquidityMgr).poolFee(),
-                recipient: address(this),
-                deadline: block.timestamp,
-                amountIn: swapAmount,
-                amountOutMinimum: 0,
-                sqrtPriceLimitX96: 0
-            });
-
-            router.exactInputSingle(params);
-        }
+        router.exactInputSingle(params);
     }
 
     /// @notice Unwind capital from strategy for withdrawal
@@ -1024,45 +1008,24 @@ contract DeltaNeutralVault is
     function _calculateFeesInUSD(uint256 amount0, uint256 amount1) internal view returns (uint256) {
         if (liquidityManager == address(0)) return 0;
 
-        // Assume price is 18 decimals, Base/USD (or Quote/USD if Quote is volatile, but here Quote is USDC)
-        // Usually Oracle is for Base Token (ETH). Quote is USDC ($1).
-        // Check tokens
         address baseToken = ILiquidityManager(liquidityManager).baseToken();
         address quoteToken = ILiquidityManager(liquidityManager).quoteToken();
 
-        // Get decimals
-        uint8 d0 = IERC20Metadata(baseToken).decimals();
-        uint8 d1 = IERC20Metadata(quoteToken).decimals();
-
-        uint256 price = ILiquidityManager(liquidityManager).getOraclePrice(); // 18 decimals
-
-        uint256 value0;
-        uint256 value1;
-
-        // We need to know which one is Base.
+        // We need to know which one is token0 and token1 based on address order
         address token0;
-        if (baseToken < quoteToken) token0 = baseToken;
-        else token0 = quoteToken;
-
-        if (token0 == baseToken) {
-            // amount0 is Base
-            // Value0 = amount0 * price / 10^d0
-            value0 = (amount0 * price) / (10 ** d0);
-
-            // Value1 = amount1 (USDC)
-            // Scale to 18 decimals: amount1 * 10^(18-d1)
-            if (d1 <= 18) value1 = amount1 * (10 ** (18 - d1));
-            else value1 = amount1 / (10 ** (d1 - 18));
+        address token1;
+        if (baseToken < quoteToken) {
+            token0 = baseToken;
+            token1 = quoteToken;
         } else {
-            // amount0 is Quote
-            if (d0 <= 18) value0 = amount0 * (10 ** (18 - d0));
-            else value0 = amount0 / (10 ** (d0 - 18));
-
-            // amount1 is Base
-            value1 = (amount1 * price) / (10 ** d1);
+            token0 = quoteToken;
+            token1 = baseToken;
         }
 
-        return value0 + value1;
+        uint256 val0 = _convertTokenToAsset(token0, amount0);
+        uint256 val1 = _convertTokenToAsset(token1, amount1);
+
+        return val0 + val1;
     }
 
     /// @notice Claim hedge funding

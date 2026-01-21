@@ -849,4 +849,22 @@ contract HedgeManager is
 
     /// @notice Receive ETH for execution fee refunds
     receive() external payable {}
+
+    /// @notice Sweep idle tokens back to vault
+    /// @param token Token to sweep
+    function sweep(address token) external onlyVaultOrOwner {
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        if (balance > 0) {
+            IERC20(token).safeTransfer(vault, balance);
+        }
+    }
+
+    /// @notice Sweep ETH back to vault
+    function sweepEth() external onlyVaultOrOwner {
+        uint256 balance = address(this).balance;
+        if (balance > 0) {
+            (bool success, ) = vault.call{value: balance}("");
+            if (!success) revert ETHTransferFailed();
+        }
+    }
 }
