@@ -33,9 +33,12 @@ contract HedgeManager is
 
     /// @notice GMX V2 DataStore Keys
     bytes32 public constant POSITION_SIZE_IN_USD = keccak256(abi.encode("POSITION_SIZE_IN_USD"));
-    bytes32 public constant POSITION_SIZE_IN_TOKENS = keccak256(abi.encode("POSITION_SIZE_IN_TOKENS"));
-    bytes32 public constant POSITION_COLLATERAL_AMOUNT = keccak256(abi.encode("POSITION_COLLATERAL_AMOUNT"));
-    bytes32 public constant POSITION_FUNDING_FEE_AMOUNT = keccak256(abi.encode("POSITION_FUNDING_FEE_AMOUNT"));
+    bytes32 public constant POSITION_SIZE_IN_TOKENS =
+        keccak256(abi.encode("POSITION_SIZE_IN_TOKENS"));
+    bytes32 public constant POSITION_COLLATERAL_AMOUNT =
+        keccak256(abi.encode("POSITION_COLLATERAL_AMOUNT"));
+    bytes32 public constant POSITION_FUNDING_FEE_AMOUNT =
+        keccak256(abi.encode("POSITION_FUNDING_FEE_AMOUNT"));
 
     /// @notice Default acceptable price slippage (1% = 1e16)
     uint256 public constant DEFAULT_SLIPPAGE = 1e16;

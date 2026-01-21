@@ -84,6 +84,11 @@ describe("HedgeManager", function () {
     const dataStoreAddress = await exchangeRouter.dataStore();
     const dataStore = await ethers.getContractAt("MockDataStore", dataStoreAddress);
 
+    // Get keys
+    const KEY_SIZE_USD = await hedgeManager.POSITION_SIZE_IN_USD();
+    const KEY_SIZE_TOKENS = await hedgeManager.POSITION_SIZE_IN_TOKENS();
+    const KEY_COLLATERAL = await hedgeManager.POSITION_COLLATERAL_AMOUNT();
+
     return {
       hedgeManager,
       exchangeRouter,
@@ -96,6 +101,9 @@ describe("HedgeManager", function () {
       user1,
       marketAddress,
       mockRouterAddress,
+      KEY_SIZE_USD,
+      KEY_SIZE_TOKENS,
+      KEY_COLLATERAL,
     };
   }
 
@@ -376,7 +384,7 @@ describe("HedgeManager", function () {
     });
 
     it("should reject if position already exists", async function () {
-      const { hedgeManager, vault, exchangeRouter, marketAddress, usdc, dataStore } =
+      const { hedgeManager, vault, exchangeRouter, marketAddress, usdc, dataStore, KEY_SIZE_USD } =
         await loadFixture(deployFixture);
 
       // First open a position
@@ -387,7 +395,10 @@ describe("HedgeManager", function () {
       // Set position in mock data store
       const positionKey = await hedgeManager.getPositionKey();
       const sizeKey = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [positionKey, "sizeInUsd"])
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_USD, positionKey]
+        )
       );
       await dataStore.setUint(sizeKey, POSITION_SIZE_USD);
 
@@ -469,7 +480,7 @@ describe("HedgeManager", function () {
   describe("Increase Short Position", function () {
     async function openPositionFixture() {
       const fixtures = await loadFixture(deployFixture);
-      const { hedgeManager, vault, dataStore } = fixtures;
+      const { hedgeManager, vault, dataStore, KEY_SIZE_USD, KEY_COLLATERAL } = fixtures;
 
       // Open initial position
       await hedgeManager
@@ -479,12 +490,15 @@ describe("HedgeManager", function () {
       // Set position in mock data store
       const positionKey = await hedgeManager.getPositionKey();
       const sizeKey = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [positionKey, "sizeInUsd"])
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_USD, positionKey]
+        )
       );
       const collateralKey = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["bytes32", "string"],
-          [positionKey, "collateralAmount"]
+          ["bytes32", "bytes32"],
+          [KEY_COLLATERAL, positionKey]
         )
       );
       await dataStore.setUint(sizeKey, POSITION_SIZE_USD);
@@ -528,7 +542,7 @@ describe("HedgeManager", function () {
   describe("Decrease Short Position", function () {
     async function openPositionFixture() {
       const fixtures = await loadFixture(deployFixture);
-      const { hedgeManager, vault, dataStore } = fixtures;
+      const { hedgeManager, vault, dataStore, KEY_SIZE_USD, KEY_COLLATERAL } = fixtures;
 
       // Open initial position
       await hedgeManager
@@ -538,12 +552,15 @@ describe("HedgeManager", function () {
       // Set position in mock data store
       const positionKey = await hedgeManager.getPositionKey();
       const sizeKey = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [positionKey, "sizeInUsd"])
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_USD, positionKey]
+        )
       );
       const collateralKey = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["bytes32", "string"],
-          [positionKey, "collateralAmount"]
+          ["bytes32", "bytes32"],
+          [KEY_COLLATERAL, positionKey]
         )
       );
       await dataStore.setUint(sizeKey, POSITION_SIZE_USD);
@@ -585,7 +602,7 @@ describe("HedgeManager", function () {
   describe("Close Short Position", function () {
     async function openPositionFixture() {
       const fixtures = await loadFixture(deployFixture);
-      const { hedgeManager, vault, dataStore } = fixtures;
+      const { hedgeManager, vault, dataStore, KEY_SIZE_USD, KEY_COLLATERAL } = fixtures;
 
       // Open initial position
       await hedgeManager
@@ -595,12 +612,15 @@ describe("HedgeManager", function () {
       // Set position in mock data store
       const positionKey = await hedgeManager.getPositionKey();
       const sizeKey = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [positionKey, "sizeInUsd"])
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_USD, positionKey]
+        )
       );
       const collateralKey = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["bytes32", "string"],
-          [positionKey, "collateralAmount"]
+          ["bytes32", "bytes32"],
+          [KEY_COLLATERAL, positionKey]
         )
       );
       await dataStore.setUint(sizeKey, POSITION_SIZE_USD);
@@ -630,7 +650,7 @@ describe("HedgeManager", function () {
   describe("Adjust Hedge", function () {
     async function openPositionFixture() {
       const fixtures = await loadFixture(deployFixture);
-      const { hedgeManager, vault, dataStore } = fixtures;
+      const { hedgeManager, vault, dataStore, KEY_SIZE_USD, KEY_COLLATERAL } = fixtures;
 
       // Open initial position
       await hedgeManager
@@ -640,12 +660,15 @@ describe("HedgeManager", function () {
       // Set position in mock data store
       const positionKey = await hedgeManager.getPositionKey();
       const sizeKey = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [positionKey, "sizeInUsd"])
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_USD, positionKey]
+        )
       );
       const collateralKey = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["bytes32", "string"],
-          [positionKey, "collateralAmount"]
+          ["bytes32", "bytes32"],
+          [KEY_COLLATERAL, positionKey]
         )
       );
       await dataStore.setUint(sizeKey, POSITION_SIZE_USD);
@@ -706,7 +729,7 @@ describe("HedgeManager", function () {
   describe("Claim Funding", function () {
     async function openPositionFixture() {
       const fixtures = await loadFixture(deployFixture);
-      const { hedgeManager, vault, dataStore } = fixtures;
+      const { hedgeManager, vault, dataStore, KEY_SIZE_USD } = fixtures;
 
       // Open initial position
       await hedgeManager
@@ -716,7 +739,10 @@ describe("HedgeManager", function () {
       // Set position in mock data store
       const positionKey = await hedgeManager.getPositionKey();
       const sizeKey = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [positionKey, "sizeInUsd"])
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_USD, positionKey]
+        )
       );
       await dataStore.setUint(sizeKey, POSITION_SIZE_USD);
 
@@ -745,7 +771,8 @@ describe("HedgeManager", function () {
   describe("View Functions", function () {
     async function openPositionFixture() {
       const fixtures = await loadFixture(deployFixture);
-      const { hedgeManager, vault, dataStore } = fixtures;
+      const { hedgeManager, vault, dataStore, KEY_SIZE_USD, KEY_SIZE_TOKENS, KEY_COLLATERAL } =
+        fixtures;
 
       // Open initial position
       await hedgeManager
@@ -755,18 +782,21 @@ describe("HedgeManager", function () {
       // Set position in mock data store
       const positionKey = await hedgeManager.getPositionKey();
       const sizeUsdKey = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [positionKey, "sizeInUsd"])
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_USD, positionKey]
+        )
       );
       const sizeTokensKey = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["bytes32", "string"],
-          [positionKey, "sizeInTokens"]
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_TOKENS, positionKey]
         )
       );
       const collateralKey = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["bytes32", "string"],
-          [positionKey, "collateralAmount"]
+          ["bytes32", "bytes32"],
+          [KEY_COLLATERAL, positionKey]
         )
       );
 
@@ -996,7 +1026,15 @@ describe("HedgeManager", function () {
     });
 
     it("should handle price changes in PnL calculation", async function () {
-      const { hedgeManager, vault, dataStore, priceFeed } = await loadFixture(deployFixture);
+      const {
+        hedgeManager,
+        vault,
+        dataStore,
+        priceFeed,
+        KEY_SIZE_USD,
+        KEY_SIZE_TOKENS,
+        KEY_COLLATERAL,
+      } = await loadFixture(deployFixture);
 
       // Open position at $2000
       await hedgeManager
@@ -1006,18 +1044,21 @@ describe("HedgeManager", function () {
       // Set position in data store
       const positionKey = await hedgeManager.getPositionKey();
       const sizeUsdKey = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [positionKey, "sizeInUsd"])
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_USD, positionKey]
+        )
       );
       const sizeTokensKey = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["bytes32", "string"],
-          [positionKey, "sizeInTokens"]
+          ["bytes32", "bytes32"],
+          [KEY_SIZE_TOKENS, positionKey]
         )
       );
       const collateralKey = ethers.keccak256(
         ethers.AbiCoder.defaultAbiCoder().encode(
-          ["bytes32", "string"],
-          [positionKey, "collateralAmount"]
+          ["bytes32", "bytes32"],
+          [KEY_COLLATERAL, positionKey]
         )
       );
 
