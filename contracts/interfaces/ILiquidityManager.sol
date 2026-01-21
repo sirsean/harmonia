@@ -141,4 +141,17 @@ interface ILiquidityManager {
 
     /// @notice Get the swap router address
     function swapRouter() external view returns (ISwapRouter);
+
+    /// @notice Swap a single token for the correct ratio of token0/token1 for a given range
+    /// @param tokenIn The token to swap from
+    /// @param amountIn The amount to swap
+    /// @param rangeWidthMultiplier The width multiplier for the range (to determine ratio)
+    /// @param deadline The transaction deadline
+    /// @return amountOut The amount of the other token received
+    function swapForLP(
+        address tokenIn,
+        uint256 amountIn,
+        int24 rangeWidthMultiplier,
+        uint256 deadline
+    ) external returns (uint256 amountOut);
 }
