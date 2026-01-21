@@ -1,0 +1,3442 @@
+{
+  "manifestVersion": "3.2",
+  "proxies": [
+    {
+      "address": "0xc04B2CA460b3D6B6408D609DD3E6E55C9c734DC6",
+      "kind": "uups"
+    },
+    {
+      "address": "0x9D81A634c269cf262192886B5cC678E00c9D96d8",
+      "kind": "uups"
+    },
+    {
+      "address": "0x0aa77E5CE038c878A5d2704A6C18b53cD7d855De",
+      "kind": "uups"
+    }
+  ],
+  "impls": {
+    "f44487cebddba87f87affc6857148fcb640a896560a05b712abe962ec530d5ba": {
+      "address": "0x6592E200cdA289D0531eCd5Be9140CCc2dB471F8",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "exchangeRouter",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IExchangeRouter)12860",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:40"
+          },
+          {
+            "label": "market",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:43"
+          },
+          {
+            "label": "collateralToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:46"
+          },
+          {
+            "label": "indexToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:49"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IChainlinkPriceFeed)12671",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:52"
+          },
+          {
+            "label": "maxLeverage",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:57"
+          },
+          {
+            "label": "minPositionSize",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:60"
+          },
+          {
+            "label": "maxOracleStaleness",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:63"
+          },
+          {
+            "label": "emergencyLeverageThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:66"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:69"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_int256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:72"
+          },
+          {
+            "label": "totalCollateralDeposited",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:75"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:78"
+          },
+          {
+            "label": "executionFeeOverride",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:81"
+          },
+          {
+            "label": "lastOrderKey",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_bytes32",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:84"
+          },
+          {
+            "label": "orderVault",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:87"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:90"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)733_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IChainlinkPriceFeed)12671": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExchangeRouter)12860": {
+            "label": "contract IExchangeRouter",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "b135b2809c8ad82b2f81b587ecdf058f37b764237e63cba16b06fd7dbff031db": {
+      "address": "0xe45bc12848ab871Fb1230e77b3724C2cDC034F4C",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "emergencyThreshold",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:43"
+          },
+          {
+            "label": "maxSingleWithdrawal",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:46"
+          },
+          {
+            "label": "largeWithdrawalCooldown",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:49"
+          },
+          {
+            "label": "largeWithdrawalThreshold",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:52"
+          },
+          {
+            "label": "deltaThreshold",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:55"
+          },
+          {
+            "label": "liquidityManager",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_address",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:58"
+          },
+          {
+            "label": "hedgeManager",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_address",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:61"
+          },
+          {
+            "label": "rebalanceController",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_address",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:64"
+          },
+          {
+            "label": "lpTokenId",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:67"
+          },
+          {
+            "label": "lastRebalanceTime",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:70"
+          },
+          {
+            "label": "totalFeesCollected",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:73"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_int256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:76"
+          },
+          {
+            "label": "depositCap",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:79"
+          },
+          {
+            "label": "circuitBreakerTriggered",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_bool",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:82"
+          },
+          {
+            "label": "lastLargeWithdrawalTime",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:85"
+          },
+          {
+            "label": "circuitBreakerEnabled",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_bool",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:88"
+          },
+          {
+            "label": "guardian",
+            "offset": 1,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:91"
+          },
+          {
+            "label": "rangeWidthMultiplier",
+            "offset": 21,
+            "slot": "15",
+            "type": "t_int24",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:94"
+          },
+          {
+            "label": "protocolFeeBps",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_uint256",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:97"
+          },
+          {
+            "label": "treasury",
+            "offset": 0,
+            "slot": "17",
+            "type": "t_address",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:100"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "18",
+            "type": "t_array(t_uint256)48_storage",
+            "contract": "DeltaNeutralVault",
+            "src": "contracts/core/DeltaNeutralVault.sol:103"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IERC20)1206": {
+            "label": "contract IERC20",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_struct(ERC20Storage)222_storage": {
+            "label": "struct ERC20Upgradeable.ERC20Storage",
+            "members": [
+              {
+                "label": "_balances",
+                "type": "t_mapping(t_address,t_uint256)",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_allowances",
+                "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "_totalSupply",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "_name",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "_symbol",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "4"
+              }
+            ],
+            "numberOfBytes": "160"
+          },
+          "t_struct(ERC4626Storage)406_storage": {
+            "label": "struct ERC4626Upgradeable.ERC4626Storage",
+            "members": [
+              {
+                "label": "_asset",
+                "type": "t_contract(IERC20)1206",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_underlyingDecimals",
+                "type": "t_uint8",
+                "offset": 20,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(PausableStorage)669_storage": {
+            "label": "struct PausableUpgradeable.PausableStorage",
+            "members": [
+              {
+                "label": "_paused",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)733_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          },
+          "t_array(t_uint256)48_storage": {
+            "label": "uint256[48]",
+            "numberOfBytes": "1536"
+          },
+          "t_int24": {
+            "label": "int24",
+            "numberOfBytes": "3"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Pausable": [
+            {
+              "contract": "PausableUpgradeable",
+              "label": "_paused",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol:21",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.ERC4626": [
+            {
+              "contract": "ERC4626Upgradeable",
+              "label": "_asset",
+              "type": "t_contract(IERC20)1206",
+              "src": "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol:56",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "ERC4626Upgradeable",
+              "label": "_underlyingDecimals",
+              "type": "t_uint8",
+              "src": "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol:57",
+              "offset": 20,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.ERC20": [
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_balances",
+              "type": "t_mapping(t_address,t_uint256)",
+              "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:33",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_allowances",
+              "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+              "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:35",
+              "offset": 0,
+              "slot": "1"
+            },
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_totalSupply",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:37",
+              "offset": 0,
+              "slot": "2"
+            },
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_name",
+              "type": "t_string_storage",
+              "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:39",
+              "offset": 0,
+              "slot": "3"
+            },
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_symbol",
+              "type": "t_string_storage",
+              "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:40",
+              "offset": 0,
+              "slot": "4"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "99c916daf8b553d0d51b74e27a11e1f08657db8f621f81b5407d0ba4d23166c1": {
+      "address": "0xdEF72f93e32740c6538EaC956FAbebc57a6fd631",
+      "txHash": "0x3db79daedfffc7e4ad1387a8b85ddce7edec3ac038d6c70a809e9732fedafecd",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "exchangeRouter",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IExchangeRouter)4605",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:40"
+          },
+          {
+            "label": "market",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:43"
+          },
+          {
+            "label": "collateralToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:46"
+          },
+          {
+            "label": "indexToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:49"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IChainlinkPriceFeed)4416",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:52"
+          },
+          {
+            "label": "maxLeverage",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:57"
+          },
+          {
+            "label": "minPositionSize",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:60"
+          },
+          {
+            "label": "maxOracleStaleness",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:63"
+          },
+          {
+            "label": "emergencyLeverageThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:66"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:69"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_int256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:72"
+          },
+          {
+            "label": "totalCollateralDeposited",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:75"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:78"
+          },
+          {
+            "label": "executionFeeOverride",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:81"
+          },
+          {
+            "label": "lastOrderKey",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_bytes32",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:84"
+          },
+          {
+            "label": "orderVault",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:87"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:90"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IChainlinkPriceFeed)4416": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExchangeRouter)4605": {
+            "label": "contract IExchangeRouter",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "6259b6441f0117531a3e60795b2f75886d0a60421bac292f09514825a20e6c68": {
+      "address": "0x65cAC0c6b967bc81B0E6a33b21CEcBfc85Ac0531",
+      "txHash": "0x59bbb5e72e05fd2cfff9b45fa69ee4e4fe1bd6dd3922b0b45b81d79e2f7f368a",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "exchangeRouter",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IExchangeRouter)4633",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:40"
+          },
+          {
+            "label": "market",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:43"
+          },
+          {
+            "label": "collateralToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:46"
+          },
+          {
+            "label": "indexToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:49"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IChainlinkPriceFeed)4438",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:52"
+          },
+          {
+            "label": "maxLeverage",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:57"
+          },
+          {
+            "label": "minPositionSize",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:60"
+          },
+          {
+            "label": "maxOracleStaleness",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:63"
+          },
+          {
+            "label": "emergencyLeverageThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:66"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:69"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_int256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:72"
+          },
+          {
+            "label": "totalCollateralDeposited",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:75"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:78"
+          },
+          {
+            "label": "executionFeeOverride",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:81"
+          },
+          {
+            "label": "lastOrderKey",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_bytes32",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:84"
+          },
+          {
+            "label": "orderVault",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:87"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:90"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IChainlinkPriceFeed)4438": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExchangeRouter)4633": {
+            "label": "contract IExchangeRouter",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "627def48814e7cbc223f6672d520222d9c68e3468fae24b2b214ebbf108734c3": {
+      "address": "0x65cAC0c6b967bc81B0E6a33b21CEcBfc85Ac0531",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "exchangeRouter",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IExchangeRouter)4630",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:40"
+          },
+          {
+            "label": "market",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:43"
+          },
+          {
+            "label": "collateralToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:46"
+          },
+          {
+            "label": "indexToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:49"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IChainlinkPriceFeed)4437",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:52"
+          },
+          {
+            "label": "maxLeverage",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:57"
+          },
+          {
+            "label": "minPositionSize",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:60"
+          },
+          {
+            "label": "maxOracleStaleness",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:63"
+          },
+          {
+            "label": "emergencyLeverageThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:66"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:69"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_int256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:72"
+          },
+          {
+            "label": "totalCollateralDeposited",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:75"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:78"
+          },
+          {
+            "label": "executionFeeOverride",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:81"
+          },
+          {
+            "label": "lastOrderKey",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_bytes32",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:84"
+          },
+          {
+            "label": "orderVault",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:87"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:90"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IChainlinkPriceFeed)4437": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExchangeRouter)4630": {
+            "label": "contract IExchangeRouter",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "72e7c5ead8be6f322b6b0c7cc4c63c18f46c1a51e77828ba0205d01f325c041a": {
+      "address": "0xBa866296eDf550c2a4451dE0c50f50b5684A9168",
+      "txHash": "0x09c1e4ee225e98ce220dac200719d4461fd0c4daa6398ff8327b51212d2b4fa6",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "exchangeRouter",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IExchangeRouter)4668",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:40"
+          },
+          {
+            "label": "market",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:43"
+          },
+          {
+            "label": "collateralToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:46"
+          },
+          {
+            "label": "indexToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:49"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IChainlinkPriceFeed)4475",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:52"
+          },
+          {
+            "label": "maxLeverage",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:57"
+          },
+          {
+            "label": "minPositionSize",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:60"
+          },
+          {
+            "label": "maxOracleStaleness",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:63"
+          },
+          {
+            "label": "emergencyLeverageThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:66"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:69"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_int256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:72"
+          },
+          {
+            "label": "totalCollateralDeposited",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:75"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:78"
+          },
+          {
+            "label": "executionFeeOverride",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:81"
+          },
+          {
+            "label": "lastOrderKey",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_bytes32",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:84"
+          },
+          {
+            "label": "orderVault",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:87"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:90"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IChainlinkPriceFeed)4475": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExchangeRouter)4668": {
+            "label": "contract IExchangeRouter",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      },
+      "allAddresses": [
+        "0xBa866296eDf550c2a4451dE0c50f50b5684A9168"
+      ]
+    },
+    "e6ce29871e7223f343d2f48397a30b54fc9eabf7777e51f5e751f547c66c645f": {
+      "address": "0xF14162231580A77De679836ccd38346c597B84D3",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "positionManager",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(INonfungiblePositionManager)8245",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:46"
+          },
+          {
+            "label": "swapRouter",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(ISwapRouter)8299",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:49"
+          },
+          {
+            "label": "factory",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_contract(IUniswapV3Factory)8325",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:52"
+          },
+          {
+            "label": "baseToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:55"
+          },
+          {
+            "label": "quoteToken",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_address",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:58"
+          },
+          {
+            "label": "poolFee",
+            "offset": 20,
+            "slot": "4",
+            "type": "t_uint24",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:61"
+          },
+          {
+            "label": "twapPeriod",
+            "offset": 23,
+            "slot": "4",
+            "type": "t_uint32",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:66"
+          },
+          {
+            "label": "maxTwapDeviation",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:69"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_address",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:72"
+          },
+          {
+            "label": "tokenId",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:75"
+          },
+          {
+            "label": "tickLower",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_int24",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:78"
+          },
+          {
+            "label": "tickUpper",
+            "offset": 3,
+            "slot": "8",
+            "type": "t_int24",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:81"
+          },
+          {
+            "label": "liquidity",
+            "offset": 6,
+            "slot": "8",
+            "type": "t_uint128",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:84"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:87"
+          },
+          {
+            "label": "totalFeesCollected0",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:90"
+          },
+          {
+            "label": "totalFeesCollected1",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:93"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_contract(IChainlinkPriceFeed)7191",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:96"
+          },
+          {
+            "label": "twapValidationEnabled",
+            "offset": 20,
+            "slot": "12",
+            "type": "t_bool",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:99"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:102"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_contract(IChainlinkPriceFeed)7191": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(INonfungiblePositionManager)8245": {
+            "label": "contract INonfungiblePositionManager",
+            "numberOfBytes": "20"
+          },
+          "t_contract(ISwapRouter)8299": {
+            "label": "contract ISwapRouter",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IUniswapV3Factory)8325": {
+            "label": "contract IUniswapV3Factory",
+            "numberOfBytes": "20"
+          },
+          "t_int24": {
+            "label": "int24",
+            "numberOfBytes": "3"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint24": {
+            "label": "uint24",
+            "numberOfBytes": "3"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "f219516ff631278b1e62bcaeafc729c5cb947643cf6b0c1be731ee72a1860a09": {
+      "address": "0x23fA806BC4aeadb47dcF98987b0254D418caFeC9",
+      "txHash": "0x05daf94f21036fcb82a1b0184e51840f5031f89e9ae671824ff6008edc64803d",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "exchangeRouter",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IExchangeRouter)7384",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:40"
+          },
+          {
+            "label": "market",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:43"
+          },
+          {
+            "label": "collateralToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:46"
+          },
+          {
+            "label": "indexToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:49"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IChainlinkPriceFeed)7191",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:52"
+          },
+          {
+            "label": "maxLeverage",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:57"
+          },
+          {
+            "label": "minPositionSize",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:60"
+          },
+          {
+            "label": "maxOracleStaleness",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:63"
+          },
+          {
+            "label": "emergencyLeverageThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:66"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:69"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_int256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:72"
+          },
+          {
+            "label": "totalCollateralDeposited",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:75"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:78"
+          },
+          {
+            "label": "executionFeeOverride",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:81"
+          },
+          {
+            "label": "lastOrderKey",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_bytes32",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:84"
+          },
+          {
+            "label": "orderVault",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:87"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:90"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IChainlinkPriceFeed)7191": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExchangeRouter)7384": {
+            "label": "contract IExchangeRouter",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "625443cc85081c5164c9f03f9635e3559fcc5c988654132424203f56d23f4dc7": {
+      "address": "0xED2CA7ae66A94B97EcA974383543Cb7eB2805410",
+      "txHash": "0xba3ac129353d0cad82901640f2e25d4f377d77f558dcfa6919d0cd3b3b7ebd3d",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "positionManager",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(INonfungiblePositionManager)5568",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:46"
+          },
+          {
+            "label": "swapRouter",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(ISwapRouter)5622",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:49"
+          },
+          {
+            "label": "factory",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_contract(IUniswapV3Factory)5648",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:52"
+          },
+          {
+            "label": "baseToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:55"
+          },
+          {
+            "label": "quoteToken",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_address",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:58"
+          },
+          {
+            "label": "poolFee",
+            "offset": 20,
+            "slot": "4",
+            "type": "t_uint24",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:61"
+          },
+          {
+            "label": "twapPeriod",
+            "offset": 23,
+            "slot": "4",
+            "type": "t_uint32",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:66"
+          },
+          {
+            "label": "maxTwapDeviation",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:69"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_address",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:72"
+          },
+          {
+            "label": "tokenId",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:75"
+          },
+          {
+            "label": "tickLower",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_int24",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:78"
+          },
+          {
+            "label": "tickUpper",
+            "offset": 3,
+            "slot": "8",
+            "type": "t_int24",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:81"
+          },
+          {
+            "label": "liquidity",
+            "offset": 6,
+            "slot": "8",
+            "type": "t_uint128",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:84"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:87"
+          },
+          {
+            "label": "totalFeesCollected0",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:90"
+          },
+          {
+            "label": "totalFeesCollected1",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:93"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_contract(IChainlinkPriceFeed)5090",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:96"
+          },
+          {
+            "label": "twapValidationEnabled",
+            "offset": 20,
+            "slot": "12",
+            "type": "t_bool",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:99"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "LiquidityManager",
+            "src": "contracts/core/LiquidityManager.sol:102"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_contract(IChainlinkPriceFeed)5090": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(INonfungiblePositionManager)5568": {
+            "label": "contract INonfungiblePositionManager",
+            "numberOfBytes": "20"
+          },
+          "t_contract(ISwapRouter)5622": {
+            "label": "contract ISwapRouter",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IUniswapV3Factory)5648": {
+            "label": "contract IUniswapV3Factory",
+            "numberOfBytes": "20"
+          },
+          "t_int24": {
+            "label": "int24",
+            "numberOfBytes": "3"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint24": {
+            "label": "uint24",
+            "numberOfBytes": "3"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "eef03d3dc86509035ebe784eb78dd979878a40dfa1a85d81c9dcc5283d0bad82": {
+      "address": "0x8ABADEe75d82dC40D996A5A22Dc1B6F26aAA35CB",
+      "txHash": "0x934b7ba3f5c6fdef53b7f6a3595e835b9a3dd7e59b301c7c4df4917fd36696f8",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "exchangeRouter",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IExchangeRouter)4663",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:46"
+          },
+          {
+            "label": "market",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:49"
+          },
+          {
+            "label": "collateralToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:52"
+          },
+          {
+            "label": "indexToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:55"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IChainlinkPriceFeed)4470",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:58"
+          },
+          {
+            "label": "maxLeverage",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:63"
+          },
+          {
+            "label": "minPositionSize",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:66"
+          },
+          {
+            "label": "maxOracleStaleness",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:69"
+          },
+          {
+            "label": "emergencyLeverageThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:72"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:75"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_int256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:78"
+          },
+          {
+            "label": "totalCollateralDeposited",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:81"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:84"
+          },
+          {
+            "label": "executionFeeOverride",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:87"
+          },
+          {
+            "label": "lastOrderKey",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_bytes32",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:90"
+          },
+          {
+            "label": "orderVault",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:93"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:96"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IChainlinkPriceFeed)4470": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExchangeRouter)4663": {
+            "label": "contract IExchangeRouter",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "61fa9f888d876c7bd62056f7f15cd51b0b6f2c50b1c99128c3bb2685ce5ddbac": {
+      "address": "0x2b9EA8FF1E9F0a35D086128c8946915Ce286e1a8",
+      "txHash": "0x88774d68e3141a4fbb4ff6b7db72dae429a25d72c21df69788bcc6f2b0343647",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "exchangeRouter",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IExchangeRouter)4706",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:46"
+          },
+          {
+            "label": "market",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:49"
+          },
+          {
+            "label": "collateralToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:52"
+          },
+          {
+            "label": "indexToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:55"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IChainlinkPriceFeed)4513",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:58"
+          },
+          {
+            "label": "maxLeverage",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:63"
+          },
+          {
+            "label": "minPositionSize",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:66"
+          },
+          {
+            "label": "maxOracleStaleness",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:69"
+          },
+          {
+            "label": "emergencyLeverageThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:72"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:75"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_int256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:78"
+          },
+          {
+            "label": "totalCollateralDeposited",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:81"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:84"
+          },
+          {
+            "label": "executionFeeOverride",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:87"
+          },
+          {
+            "label": "lastOrderKey",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_bytes32",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:90"
+          },
+          {
+            "label": "orderVault",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:93"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:96"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IChainlinkPriceFeed)4513": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExchangeRouter)4706": {
+            "label": "contract IExchangeRouter",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "e2e4009eba52ded65ef47e28719efe263576e274428462c1abd5a8f0a7ef31aa": {
+      "address": "0x6142A760e3e3730d206c3519EC1bEA611a03af11",
+      "txHash": "0x1b29101eb451f39ac8bea64d0341f476979cb7e574e31c17daacf8016ef53dcc",
+      "layout": {
+        "solcVersion": "0.8.24",
+        "storage": [
+          {
+            "label": "exchangeRouter",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IExchangeRouter)4709",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:46"
+          },
+          {
+            "label": "market",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:49"
+          },
+          {
+            "label": "collateralToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:52"
+          },
+          {
+            "label": "indexToken",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:55"
+          },
+          {
+            "label": "priceFeed",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IChainlinkPriceFeed)4514",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:58"
+          },
+          {
+            "label": "maxLeverage",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:63"
+          },
+          {
+            "label": "minPositionSize",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:66"
+          },
+          {
+            "label": "maxOracleStaleness",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:69"
+          },
+          {
+            "label": "emergencyLeverageThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:72"
+          },
+          {
+            "label": "vault",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:75"
+          },
+          {
+            "label": "totalFundingReceived",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_int256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:78"
+          },
+          {
+            "label": "totalCollateralDeposited",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:81"
+          },
+          {
+            "label": "slippageTolerance",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:84"
+          },
+          {
+            "label": "executionFeeOverride",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_uint256",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:87"
+          },
+          {
+            "label": "lastOrderKey",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_bytes32",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:90"
+          },
+          {
+            "label": "orderVault",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_address",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:93"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "HedgeManager",
+            "src": "contracts/core/HedgeManager.sol:96"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)226_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IChainlinkPriceFeed)4514": {
+            "label": "contract IChainlinkPriceFeed",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExchangeRouter)4709": {
+            "label": "contract IExchangeRouter",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
