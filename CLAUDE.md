@@ -6,79 +6,40 @@ Development guidelines for AI assistants working on the Harmonia project.
 
 Harmonia is a delta-neutral yield strategy that combines Uniswap v3 LP positions with GMX v2 perpetual hedging on Arbitrum. The goal is to capture trading fees while eliminating directional price exposure.
 
+**Approach**: EOA-based with TypeScript scripts/programs (not smart contracts).
+
 ## Quick Start
 
 ```bash
-npm install          # Install dependencies
-npm run compile      # Compile contracts
-npm test             # Run all tests
-npm run format       # Format code
+npm install                                    # Install dependencies
+npx hardhat run scripts/read-positions.ts     # Read GMX positions
 ```
 
 ## Codebase Structure
 
 ```
-contracts/
-├── interfaces/           # Protocol interfaces (implemented)
-│   ├── IUniswapV3.sol   # Uniswap v3 pool, position manager, router
-│   ├── IGMXV2.sol       # GMX v2 exchange router, data store, reader
-│   ├── IChainlink.sol   # Price feeds, automation registry
-│   ├── ILiquidityManager.sol  # LiquidityManager interface
-│   └── IHedgeManager.sol      # HedgeManager interface
-├── libraries/            # Core calculation libraries (implemented)
-│   ├── DeltaCalculator.sol  # LP delta/gamma calculations
-│   └── YieldMath.sol        # APY and yield calculations
-├── core/                 # Main contracts (implemented)
-│   ├── DeltaNeutralVault.sol   # ERC-4626 vault
-│   ├── LiquidityManager.sol    # Uniswap v3 operations
-│   └── HedgeManager.sol        # GMX v2 operations
-├── periphery/            # Supporting contracts (implemented)
-│   └── RebalanceController.sol # Chainlink Automation keeper
-└── test/                 # Test harness and mock contracts
-    ├── MockERC20.sol
-    ├── MockUniswapV3.sol
-    ├── MockGMXV2.sol
-    ├── DeltaCalculatorHarness.sol
-    └── YieldMathHarness.sol
+scripts/
+├── config/
+│   └── addresses.ts          # Contract addresses and constants
+├── create-short-position.ts  # Open GMX short position
+├── close-short-position.ts   # Close GMX short position
+├── read-positions.ts         # Read GMX positions
+├── read-orders.ts            # Read pending GMX orders
+├── read-order.ts             # Read specific GMX order
+├── scan-order-events.ts      # Scan GMX order events
+├── check-pool.ts             # Check Uniswap pool state
+├── check-balance.ts          # Check token balances
+└── check-usdc.ts             # Check USDC balance
+
+src/                          # Core modules (to be built)
+├── modules/
+│   ├── gmx/                  # GMX V2 perpetual operations
+│   ├── uniswap/              # Uniswap V3 LP operations
+│   ├── math/                 # Delta/yield calculations
+│   └── chainlink/            # Price feed operations
+├── strategy/                 # Strategy orchestration
+└── config/                   # Configuration
 ```
-
-## Implementation Status
-
-**Completed (Phases 1-5):**
-- `DeltaCalculator` library - Full delta/gamma math for Uniswap v3 positions
-- `YieldMath` library - APY calculations and yield metrics
-- All external protocol interfaces
-- `DeltaNeutralVault` - ERC-4626 vault with deposit/withdraw
-- `LiquidityManager` - Uniswap v3 position management
-- `HedgeManager` - GMX v2 perpetual short position management
-- Comprehensive test suite (350+ tests)
-- Fork tests against Arbitrum mainnet
-
-**Completed (Phase 6):**
-- `RebalanceController` - Chainlink Automation keeper for rebalancing
-
-**Completed (Phase 7):**
-- `SecurityModule` library - Oracle validation, circuit breakers, rate limiting
-- Circuit breaker functionality in vault
-- Guardian role for emergency operations
-- Withdrawal limits and cooldowns
-- Oracle staleness checks in HedgeManager
-- TWAP validation in LiquidityManager
-- Comprehensive security tests (20 unit + fork tests)
-
-**In Progress (Phase 8):**
-- Deployment scripts (deploy-all.ts, validate-market.ts)
-- Multi-market configuration system (src/markets/)
-- Market validation and discovery tools
-
-**Multi-Market Support:**
-The system supports multiple token pairs via configurable market definitions:
-- ETH Market: WETH/USDC pool (0xC6962004f452bE9203591991D15f6b388e09E8D0) with native USDC
-- BTC Market: WBTC/USDC pool
-- ARB Market: ARB/USDC pool
-- LINK Market: LINK/USDC pool
-
-See `src/markets/registry.ts` for market configurations.
 
 ## Key Technical Concepts
 
@@ -87,93 +48,70 @@ See `src/markets/registry.ts` for market configurations.
 LP positions in Uniswap v3 have a delta that varies with price:
 - Uses `sqrtPriceX96` format (Q96 fixed-point)
 - Delta = 0 above range, varies 0→1 in range, = 1 below range
-- See `contracts/libraries/DeltaCalculator.sol` for implementation
 
 ### Precision and Math
 
 - Use 1e18 for percentage values (e.g., 5% = 5e16)
 - Use Q96 (2^96) for Uniswap price representation
 - GMX uses 30 decimals for USD values
-- Always use `mulDiv` for safe division to avoid overflow
+- GMX uses 12 decimals for prices in orders
 
-### Testing Patterns
+### GMX V2 Order Types
 
-Tests are organized by priority:
-- `test/scenarios/CriticalScenarios.test.ts` (P0) - Liquidation, oracle attacks
-- `test/scenarios/HighPriorityScenarios.test.ts` (P1) - Rebalance failures
-- `test/scenarios/MediumPriorityScenarios.test.ts` (P2) - Fee collection
-- `test/scenarios/LowerPriorityScenarios.test.ts` (P3) - Normal operations
-
-Fork tests use Arbitrum mainnet state:
-- `test/fork/UniswapV3Fork.test.ts` - Real pool interactions
-- `test/fork/ChainlinkPriceFeed.test.ts` - Live price feed testing
-- `test/fork/LiquidityManagerFork.test.ts` - LP position management on mainnet
-- `test/fork/HedgeManagerFork.test.ts` - GMX v2 hedge management on mainnet
-
-Unit tests for core contracts:
-- `test/unit/DeltaNeutralVault.test.ts` - ERC-4626 vault tests (75 tests)
-- `test/unit/LiquidityManager.test.ts` - LP management tests (47 tests)
-- `test/unit/HedgeManager.test.ts` - GMX v2 hedge tests (59 tests)
+- `orderType: 2` = MarketIncrease (open/increase position)
+- `orderType: 4` = MarketDecrease (close/decrease position)
+- `isLong: false` for short positions
 
 ## Common Tasks
 
-### Adding a New Contract
-
-1. Create the contract in the appropriate directory (`core/`, `periphery/`, etc.)
-2. Add corresponding test file in `test/unit/` or `test/integration/`
-3. Run `npm run compile` to verify compilation
-4. Run `npm test` to ensure all tests pass
-5. Run `npm run format` before committing
-
-### Running Fork Tests
+### Reading Positions
 
 ```bash
-# Set your Alchemy API key
-export ALCHEMY_API_KEY=your_alchemy_api_key_here
+# Read all GMX positions
+npx hardhat run scripts/read-positions.ts --network arbitrum
 
-# Run fork tests
-npx hardhat test test/fork/**/*.test.ts
+# Read for specific account
+ACCOUNT=0x... npx hardhat run scripts/read-positions.ts --network arbitrum
 ```
 
-### Debugging Delta Calculations
+### Creating Short Position
 
-Use the test harness for isolated testing:
-```typescript
-const harness = await DeltaCalculatorHarness.deploy();
-const delta = await harness.calculateDelta(sqrtPriceX96, lower, upper, liquidity);
+```bash
+npx hardhat run scripts/create-short-position.ts --network arbitrum
 ```
 
-## Code Style
+### Closing Short Position
 
-- Solidity: Follow existing patterns in `contracts/libraries/`
-- TypeScript: Prettier formatting with 2-space indentation
-- Run `npm run format` before committing
+```bash
+npx hardhat run scripts/close-short-position.ts --network arbitrum
+```
 
 ## Important Constants
 
-```solidity
+```typescript
 // Arbitrum addresses
-USDC = 0xaf88d065e77c8cC2239327C5EDb3A432268e5831
-WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1
+USDC = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+WETH = "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"
 
-// Strategy parameters (from PLAN.md)
+// Strategy parameters
 DELTA_THRESHOLD = 5e16      // 5% - trigger rebalance
 MAX_LEVERAGE = 3e18         // 3x max on perps
-MIN_HEDGE_RATIO = 80e16     // Hedge at least 80% of delta
-EMERGENCY_THRESHOLD = 20e16 // Emergency unwind at 20% drift
+MAX_SLIPPAGE = 1e16         // 1% slippage tolerance
 ```
 
 ## Documentation
 
 - `PLAN.md` - Complete technical specification and design decisions
-- `README.md` - Project overview and setup instructions
-- Code comments follow NatSpec format
 
-## Next Implementation Steps
+## Implementation Roadmap
 
-1. ~~Implement `DeltaNeutralVault` (ERC-4626 vault with deposit/withdraw)~~ ✓ (Phase 3)
-2. ~~Implement `LiquidityManager` (Uniswap v3 position management)~~ ✓ (Phase 4)
-3. ~~Implement `HedgeManager` (GMX v2 short position management)~~ ✓ (Phase 5)
-4. ~~Implement `RebalanceController` (Chainlink Automation keeper)~~ ✓ (Phase 6)
-5. ~~Security hardening and gas optimization~~ ✓ (Phase 7)
-6. Write deployment scripts - Phase 8
+See `PLAN.md` Part 6 for the current implementation roadmap:
+
+1. **Phase 1**: Core modules (GMX, Uniswap, Math, Chainlink)
+2. **Phase 2**: Strategy layer (monitor, rebalance, compound)
+3. **Phase 3**: Operations (CLI, monitoring, alerts)
+4. **Phase 4**: Automation (cron-based execution)
+
+## Previous Approach
+
+The smart contract-based approach has been archived as git tag `abandoned-v1`.

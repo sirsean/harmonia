@@ -1,6 +1,10 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "./config/addresses";
-import readerDeployment from "../deployments/Reader.arbitrum.json";
+
+// GMX Reader ABI (minimal for getAccountPositions)
+const READER_ABI = [
+  "function getAccountPositions(address dataStore, address account, uint256 start, uint256 end) view returns (tuple(tuple(address account, address market, address collateralToken) addresses, tuple(uint256 sizeInUsd, uint256 sizeInTokens, uint256 collateralAmount, uint256 borrowingFactor, uint256 fundingFeeAmountPerSize, uint256 longTokenClaimableFundingAmountPerSize, uint256 shortTokenClaimableFundingAmountPerSize, uint256 increasedAtBlock, uint256 decreasedAtBlock, uint256 increasedAtTime, uint256 decreasedAtTime) numbers, tuple(bool isLong) flags)[])",
+];
 
 async function main() {
   console.log("\n" + "=".repeat(60));
@@ -16,7 +20,7 @@ async function main() {
 
   const executionFee = ethers.parseEther("0.01");
 
-  const reader = new ethers.Contract(readerDeployment.address, readerDeployment.abi, ethers.provider);
+  const reader = new ethers.Contract(ARBITRUM_MAINNET.gmxReader, READER_ABI, ethers.provider);
   const positions = await reader.getAccountPositions(ARBITRUM_MAINNET.gmxDataStore, myAddress, 0, 10);
 
   const shortPosition = positions.find(
@@ -51,7 +55,7 @@ async function main() {
   const routerAbi = [
     "function multicall(bytes[] calldata data) external payable returns (bytes[] memory results)",
     "function sendWnt(address receiver, uint256 amount) external payable",
-    "function createOrder(((address receiver,address cancellationReceiver,address callbackContract,address uiFeeReceiver,address market,address initialCollateralToken,address[] swapPath),(uint256 sizeDeltaUsd,uint256 initialCollateralDeltaAmount,uint256 triggerPrice,uint256 acceptablePrice,uint256 executionFee,uint256 callbackGasLimit,uint256 minOutputAmount,uint256 validFromTime),uint8 orderType,uint8 decreasePositionSwapType,bool isLong,bool shouldUnwrapNativeToken,bool autoCancel,bytes32 referralCode,bytes32[] dataList) params) external payable returns (bytes32 orderKey)"
+    "function createOrder(((address receiver,address cancellationReceiver,address callbackContract,address uiFeeReceiver,address market,address initialCollateralToken,address[] swapPath),(uint256 sizeDeltaUsd,uint256 initialCollateralDeltaAmount,uint256 triggerPrice,uint256 acceptablePrice,uint256 executionFee,uint256 callbackGasLimit,uint256 minOutputAmount,uint256 validFromTime),uint8 orderType,uint8 decreasePositionSwapType,bool isLong,bool shouldUnwrapNativeToken,bool autoCancel,bytes32 referralCode,bytes32[] dataList) params) external payable returns (bytes32 orderKey)",
   ];
   const router = await ethers.getContractAt(routerAbi, routerAddress, signer);
 

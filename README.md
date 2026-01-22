@@ -1,6 +1,6 @@
 # Harmonia
 
-A delta-neutral structured product on Arbitrum that generates yield through concentrated Uniswap v3 liquidity provision while hedging directional exposure via GMX v2 perpetual futures.
+A delta-neutral yield strategy on Arbitrum that generates yield through concentrated Uniswap v3 liquidity provision while hedging directional exposure via GMX v2 perpetual futures.
 
 ## Overview
 
@@ -8,49 +8,66 @@ Harmonia captures LP fees and favorable funding rates while eliminating directio
 
 1. **Provides concentrated liquidity** on Uniswap v3 (ETH/USDC pool) to earn trading fees
 2. **Opens short positions** on GMX v2 to hedge the LP position's delta exposure
-3. **Automatically rebalances** via Chainlink Automation to maintain delta neutrality
+3. **Automatically rebalances** to maintain delta neutrality
+4. **Compounds fees** by reinvesting collected earnings
 
 **Target yield**: 5-30% APY depending on market conditions (volume, volatility, funding rates).
 
 ## Architecture
 
+This project uses an **EOA-based approach** with TypeScript scripts rather than smart contracts. This provides:
+
+- Simpler development and iteration
+- Easier debugging and monitoring
+- Lower gas costs (no proxy overhead)
+- Flexible strategy adjustments
+- No audit requirements
+
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    DeltaNeutralVault                     │
-│                      (ERC-4626)                          │
-├──────────────────────────────────────────────────────────┤
-│  LiquidityManager │ HedgeManager │ RebalanceController   │
-│    (Uniswap v3)   │   (GMX v2)   │  (Chainlink Keeper)   │
-└──────────────────────────────────────────────────────────┘
-         │                  │                   │
-         ▼                  ▼                   ▼
-   ┌──────────┐      ┌──────────┐       ┌──────────────┐
-   │ ETH/USDC │      │ ETH-PERP │       │  Automation  │
-   │   Pool   │      │  Market  │       │   Registry   │
-   └──────────┘      └──────────┘       └──────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         EOA Wallet                                  │
+│                   (Holds tokens and positions)                      │
+├─────────────────────────────────────────────────────────────────────┤
+│  Assets:                                                            │
+│  ├── USDC (collateral and quote token)                             │
+│  ├── WETH (base token for LP)                                      │
+│  └── Uniswap V3 LP NFT Position                                    │
+│                                                                     │
+│  Positions:                                                         │
+│  ├── Uniswap V3 Concentrated Liquidity Position                    │
+│  └── GMX V2 Short Perpetual Position                               │
+└─────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    TypeScript Control Layer                         │
+├─────────────────────────────────────────────────────────────────────┤
+│  modules/gmx/       → GMX V2 perpetual operations                  │
+│  modules/uniswap/   → Uniswap V3 LP operations                     │
+│  modules/math/      → Delta/yield calculations                     │
+│  strategy/          → Rebalance, compound, monitor                 │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Project Structure
 
 ```
 harmonia/
-├── contracts/
-│   ├── core/              # Core protocol logic
-│   │   ├── DeltaNeutralVault.sol
-│   │   ├── HedgeManager.sol
-│   │   ├── LiquidityManager.sol
-│   │   └── RebalanceController.sol
-│   ├── interfaces/        # External protocol interfaces
-│   ├── libraries/         # Core calculation libraries
-│   └── test/              # Test harness contracts
-├── test/
-│   ├── unit/              # Unit tests for libraries
-│   ├── integration/       # Integration tests
-│   ├── scenarios/         # Priority-based scenario tests (P0-P3)
-│   ├── fork/              # Fork tests against Arbitrum mainnet
-│   └── helpers/           # Test utilities and constants
-├── PLAN.md                # Technical specification
-└── hardhat.config.ts      # Network configuration
+├── scripts/
+│   ├── config/
+│   │   └── addresses.ts          # Contract addresses and constants
+│   ├── create-short-position.ts  # Open GMX short position
+│   ├── close-short-position.ts   # Close GMX short position
+│   ├── read-positions.ts         # Read GMX positions
+│   └── ...                       # Other utility scripts
+├── src/
+│   ├── modules/                  # Core protocol modules (to be built)
+│   │   ├── gmx/                  # GMX V2 operations
+│   │   ├── uniswap/              # Uniswap V3 operations
+│   │   └── math/                 # Delta/yield calculations
+│   └── strategy/                 # Strategy orchestration
+├── PLAN.md                       # Technical specification
+└── CLAUDE.md                     # Development guidelines
 ```
 
 ## Installation
@@ -62,37 +79,26 @@ cd harmonia
 
 # Install dependencies
 npm install
-
-# Compile contracts
-npm run compile
 ```
 
-## Development
+## Usage
 
-### Running Tests
+### Reading GMX Positions
 
 ```bash
-# Run all tests
-npm test
-
-# Run unit tests only
-npm run test:unit
-
-# Run integration tests
-npm run test:integration
-
-# Run fork tests (requires ALCHEMY_API_KEY)
-ALCHEMY_API_KEY=<your-api-key> npm run test:fork
+npx hardhat run scripts/read-positions.ts --network arbitrum
 ```
 
-### Code Formatting
+### Creating a Short Position
 
 ```bash
-# Format all files
-npm run lint:fix
+npx hardhat run scripts/create-short-position.ts --network arbitrum
+```
 
-# Check formatting
-npm run lint
+### Closing a Short Position
+
+```bash
+npx hardhat run scripts/close-short-position.ts --network arbitrum
 ```
 
 ## Configuration
@@ -100,14 +106,11 @@ npm run lint
 Create a `.env` file based on `.env.example`:
 
 ```env
-# Required for fork tests and deployment
+# Required for Arbitrum interaction
 ALCHEMY_API_KEY=your_alchemy_api_key_here
 
-# Required for deployment
+# Required for transactions
 PRIVATE_KEY=your_private_key
-
-# Optional for contract verification
-ARBISCAN_API_KEY=your_api_key
 ```
 
 ## Key Concepts
@@ -118,8 +121,6 @@ Uniswap v3 LP positions have a continuously varying delta based on price locatio
 - **Below range**: Delta = 1 (100% ETH exposure)
 - **In range**: Delta varies from 1 to 0 as price rises
 - **Above range**: Delta = 0 (100% USDC exposure)
-
-The [`DeltaCalculator`](contracts/libraries/DeltaCalculator.sol) library implements these calculations based on Guillaume Lambert's options pricing framework.
 
 ### Yield Sources
 
@@ -133,21 +134,8 @@ The [`DeltaCalculator`](contracts/libraries/DeltaCalculator.sol) library impleme
 
 - **Delta threshold**: Rebalance when |delta| > 5%
 - **Max leverage**: 3x on perpetual positions
-- **Emergency unwind**: Automatic at 20% delta drift
-- **Circuit breakers**: Pause on liquidation proximity
-
-## Technology Stack
-
-- **Solidity ^0.8.20** with OpenZeppelin 5.0
-- **Hardhat** for development and testing
-- **Ethers.js v6** for blockchain interaction
-- **TypeChain** for type-safe contract bindings
-
-### External Protocols
-
-- **Uniswap v3** (Arbitrum) - Concentrated liquidity
-- **GMX v2** (Arbitrum) - Perpetual futures
-- **Chainlink** - Price feeds & automation
+- **Emergency threshold**: Alert at 20% delta drift
+- **Max slippage**: 1% on swaps and orders
 
 ## Contract Addresses (Arbitrum)
 
@@ -156,11 +144,17 @@ The [`DeltaCalculator`](contracts/libraries/DeltaCalculator.sol) library impleme
 | Uniswap v3 PositionManager | `0xC36442b4a4522E871399CD717aBDD847Ab11FE88` |
 | Uniswap v3 WETH/USDC Pool | `0xC6962004f452bE9203591991D15f6b388e09E8D0` |
 | GMX ExchangeRouter | `0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8` |
+| GMX Reader | `0xf60becbba223EEA9495Da3f606753867eC10d139` |
 | Chainlink ETH/USD Feed | `0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612` |
+| USDC (Native) | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
+| WETH | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
 
 ## References
 
 - Lambert, G. ["Pricing Uniswap v3 LP Positions: Towards a New Options Paradigm"](https://lambert-guillaume.medium.com/pricing-uniswap-v3-lp-positions-towards-a-new-options-paradigm-dce3e3b50125)
 - GMX Documentation: https://docs.gmx.io/
 - Uniswap v3 Documentation: https://docs.uniswap.org/
-- Chainlink Automation: https://docs.chain.link/chainlink-automation
+
+## Previous Approach
+
+The smart contract-based approach has been archived as git tag `abandoned-v1`.

@@ -1,10 +1,17 @@
-# Delta-Neutral Structured Product: Research & Implementation Plan
+# Delta-Neutral Yield Strategy: EOA-Based Implementation
 
 ## Executive Summary
 
-This document presents a comprehensive analysis and implementation plan for building a delta-neutral structured product on an EVM-compatible L2. The system will generate yield by providing concentrated liquidity on Uniswap v3 while hedging directional exposure through perpetual futures positions.
+This document presents the implementation plan for a delta-neutral yield strategy using an EOA (Externally Owned Account) with TypeScript scripts/programs. The system generates yield by providing concentrated liquidity on Uniswap v3 while hedging directional exposure through GMX v2 perpetual short positions on Arbitrum.
 
 **Core Value Proposition**: Capture LP fees and potentially positive funding rates while eliminating directional price risk through continuous delta hedging.
+
+**Why EOA-Based**: Instead of deploying complex smart contracts, we use a simple EOA wallet managed by TypeScript programs. This approach is:
+- Simpler to build and iterate on
+- Easier to debug and monitor
+- Lower gas costs (no proxy overhead)
+- Flexible for strategy adjustments
+- No audit requirements for contract deployment
 
 ---
 
@@ -73,632 +80,315 @@ As price moves, delta changes, requiring **dynamic rebalancing**.
 
 ---
 
-## Part 2: Protocol Selection Analysis
+## Part 2: System Architecture
 
-### 2.1 L2 Network Selection
-
-| Network | Pros | Cons | Recommendation |
-|---------|------|------|----------------|
-| **Arbitrum** | GMX ecosystem, highest DeFi TVL, mature | Higher fees than Base | **Primary choice** |
-| **Base** | Low fees, Coinbase backing, growing ecosystem | Synthetix sunsetting L2s | Secondary option |
-| **Optimism** | Synthetix V2 (deprecated), Perp Protocol | Limited perp options now | Not recommended |
-
-**Recommendation: Arbitrum** - Best perp protocol integration (GMX v2) with deep liquidity.
-
-### 2.2 Perpetual Futures Protocol Selection
-
-| Protocol | Network | Pros | Cons |
-|----------|---------|------|------|
-| **GMX v2** | Arbitrum | Deep liquidity, well-documented API, multi-asset | Keeper-based execution delay |
-| **Synthetix Perps** | Moving to Mainnet | Oracle-based pricing | Sunsetting L2 deployments |
-| **Hyperliquid** | Own L1 | 70%+ market share, low fees | Not EVM, no composability |
-
-**Recommendation: GMX v2** - Best combination of liquidity, documentation, and smart contract composability.
-
-### 2.3 Uniswap v3 Pool Selection Criteria
-
-For this strategy to work, we need:
-
-1. **USDC as quote token** - Stable side for deposits/withdrawals
-2. **Base token available on perp market** - ETH, BTC (WBTC), etc.
-3. **Sufficient trading volume** - Higher fees earned
-4. **Appropriate fee tier** - Balance between fee income and IL
-
-**Recommended Pools:**
-- **ETH/USDC 0.05%** - Highest volume, tightest spreads
-- **WBTC/USDC 0.3%** - Good volume, higher fees compensate for wider range
-- **ARB/USDC 0.3%** - Native token, decent volume
-
----
-
-## Part 3: System Architecture
-
-### 3.1 High-Level Architecture
+### 2.1 High-Level Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         DeltaNeutralVault                           │
+│                         EOA Wallet                                  │
+│                   (Holds tokens and positions)                      │
 ├─────────────────────────────────────────────────────────────────────┤
-│  User Interface Layer                                               │
-│  ├── deposit(uint256 amount)                                        │
-│  ├── withdraw(uint256 shares)                                       │
-│  ├── getYieldMetrics() → (1d, 7d, 30d APY)                         │
-│  └── getPositionDetails() → (lpValue, perpValue, netDelta)         │
-├─────────────────────────────────────────────────────────────────────┤
-│  Strategy Layer                                                     │
-│  ├── LiquidityManager (Uniswap v3)                                 │
-│  │   ├── mintPosition()                                             │
-│  │   ├── adjustRange()                                              │
-│  │   ├── collectFees()                                              │
-│  │   └── calculateDelta()                                           │
-│  ├── HedgeManager (GMX v2)                                         │
-│  │   ├── openShort()                                                │
-│  │   ├── adjustPosition()                                           │
-│  │   ├── closeShort()                                               │
-│  │   └── collectFunding()                                           │
-│  └── RebalanceController                                            │
-│      ├── checkRebalanceNeeded()                                     │
-│      └── executeRebalance()                                         │
-├─────────────────────────────────────────────────────────────────────┤
-│  Data Layer                                                         │
-│  ├── YieldAccounting                                                │
-│  │   ├── trackFeeIncome()                                           │
-│  │   ├── trackFundingPayments()                                     │
-│  │   ├── trackRebalanceCosts()                                      │
-│  │   └── calculateHistoricalYield()                                 │
-│  └── PositionState                                                  │
-│      ├── lpTokenId                                                  │
-│      ├── perpPositionKey                                            │
-│      └── lastRebalanceTimestamp                                     │
-├─────────────────────────────────────────────────────────────────────┤
-│  External Integrations                                              │
-│  ├── Uniswap v3 NonfungiblePositionManager                         │
-│  ├── GMX v2 ExchangeRouter + OrderVault                            │
-│  ├── Chainlink Price Feeds                                         │
-│  └── Chainlink Automation (Keepers)                                │
+│                                                                     │
+│  Assets:                                                            │
+│  ├── USDC (collateral and quote token)                             │
+│  ├── WETH (base token for LP)                                      │
+│  └── Uniswap V3 LP NFT Position                                    │
+│                                                                     │
+│  Positions:                                                         │
+│  ├── Uniswap V3 Concentrated Liquidity Position                    │
+│  └── GMX V2 Short Perpetual Position                               │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
-
+                              │
+                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      Keeper Infrastructure                          │
+│                    TypeScript Control Layer                         │
 ├─────────────────────────────────────────────────────────────────────┤
-│  Chainlink Automation Upkeep                                        │
-│  ├── checkUpkeep() - Off-chain delta monitoring                    │
-│  └── performUpkeep() - Trigger rebalance when needed               │
+│                                                                     │
+│  src/                                                               │
+│  ├── modules/                                                       │
+│  │   ├── gmx/           # GMX V2 perpetual operations              │
+│  │   │   ├── reader.ts      # Read positions, prices, markets      │
+│  │   │   ├── orders.ts      # Create/close orders                  │
+│  │   │   └── types.ts       # GMX-specific types                   │
+│  │   │                                                              │
+│  │   ├── uniswap/       # Uniswap V3 LP operations                 │
+│  │   │   ├── reader.ts      # Read positions, pool state           │
+│  │   │   ├── liquidity.ts   # Mint/adjust/remove liquidity         │
+│  │   │   ├── fees.ts        # Collect fees                         │
+│  │   │   └── types.ts       # Uniswap-specific types               │
+│  │   │                                                              │
+│  │   ├── math/          # Core calculations (ported from Solidity) │
+│  │   │   ├── delta.ts       # Delta/gamma calculations             │
+│  │   │   ├── yield.ts       # APY and yield calculations           │
+│  │   │   ├── ticks.ts       # Tick math utilities                  │
+│  │   │   └── sqrt-price.ts  # sqrtPriceX96 conversions             │
+│  │   │                                                              │
+│  │   └── chainlink/     # Price feed operations                    │
+│  │       ├── price.ts       # Get current prices                   │
+│  │       └── types.ts       # Chainlink types                      │
+│  │                                                                  │
+│  ├── strategy/          # Strategy orchestration                   │
+│  │   ├── monitor.ts         # Position monitoring loop             │
+│  │   ├── rebalance.ts       # Delta rebalancing logic              │
+│  │   ├── compound.ts        # Fee collection & reinvestment        │
+│  │   └── range-adjust.ts    # LP range adjustment                  │
+│  │                                                                  │
+│  ├── config/            # Configuration                            │
+│  │   ├── addresses.ts       # Contract addresses                   │
+│  │   ├── markets.ts         # Market configurations                │
+│  │   └── strategy.ts        # Strategy parameters                  │
+│  │                                                                  │
+│  └── utils/             # Shared utilities                         │
+│      ├── provider.ts        # Ethers provider/signer               │
+│      ├── logger.ts          # Logging utilities                    │
+│      └── format.ts          # Number formatting                    │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 Contract Structure
+### 2.2 Module Responsibilities
 
-```
-contracts/
-├── core/
-│   ├── DeltaNeutralVault.sol      # Main vault (UUPS Upgradeable)
-│   ├── LiquidityManager.sol       # Uniswap v3 integration (UUPS Upgradeable)
-│   ├── HedgeManager.sol           # GMX v2 integration (UUPS Upgradeable)
-│   └── RebalanceController.sol    # Keeper logic (UUPS Upgradeable)
-├── libraries/
-│   ├── DeltaCalculator.sol        # LP position delta math
-│   ├── TickMath.sol               # Price/tick conversions
-│   ├── YieldMath.sol              # APY calculations
-│   └── SecurityModule.sol         # Security utilities
-├── interfaces/
-│   ├── IUniswapV3.sol
-│   ├── IGMXV2.sol
-│   └── IChainlink.sol
-└── test/                          # Test helpers and mocks
-```
+#### GMX Module (`src/modules/gmx/`)
 
----
-
-## Part 4: Core Implementation Details
-
-### 4.1 Delta Calculation
-
-> **Implementation:** [`contracts/libraries/DeltaCalculator.sol`](contracts/libraries/DeltaCalculator.sol)
-
-The DeltaCalculator library provides complete delta and gamma calculations for Uniswap v3 LP positions. Key functions:
+Handles all GMX V2 perpetual operations:
 
 | Function | Purpose |
 |----------|---------|
-| `calculateDelta()` | Position delta based on price zone (below/in/above range) |
-| `calculateDeltaRatio()` | Delta as percentage (0-1 scaled by 1e18) |
+| `getPosition()` | Read current short position details |
+| `getPositions()` | List all positions for account |
+| `createShort()` | Open new short position |
+| `increaseShort()` | Increase existing short size |
+| `decreaseShort()` | Decrease short size |
+| `closeShort()` | Close entire short position |
+| `getExecutionFee()` | Calculate required execution fee |
+| `getMarketPrice()` | Get current market price |
+
+Based on existing scripts:
+- `scripts/create-short-position.ts`
+- `scripts/close-short-position.ts`
+- `scripts/read-positions.ts`
+
+#### Uniswap Module (`src/modules/uniswap/`)
+
+Handles all Uniswap V3 LP operations:
+
+| Function | Purpose |
+|----------|---------|
+| `getPosition()` | Read LP position details (liquidity, ticks, fees) |
+| `getPoolState()` | Get current pool price and tick |
+| `mintPosition()` | Create new LP position |
+| `increaseLiquidity()` | Add liquidity to existing position |
+| `decreaseLiquidity()` | Remove liquidity from position |
+| `collectFees()` | Collect accrued trading fees |
+| `closePosition()` | Remove all liquidity and collect fees |
+| `adjustRange()` | Close and remint at new tick range |
+
+#### Math Module (`src/modules/math/`)
+
+Core calculations ported from Solidity libraries:
+
+| Function | Purpose |
+|----------|---------|
+| `calculateDelta()` | LP position delta based on price zone |
+| `calculateDeltaRatio()` | Delta as percentage (0-1) |
+| `calculateGamma()` | Position gamma (rate of delta change) |
 | `getBaseTokenAmount()` | ETH amount in position |
 | `getQuoteTokenAmount()` | USDC amount in position |
-| `getPositionValue()` | Total position value in quote token |
-| `calculateGamma()` | Negative gamma (short volatility exposure) |
-| `priceToSqrtPriceX96()` | Convert price to Uniswap Q96 format |
-| `sqrtPriceX96ToPrice()` | Convert Q96 to human-readable price |
+| `getPositionValue()` | Total position value in USD |
+| `calculateAPY()` | Annualized yield from snapshots |
+| `priceToSqrtPriceX96()` | Convert price to Q96 format |
+| `sqrtPriceX96ToPrice()` | Convert Q96 to human-readable |
+| `tickToPrice()` | Convert tick to price |
+| `priceToTick()` | Convert price to tick |
 
-**Delta by price zone:**
-- Below range (`S < Pa`): Delta = maximum (full ETH exposure)
-- In range (`Pa ≤ S ≤ Pb`): Delta varies continuously from 1 to 0
-- Above range (`S > Pb`): Delta = 0 (full USDC exposure)
+#### Strategy Module (`src/strategy/`)
 
-### 4.2 GMX v2 Integration for Hedging
+Orchestrates the delta-neutral strategy:
 
-> **Status:** Design complete, implementation pending
-> **Interfaces:** [`contracts/interfaces/IGMXV2.sol`](contracts/interfaces/IGMXV2.sol)
+| Component | Purpose |
+|-----------|---------|
+| `monitor.ts` | Main loop that checks positions and triggers actions |
+| `rebalance.ts` | Adjusts GMX short to match LP delta |
+| `compound.ts` | Collects fees and reinvests |
+| `range-adjust.ts` | Adjusts LP range when price moves out |
 
-The HedgeManager contract will handle all GMX v2 perpetual operations for delta hedging.
+---
 
-**Core Operations:**
+## Part 3: Core Implementation Details
 
-| Function | Purpose |
-|----------|---------|
-| `adjustHedge()` | Open/increase/decrease short position |
-| `getShortPositionSize()` | Read current position from DataStore |
-| `getExecutionFee()` | Calculate required keeper execution fee |
-| `claimFunding()` | Collect accumulated funding payments |
+### 3.1 Delta Calculation (TypeScript)
 
-**GMX v2 Integration Points:**
-- `ExchangeRouter.createOrder()` - Submit market orders
-- `OrderVault` - Collateral escrow for orders
-- `DataStore` - Read position state and parameters
-- `Reader` - Query market and position data
+```typescript
+// src/modules/math/delta.ts
 
-**Order Parameters:**
-- `orderType`: `MarketIncrease` or `MarketDecrease`
-- `isLong`: Always `false` (short positions only)
-- `sizeDeltaUsd`: Position size change (30 decimals)
-- `acceptablePrice`: Set to max for market orders
+const Q96 = BigInt(2) ** BigInt(96);
+const PRECISION = BigInt(10) ** BigInt(18);
 
-### 4.3 Rebalancing Logic
+interface DeltaResult {
+  delta: bigint;        // Raw delta in base token units
+  deltaRatio: bigint;   // Delta as ratio (0-1e18)
+  zone: 'below' | 'in' | 'above';
+}
 
-> **Status:** Design complete, implementation pending
-> **Interfaces:** [`contracts/interfaces/IChainlink.sol`](contracts/interfaces/IChainlink.sol)
+/**
+ * Calculate LP position delta
+ * @param sqrtPriceX96 Current pool price in Q96 format
+ * @param sqrtPaX96 Lower bound sqrt price
+ * @param sqrtPbX96 Upper bound sqrt price
+ * @param liquidity Position liquidity
+ */
+function calculateDelta(
+  sqrtPriceX96: bigint,
+  sqrtPaX96: bigint,
+  sqrtPbX96: bigint,
+  liquidity: bigint
+): DeltaResult {
+  // Below range: full ETH exposure
+  if (sqrtPriceX96 <= sqrtPaX96) {
+    const delta = (liquidity * Q96 * (sqrtPbX96 - sqrtPaX96)) /
+                  (sqrtPaX96 * sqrtPbX96);
+    return { delta, deltaRatio: PRECISION, zone: 'below' };
+  }
 
-The RebalanceController implements Chainlink Automation for autonomous delta rebalancing.
+  // Above range: no ETH exposure
+  if (sqrtPriceX96 >= sqrtPbX96) {
+    return { delta: 0n, deltaRatio: 0n, zone: 'above' };
+  }
 
-**Rebalance Thresholds:**
+  // In range: partial exposure
+  const delta = (liquidity * Q96 * (sqrtPbX96 - sqrtPriceX96)) /
+                (sqrtPriceX96 * sqrtPbX96);
+
+  const maxDelta = (liquidity * Q96 * (sqrtPbX96 - sqrtPaX96)) /
+                   (sqrtPaX96 * sqrtPbX96);
+
+  const deltaRatio = (delta * PRECISION) / maxDelta;
+
+  return { delta, deltaRatio, zone: 'in' };
+}
+```
+
+### 3.2 Rebalancing Logic
+
+```typescript
+// src/strategy/rebalance.ts
+
+interface RebalanceConfig {
+  deltaThreshold: bigint;      // e.g., 5e16 (5%)
+  minRebalanceInterval: number; // e.g., 3600 (1 hour)
+  maxSlippage: bigint;         // e.g., 1e16 (1%)
+}
+
+async function checkAndRebalance(
+  config: RebalanceConfig,
+  lastRebalanceTime: number
+): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+
+  // Respect minimum interval
+  if (now - lastRebalanceTime < config.minRebalanceInterval) {
+    return false;
+  }
+
+  // Get current positions
+  const lpPosition = await uniswap.getPosition();
+  const shortPosition = await gmx.getPosition();
+
+  // Calculate LP delta
+  const poolState = await uniswap.getPoolState();
+  const lpDelta = math.calculateDelta(
+    poolState.sqrtPriceX96,
+    lpPosition.sqrtPaX96,
+    lpPosition.sqrtPbX96,
+    lpPosition.liquidity
+  );
+
+  // Calculate current hedge (short position delta is negative)
+  const hedgeDelta = -shortPosition.sizeInTokens;
+
+  // Net delta
+  const netDelta = lpDelta.delta + hedgeDelta;
+  const deltaDrift = abs(netDelta) / lpDelta.delta;
+
+  // Check if rebalance needed
+  if (deltaDrift < config.deltaThreshold) {
+    return false;
+  }
+
+  // Execute rebalance
+  if (netDelta > 0) {
+    // Increase short
+    await gmx.increaseShort(netDelta);
+  } else {
+    // Decrease short
+    await gmx.decreaseShort(-netDelta);
+  }
+
+  return true;
+}
+```
+
+### 3.3 Compounding Logic
+
+```typescript
+// src/strategy/compound.ts
+
+async function compoundFees(): Promise<void> {
+  // 1. Collect LP fees
+  const fees = await uniswap.collectFees();
+
+  // 2. Calculate new LP amounts
+  const poolState = await uniswap.getPoolState();
+  const price = math.sqrtPriceX96ToPrice(poolState.sqrtPriceX96);
+
+  // 3. Swap if needed to match pool ratio
+  const ratio = calculatePoolRatio(price, tickLower, tickUpper);
+  // ... swap logic
+
+  // 4. Add liquidity
+  await uniswap.increaseLiquidity(amount0, amount1);
+
+  // 5. Adjust hedge for new delta
+  await rebalance();
+}
+```
+
+---
+
+## Part 4: Strategy Parameters
+
+### 4.1 Rebalancing Thresholds
 
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
-| `deltaThreshold` | 5% (5e16) | Default rebalance trigger (configurable) |
+| `DELTA_THRESHOLD` | 5% | Trigger rebalance when drift exceeds |
 | `MIN_REBALANCE_INTERVAL` | 1 hour | Prevent excessive rebalancing |
 | `MAX_REBALANCE_INTERVAL` | 24 hours | Force periodic check |
+| `EMERGENCY_THRESHOLD` | 20% | Alert/pause if drift exceeds |
 
-**Chainlink Automation Flow:**
-
-1. `checkUpkeep()` (off-chain)
-   - Calculate net delta: `lpDelta + hedgeDelta`
-   - Return `true` if |delta| > threshold OR max interval exceeded
-
-2. `performUpkeep()` (on-chain)
-   - Re-verify conditions
-   - Call `vault.rebalance(deltaDrift)`
-   - Update `lastRebalanceTime`
-
-**Rebalance Decision Matrix:**
-
-| Condition | Min Interval Passed? | Action |
-|-----------|---------------------|--------|
-| \|delta\| > 5% | Yes | Rebalance |
-| \|delta\| > 5% | No | Wait |
-| Time > 24h | Yes | Force rebalance |
-| \|delta\| ≤ 5% | - | No action |
-
-### 4.4 Yield Tracking System
-
-> **Implementation:** [`contracts/libraries/YieldMath.sol`](contracts/libraries/YieldMath.sol)
-> **YieldTracker contract:** Design complete, implementation pending
-
-The YieldMath library provides APY and yield metric calculations. Key functions:
-
-| Function | Purpose |
-|----------|---------|
-| `calculateAPY()` | Annualized yield from two snapshots |
-| `calculateReturn()` | Simple return percentage between values |
-| `periodReturnToAPY()` | Convert period return to annualized rate |
-| `calculateTotalFees()` | Fee income in USD from token amounts |
-| `calculateFundingAPY()` | Perpetual funding rate as APY |
-| `calculateBreakevenVolatility()` | Volatility threshold for profitability |
-
-**Yield Components:**
-
-| Source | Tracking Method |
-|--------|-----------------|
-| LP Fees | Cumulative fee0/fee1 collected |
-| Funding Income | Cumulative funding payments (+/-) |
-| Rebalance Costs | Gas + slippage per rebalance |
-
-**Snapshot-Based APY Calculation:**
-```
-APY = (netIncome / startValue) * (365 days / timeDelta)
-netIncome = fees + funding - rebalanceCosts
-```
-
-The YieldTracker contract will maintain daily snapshots for calculating rolling 1/7/30 day APY metrics.
-
-### 4.5 Main Vault Contract
-
-> **Status:** COMPLETE
-> **Interfaces:** [`contracts/interfaces/IUniswapV3.sol`](contracts/interfaces/IUniswapV3.sol)
-
-The DeltaNeutralVault is the main entry point implementing ERC-4626 tokenized vault standard. It is implemented as a **UUPS Upgradeable Proxy**.
-
-**Core Architecture:**
-
-```
-DeltaNeutralVault (ERC-4626)
-├── deposit() → _deployCapital()
-│   ├── Swap USDC → ETH (partial)
-│   ├── Add liquidity to Uniswap v3
-│   └── Open short hedge on GMX v2
-├── withdraw() → _unwindCapital()
-│   ├── Remove liquidity
-│   ├── Close proportional hedge
-│   └── Swap ETH → USDC
-├── rebalance() ← RebalanceController
-│   └── Adjust hedge to match LP delta
-└── compound()
-    ├── Collect LP fees
-    ├── Claim funding
-    └── Reinvest
-```
-
-**Key Functions:**
-
-| Function | Purpose |
-|----------|---------|
-| `deposit(assets, receiver)` | Deposit USDC, receive vault shares |
-| `withdraw(assets, receiver, owner)` | Burn shares, receive USDC |
-| `totalAssets()` | LP value + hedge collateral + PnL |
-| `calculateLPDelta()` | Current LP position delta |
-| `rebalance(deltaDrift)` | Adjust hedge (keeper only) |
-| `compound()` | Reinvest accrued yield |
-
-**Dependencies:**
-- `LiquidityManager` - Uniswap v3 operations
-- `HedgeManager` - GMX v2 operations
-- `YieldTracker` - APY calculations
-- `RebalanceController` - Automation
-
----
-
-## Part 5: Keeper System Design
-
-> **Status:** Design complete, implementation pending
-> **Interfaces:** [`contracts/interfaces/IChainlink.sol`](contracts/interfaces/IChainlink.sol)
-
-### 5.1 Chainlink Automation Integration
-
-The DeltaNeutralKeeper contract handles three automated tasks via Chainlink Automation:
-
-**Upkeep Priority Order:**
-
-| Priority | Type | Trigger | Action |
-|----------|------|---------|--------|
-| 1 | Rebalance | \|delta\| > 5% | `vault.rebalance(netDelta)` |
-| 2 | Compound | 24h + fees > minimum | `vault.compound()` |
-| 3 | Snapshot | 24h elapsed | `yieldTracker.recordSnapshot()` |
-
-**Automation Flow:**
-1. Chainlink nodes call `checkUpkeep()` off-chain
-2. If upkeep needed, `performUpkeep()` is called on-chain
-3. Gas costs paid from LINK balance in Automation Registry
-
-**Registration:**
-- Register upkeep via Chainlink Automation Registry
-- Fund with LINK tokens for gas
-- Set gas limit appropriate for operation (~500k for rebalance)
-
-### 5.2 Off-Chain Monitoring (Backup)
-
-A TypeScript monitoring script provides redundancy:
-- Polls vault state every 60 seconds
-- Triggers rebalance if Chainlink keeper fails
-- Logs delta drift and yield metrics
-- Alerts on anomalous conditions
-
-**Monitoring Metrics:**
-- Net delta percentage
-- LP position value
-- Hedge position size and PnL
-- Pending fees and funding
-- Time since last rebalance
-
----
-
-## Part 6: Risk Analysis & Mitigations
-
-### 6.1 Risk Categories
-
-| Risk Category | Risk | Severity | Mitigation |
-|--------------|------|----------|------------|
-| **Market Risk** | Extreme price moves outside LP range | High | Wide range, automatic range adjustment |
-| **Market Risk** | Negative funding rates | Medium | Monitor and exit if persistent |
-| **Protocol Risk** | GMX liquidation | High | Conservative leverage (2-3x max) |
-| **Protocol Risk** | Uniswap v3 pool manipulation | Medium | TWAP price checks |
-| **Execution Risk** | Rebalance front-running | Medium | Private mempool, slippage limits |
-| **Execution Risk** | Keeper failure | High | Multiple keeper redundancy |
-| **Smart Contract Risk** | Bugs in vault logic | Critical | Audits, formal verification |
-| **Smart Contract Risk** | Integration bugs (GMX/Uni) | High | Extensive testing, gradual rollout |
-
-### 6.2 Position Sizing Guardrails
+### 4.2 Position Parameters
 
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
-| `MAX_LEVERAGE` | 3x | Maximum leverage on perpetual position |
-| `MAX_SINGLE_TX_PCT` | 10% | Max vault % per single transaction |
-| `MIN_HEDGE_RATIO` | 80% | Minimum hedge coverage required |
-| `MAX_HEDGE_RATIO` | 120% | Maximum hedge to prevent over-hedging |
-| `EMERGENCY_DELTA_THRESHOLD` | 20% | Trigger emergency unwind |
+| `MAX_LEVERAGE` | 3x | Maximum GMX leverage |
+| `LP_RANGE_WIDTH` | ±10% | Default LP tick range |
+| `MIN_POSITION_SIZE` | $1000 | Minimum viable position |
+| `MAX_SLIPPAGE` | 1% | Maximum acceptable slippage |
 
-### 6.3 Circuit Breakers
+### 4.3 Compounding Parameters
 
-**Automatic Pause Conditions:**
-
-| Condition | Threshold | Action |
-|-----------|-----------|--------|
-| Delta drift | > 20% | Pause all operations |
-| Liquidation proximity | < 10% margin | Pause + alert |
-| Oracle deviation | > 5% from TWAP | Block rebalance |
-
-**Emergency Unwind Flow:**
-1. `emergencyUnwind()` called by owner/guardian
-2. Close all GMX perpetual positions
-3. Remove all Uniswap v3 liquidity
-4. Swap all assets to USDC
-5. Users can withdraw their share
-
-**Recovery Process:**
-- Investigate root cause
-- Propose fix via governance
-- Resume operations with updated parameters
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| `MIN_COMPOUND_INTERVAL` | 24 hours | Minimum time between compounds |
+| `MIN_FEE_THRESHOLD` | $10 | Minimum fees to trigger compound |
 
 ---
 
-## Part 7: Implementation Roadmap
+## Part 5: Expected Economics
 
-### Completed Work
-
-#### Phase 1: Foundation (COMPLETE)
-
-**Deliverables:**
-- [x] Project structure and build configuration
-- [x] Delta calculation library with comprehensive tests
-- [x] Yield math library with APY calculations
-- [x] All external protocol interfaces (Uniswap v3, GMX v2, Chainlink)
-- [x] Unit tests for delta and yield math
-
-**Key Files:**
-- [`contracts/libraries/DeltaCalculator.sol`](contracts/libraries/DeltaCalculator.sol) - LP delta/gamma calculations
-- [`contracts/libraries/YieldMath.sol`](contracts/libraries/YieldMath.sol) - APY and yield metrics
-- [`contracts/interfaces/`](contracts/interfaces/) - Protocol interface definitions
-
-**Milestones Achieved:**
-1. Delta calculator implements Guillaume Lambert's options pricing framework
-2. Fork tests validate calculations against live Arbitrum pool state
-
-#### Phase 2: Comprehensive Testing (COMPLETE)
-
-**Deliverables:**
-- [x] Priority-based scenario test suite (P0-P3)
-- [x] Fork tests against Arbitrum mainnet
-- [x] Test harness contracts for library testing
-
-**Test Coverage:**
-- [`test/scenarios/CriticalScenarios.test.ts`](test/scenarios/CriticalScenarios.test.ts) - P0: Liquidation, oracle attacks
-- [`test/scenarios/HighPriorityScenarios.test.ts`](test/scenarios/HighPriorityScenarios.test.ts) - P1: Rebalance failures
-- [`test/scenarios/MediumPriorityScenarios.test.ts`](test/scenarios/MediumPriorityScenarios.test.ts) - P2: Fee collection
-- [`test/scenarios/LowerPriorityScenarios.test.ts`](test/scenarios/LowerPriorityScenarios.test.ts) - P3: Normal operations
-- [`test/fork/`](test/fork/) - Live Arbitrum state validation
-
-#### Phase 3: Core Vault Implementation (COMPLETE)
-
-**Objective:** Build the main vault contract and deposit/withdraw flow.
-
-**Deliverables:**
-- [x] `DeltaNeutralVault.sol` - ERC-4626 vault with share accounting
-- [x] Basic deposit flow (receive USDC, mint shares)
-- [x] Basic withdraw flow (burn shares, return USDC)
-- [x] `totalAssets()` calculation combining LP + hedge positions
-- [x] Unit tests for vault operations (55 tests)
-
-**Key Files:**
-- [`contracts/core/DeltaNeutralVault.sol`](contracts/core/DeltaNeutralVault.sol) - Main ERC-4626 vault contract
-- [`contracts/test/MockERC20.sol`](contracts/test/MockERC20.sol) - Mock token for testing
-- [`test/unit/DeltaNeutralVault.test.ts`](test/unit/DeltaNeutralVault.test.ts) - Comprehensive vault tests
-
-**Features Implemented:**
-- Full ERC-4626 compliance (deposit, mint, withdraw, redeem)
-- Deposit cap enforcement
-- Pause/unpause functionality
-- Emergency unwind capability
-- Rebalance authorization (owner + controller)
-- Manager address configuration (for Phases 4-6)
-- Delta monitoring views (returning stubs for Phase 4+)
-- Fee collection and funding claim interfaces (stubs)
-
-**Architecture Decisions:**
-1. Uses OpenZeppelin v5.0 for ERC-4626, Ownable, Pausable, ReentrancyGuard
-2. Position value hooks prepared for LiquidityManager and HedgeManager integration
-3. Delta/hedge value functions return 0 until Phases 4-5 implementation
-4. Events emit placeholder values for LP/hedge values until integration
-
-#### Phase 4: Liquidity Management (COMPLETE)
-
-**Objective:** Integrate with Uniswap v3 for LP position management.
-
-**Deliverables:**
-- [x] `LiquidityManager.sol` - Uniswap v3 position operations
-- [x] Mint new LP positions with configurable range
-- [x] Collect accrued fees
-- [x] Increase/decrease liquidity
-- [x] Range adjustment (remove + re-add at new ticks)
-- [x] Integration tests with fork
-- [x] DeltaNeutralVault integration
-
-**Key Files:**
-- [`contracts/core/LiquidityManager.sol`](contracts/core/LiquidityManager.sol) - Uniswap v3 position management
-- [`contracts/interfaces/ILiquidityManager.sol`](contracts/interfaces/ILiquidityManager.sol) - Interface definition
-- [`contracts/test/MockUniswapV3.sol`](contracts/test/MockUniswapV3.sol) - Mock contracts for unit testing
-- [`test/unit/LiquidityManager.test.ts`](test/unit/LiquidityManager.test.ts) - Comprehensive unit tests (47 tests)
-- [`test/fork/LiquidityManagerFork.test.ts`](test/fork/LiquidityManagerFork.test.ts) - Fork tests against Arbitrum
-
-**Features Implemented:**
-- Position lifecycle management (mint, increase, decrease, close)
-- Fee collection with vault integration
-- Range adjustment (atomic close and re-mint at new ticks)
-- Delta and position value calculations using DeltaCalculator library
-- Slippage tolerance configuration
-- Tick-to-sqrtPriceX96 conversion (Uniswap TickMath)
-- Comprehensive view functions for position monitoring
-
-**Architecture Decisions:**
-1. LiquidityManager holds NFT positions, vault controls operations via interface
-2. Owner and vault can both call position management functions
-3. Refund mechanism returns unused tokens after minting
-4. Uses DeltaCalculator library for delta/gamma calculations
-5. Integrated with DeltaNeutralVault via ILiquidityManager interface
-
-**Test Coverage:**
-- 47 unit tests covering all operations and edge cases
-- Fork tests validate against real Arbitrum Uniswap V3 contracts
-- Access control tests for vault-only functions
-- Slippage and deadline validation tests
-
-#### Phase 5: Hedge Management (COMPLETE)
-
-**Objective:** Integrate with GMX v2 for perpetual hedging.
-
-**Deliverables:**
-- [x] `HedgeManager.sol` - GMX v2 short position operations
-- [x] Open market short orders
-- [x] Increase/decrease position size
-- [x] Close positions
-- [x] Read position state and funding accrued
-- [x] Fork tests against GMX v2
-- [x] DeltaNeutralVault integration
-
-**Key Files:**
-- [`contracts/core/HedgeManager.sol`](contracts/core/HedgeManager.sol) - GMX v2 perpetual position management
-- [`contracts/interfaces/IHedgeManager.sol`](contracts/interfaces/IHedgeManager.sol) - Interface definition
-- [`contracts/test/MockGMXV2.sol`](contracts/test/MockGMXV2.sol) - Mock contracts for unit testing
-- [`test/unit/HedgeManager.test.ts`](test/unit/HedgeManager.test.ts) - Comprehensive unit tests (59 tests)
-- [`test/fork/HedgeManagerFork.test.ts`](test/fork/HedgeManagerFork.test.ts) - Fork tests against Arbitrum
-
-**Features Implemented:**
-- Short position lifecycle management (open, increase, decrease, close)
-- Hedge adjustment for delta rebalancing (`adjustHedge`)
-- Position value and delta calculations
-- Funding fee claiming and tracking
-- Leverage validation (max 3x)
-- Slippage protection with configurable tolerance
-- Integration with Chainlink price feeds
-- Comprehensive view functions for position monitoring
-
-**Architecture Decisions:**
-1. HedgeManager holds positions, vault controls operations via interface
-2. Owner and vault can both call position management functions
-3. Uses GMX v2 market orders for reliable execution
-4. Supports execution fee refunds for excess ETH
-5. Integrated with DeltaNeutralVault via IHedgeManager interface
-
-**Test Coverage:**
-- 59 unit tests covering all operations and edge cases
-- Fork tests validate against real Arbitrum GMX v2 contracts
-- Access control tests for vault-only functions
-- Leverage and position size validation tests
-- ETH handling and refund tests
-
----
-
-### Next Steps
-
-#### Phase 6: Rebalancing Automation
-
-**Objective:** Automated delta monitoring and rebalancing.
-
-**Deliverables:**
-- [x] `RebalanceController.sol` - Chainlink Automation keeper
-- [x] `checkUpkeep()` - Off-chain delta monitoring
-- [x] `performUpkeep()` - On-chain rebalance/maintenance execution
-- [x] Yield snapshot recording (event-based via `SnapshotRecorded`)
-- [x] Compound functionality (time-based keeper calls to `vault.compound()`)
-
-**Implementation Order:**
-1. Create RebalanceController with Chainlink interface
-2. Implement delta drift detection logic
-3. Implement rebalance execution flow
-4. Add time-based constraints (min/max intervals)
-5. Integrate yield tracking
-
-#### Phase 7: Security Hardening (COMPLETE)
-
-**Objective:** Prepare for production deployment.
-
-**Deliverables:**
-- [x] Emergency pause mechanism
-- [x] Circuit breakers for critical conditions
-- [x] Gas optimization pass
-- [x] Slippage protection
-- [x] Access control review
-- [x] Internal security audit
-
-**Key Files:**
-- [`contracts/libraries/SecurityModule.sol`](contracts/libraries/SecurityModule.sol) - Reusable security utilities
-- [`test/unit/SecurityHardening.test.ts`](test/unit/SecurityHardening.test.ts) - Security unit tests (20 tests)
-- [`test/fork/SecurityHardeningFork.test.ts`](test/fork/SecurityHardeningFork.test.ts) - Fork tests against Arbitrum
-
-**Features Implemented:**
-
-*Circuit Breakers:*
-- Automatic circuit breaker when delta drift exceeds 20% (EMERGENCY_THRESHOLD)
-- Manual circuit breaker trigger by owner or guardian
-- Circuit breaker blocks regular user withdrawals/redemptions
-- Owner/guardian can still operate during circuit breaker
-- Circuit breaker reset requires delta to be within safe range
-
-*Withdrawal Protection:*
-- Maximum single withdrawal: 25% of total assets
-- Large withdrawal cooldown: 1 hour between withdrawals > 10%
-- Rate limiting prevents rapid fund extraction
-
-*Oracle Security:*
-- Oracle staleness checks (max 1 hour)
-- Invalid/negative price rejection
-- Incomplete round detection
-- TWAP validation against spot price (max 3% deviation)
-- Pool price vs Chainlink price cross-validation
-
-*Access Control:*
-- Guardian role for emergency operations
-- Two-tier authorization (owner + guardian)
-- Separate authorization for different operation types
-
-*Leverage Monitoring:*
-- Emergency leverage threshold (2.8x) warning
-- Liquidation margin calculation
-- Position health validation before operations
-
-**Target Metrics (Achieved):**
-- Circuit breaker trigger gas: < 100k ✓
-- Withdrawal with security checks: < 200k gas ✓
-- All 281 tests passing ✓
-
-#### Phase 8: Deployment
-
-**Objective:** Launch on Arbitrum mainnet.
-
-**Deliverables:**
-- [x] Deployment scripts for all contracts (UUPS proxies)
-- [ ] Contract verification on Arbiscan
-- [ ] Chainlink Automation upkeep registration
-- [ ] Initial deposit cap ($10k)
-- [ ] Monitoring and alerting setup
-- [ ] External audit engagement
-
-**Launch Criteria:**
-- 2 weeks testnet operation without issues
-- Internal audit complete
-- External audit scheduled
-
----
-
-## Part 8: Expected Economics
-
-### 8.1 Revenue Sources
+### 5.1 Revenue Sources
 
 | Source | Expected Range | Notes |
 |--------|---------------|-------|
@@ -706,7 +396,7 @@ A TypeScript monitoring script provides redundancy:
 | LP Fees (ETH/USDC 0.3%) | 10-25% APY | Higher fee tier |
 | Perp Funding (when receiving) | 0-20% APY | Market dependent |
 
-### 8.2 Cost Sources
+### 5.2 Cost Sources
 
 | Cost | Expected Range | Notes |
 |------|---------------|-------|
@@ -715,7 +405,7 @@ A TypeScript monitoring script provides redundancy:
 | Swap slippage | 0.05-0.2% per rebalance | Size dependent |
 | GMX borrowing fees | 0.01-0.1% per day | Utilization dependent |
 
-### 8.3 Target Net Yield
+### 5.3 Target Net Yield
 
 **Conservative estimate**: 5-15% APY in normal market conditions
 **Bull case**: 20-30% APY with favorable funding rates
@@ -723,141 +413,62 @@ A TypeScript monitoring script provides redundancy:
 
 ---
 
-## Part 9: Technology Stack Summary
+## Part 6: Implementation Roadmap
 
-```
-Smart Contracts:
-├── Solidity 0.8.19+
-├── OpenZeppelin (ERC4626, ReentrancyGuard)
-├── Uniswap v3 SDK
-└── Chainlink Automation
+### Phase 1: Core Modules (Current)
 
-External Protocols:
-├── Uniswap v3 (Arbitrum)
-├── GMX v2 (Arbitrum)
-├── Chainlink (Price Feeds + Automation)
-└── (Optional) Gelato as backup keeper
+**Objective:** Build foundational modules for protocol interactions
 
-Development:
-├── Foundry (testing + deployment)
-├── Hardhat (optional, for coverage)
-└── TypeScript (keeper scripts)
+**Deliverables:**
+- [ ] GMX module (reader, orders)
+- [ ] Uniswap module (reader, liquidity, fees)
+- [ ] Math module (delta, yield calculations)
+- [ ] Chainlink module (price feeds)
+- [ ] Configuration system
 
-Monitoring:
-├── Tenderly (transaction simulation)
-├── OpenZeppelin Defender (alerts)
-└── Custom dashboard (yield metrics)
-```
+**Key Files to Create:**
+- `src/modules/gmx/reader.ts`
+- `src/modules/gmx/orders.ts`
+- `src/modules/uniswap/reader.ts`
+- `src/modules/uniswap/liquidity.ts`
+- `src/modules/math/delta.ts`
+- `src/modules/math/yield.ts`
 
----
+### Phase 2: Strategy Layer
 
-## Part 10: Multi-Market Configuration
+**Objective:** Build strategy orchestration
 
-The system is designed to support multiple token pairs beyond ETH/USDC, enabling deployment of specialized vaults like harmonia-ETH, harmonia-BTC, harmonia-ARB with different yield/risk characteristics.
+**Deliverables:**
+- [ ] Position monitoring loop
+- [ ] Rebalance execution
+- [ ] Compounding logic
+- [ ] Range adjustment
 
-### 10.1 Supported Markets
+### Phase 3: Operations
 
-| Market | Base Token | Uniswap Pool | GMX Market | Expected APY | Risk Level |
-|--------|------------|--------------|------------|--------------|------------|
-| **ETH** | WETH (18 dec) | ETH/USDC 0.05% | ETH/USD | 5-20% | Moderate |
-| **BTC** | WBTC (8 dec) | WBTC/USDC 0.3% | BTC/USD | 3-15% | Moderate |
-| **ARB** | ARB (18 dec) | ARB/USDC 0.3% | ARB/USD | 10-40% | Aggressive |
-| **LINK** | LINK (18 dec) | LINK/USDC 0.3% | LINK/USD | 8-30% | Aggressive |
+**Objective:** Build operational tooling
 
-### 10.2 Market Configuration Structure
+**Deliverables:**
+- [ ] CLI commands for manual operations
+- [ ] Monitoring dashboard/logs
+- [ ] Alert system
+- [ ] Position reporting
 
-Each market requires:
-1. **Uniswap V3 Pool** - For LP position
-2. **GMX V2 Market** - For perpetual hedge
-3. **Chainlink Price Feed** - For price verification
-4. **Matching tokens** - Base token must match across all components
+### Phase 4: Automation
 
-```typescript
-interface MarketConfig {
-  id: string;                    // "ETH", "BTC", "ARB"
-  baseToken: TokenConfig;        // Volatile token (what we hedge)
-  quoteToken: TokenConfig;       // Stable token (USDC)
-  uniswapPool: UniswapPoolConfig;
-  gmxMarket: GMXMarketConfig;
-  chainlinkFeed: ChainlinkFeedConfig;
-  baseTokenIsToken0: boolean;    // Token ordering in pool
-  strategyParams: StrategyParams;
-}
-```
+**Objective:** Automated strategy execution
 
-### 10.3 Scripts
-
-```bash
-# Validate a market configuration
-MARKET=ETH npx hardhat run scripts/validate-market.ts --network hardhat
-
-# Discover viable markets for a token
-TOKEN=GMX npx hardhat run scripts/discover-markets.ts --network hardhat
-
-# Evaluate custom contract addresses
-UNISWAP_POOL=0x... GMX_MARKET=0x... CHAINLINK_FEED=0x... \
-  npx hardhat run scripts/evaluate-custom-market.ts --network hardhat
-
-# Deploy a vault for a market
-MARKET=ETH npx hardhat run scripts/deploy-vault.ts --network arbitrum
-```
-
-### 10.4 Deployment Process
-
-1. **Select Market**: Choose from pre-configured markets or create new config
-2. **Validate**: Run `validate-market.ts` to verify all components
-3. **Deploy**: Run `deploy-vault.ts` with appropriate market
-4. **Configure**: Set strategy parameters and keeper
-5. **Seed**: Provide initial liquidity
-6. **Enable**: Open deposits
-
-### 10.5 Adding New Markets
-
-To add support for a new token pair:
-
-1. **Discover components**:
-   ```bash
-   TOKEN=NEW_TOKEN npx hardhat run scripts/discover-markets.ts
-   ```
-
-2. **Add to registry** (`src/markets/registry.ts`):
-   ```typescript
-   export const NEW_MARKET: MarketConfig = {
-     id: "NEW",
-     name: "Harmonia NEW",
-     // ... configuration from discovery output
-   };
-   ```
-
-3. **Validate configuration**:
-   ```bash
-   MARKET=NEW npx hardhat run scripts/validate-market.ts
-   ```
-
-4. **Deploy**:
-   ```bash
-   MARKET=NEW npx hardhat run scripts/deploy-vault.ts --network arbitrum
-   ```
-
-### 10.6 Token Decimal Handling
-
-Different tokens have different decimal places, which affects price calculations:
-
-| Token | Decimals | Decimal Adjustment vs USDC |
-|-------|----------|---------------------------|
-| WETH | 18 | 10^12 |
-| ARB | 18 | 10^12 |
-| LINK | 18 | 10^12 |
-| WBTC | 8 | 10^2 |
-| USDC | 6 | - |
-
-The `MarketConfig.decimalAdjustment` field handles this automatically.
+**Deliverables:**
+- [ ] Cron-based monitoring
+- [ ] Automated rebalancing
+- [ ] Automated compounding
+- [ ] Error recovery
 
 ---
 
-## Appendix A: Key Contract Addresses (Arbitrum)
+## Part 7: Contract Addresses (Arbitrum)
 
-### Protocol Infrastructure (shared across all markets)
+### Protocol Infrastructure
 
 ```
 Uniswap v3:
@@ -873,46 +484,36 @@ GMX v2:
 - Reader: 0xf60becbba223EEA9495Da3f606753867eC10d139
 
 Chainlink:
-- Automation Registry: 0x37D9dC70bfcd8BC77Ec2858836B923c560E891D1
+- ETH/USD Feed: 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612
 ```
 
-### Market-Specific Addresses
+### Markets
 
 ```
 ETH Market:
 - Uniswap Pool (WETH/USDC 0.05%): 0xC6962004f452bE9203591991D15f6b388e09E8D0
 - GMX Market (ETH/USD): 0x70d95587d40A2caf56bd97485aB3Eec10Bee6336
-- Chainlink Feed (ETH/USD): 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612
 
-BTC Market:
-- Uniswap Pool (WBTC/USDC 0.3%): 0xac70bD92F89e6739B3a08Db9B6081a923912f73D
-- GMX Market (BTC/USD): 0x47c031236e19d024b42f8AE6780E44A573170703
-- Chainlink Feed (BTC/USD): 0x6ce185860a4963106506C203335A2910525d22AD
-
-ARB Market:
-- Uniswap Pool (ARB/USDC 0.3%): 0xC6F780497A95e246EB9449f5e4770916DCd6396A
-- GMX Market (ARB/USD): 0xC25cEf6061Cf5dE5eb761b50E4743c1F5D7E5407
-- Chainlink Feed (ARB/USD): 0xb2A824043730FE05F3DA2efaFa1CBbe83fa548D6
-
-LINK Market:
-- Uniswap Pool (LINK/USDC 0.3%): 0x655B739E0b3BB00D6b74BBCd5C9169aEb0aa2e68
-- GMX Market (LINK/USD): 0x7f1fa204bb700853D36994DA19F830b6Ad18455C
-- Chainlink Feed (LINK/USD): 0x86E53CF1B870786351Da77A57575e79CB55812CB
-```
-
-### Tokens
-
-```
-Stablecoins:
+Tokens:
 - USDC (Native): 0xaf88d065e77c8cC2239327C5EDb3A432268e5831
-- USDC.e (Bridged): 0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8
-
-Base Tokens:
 - WETH: 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1
-- WBTC: 0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f
-- ARB: 0x912CE59144191C1204E64559FE8253a0e49E6548
-- LINK: 0xf97f4df75117a78c1A5a0DBb814Af92458539FB4
 ```
+
+---
+
+## Appendix A: Migration from Smart Contracts
+
+The previous approach (tagged as `abandoned-v1`) used Solidity smart contracts:
+- `DeltaNeutralVault.sol` - ERC-4626 vault
+- `LiquidityManager.sol` - Uniswap V3 operations
+- `HedgeManager.sol` - GMX V2 operations
+- `RebalanceController.sol` - Chainlink Automation keeper
+
+Key learnings preserved:
+1. Delta calculation math (ported to TypeScript)
+2. GMX V2 order creation patterns (from scripts)
+3. Uniswap V3 position management patterns
+4. Strategy parameters and thresholds
 
 ---
 
@@ -924,7 +525,6 @@ Base Tokens:
 4. Elsts, A. "Liquidity Math in Uniswap V3" Technical Note
 5. GMX Documentation: https://docs.gmx.io/
 6. Uniswap v3 Documentation: https://docs.uniswap.org/
-7. Chainlink Automation Documentation: https://docs.chain.link/chainlink-automation
 
 ---
 
