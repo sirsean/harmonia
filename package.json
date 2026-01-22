@@ -6,6 +6,7 @@
   "scripts": {
     "format": "prettier --write 'scripts/**/*.ts' 'src/**/*.ts'",
     "format:check": "prettier --check 'scripts/**/*.ts' 'src/**/*.ts'",
+    "lint": "npm run format:check",
     "test": "vitest run",
     "test:watch": "vitest"
   },
