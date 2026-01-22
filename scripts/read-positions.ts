@@ -1,10 +1,6 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "./config/addresses";
-
-// GMX Reader ABI (minimal for getAccountPositions)
-const READER_ABI = [
-  "function getAccountPositions(address dataStore, address account, uint256 start, uint256 end) view returns (tuple(tuple(address account, address market, address collateralToken) addresses, tuple(uint256 sizeInUsd, uint256 sizeInTokens, uint256 collateralAmount, uint256 borrowingFactor, uint256 fundingFeeAmountPerSize, uint256 longTokenClaimableFundingAmountPerSize, uint256 shortTokenClaimableFundingAmountPerSize, uint256 increasedAtBlock, uint256 decreasedAtBlock, uint256 increasedAtTime, uint256 decreasedAtTime) numbers, tuple(bool isLong) flags)[])",
-];
+import { createReader, getAccountPositions } from "../src/modules/gmx/reader";
 
 async function main() {
   const [signer] = await ethers.getSigners();
@@ -13,8 +9,9 @@ async function main() {
   const end = Number(process.env.END || "10");
   const marketFilter = (process.env.MARKET || "").toLowerCase();
 
-  const reader = new ethers.Contract(ARBITRUM_MAINNET.gmxReader, READER_ABI, ethers.provider);
-  const positions = await reader.getAccountPositions(
+  const reader = createReader(ARBITRUM_MAINNET.gmxReader, ethers.provider);
+  const positions = await getAccountPositions(
+    reader,
     ARBITRUM_MAINNET.gmxDataStore,
     account,
     start,
