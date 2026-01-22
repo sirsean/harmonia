@@ -21,7 +21,12 @@ async function main() {
   const executionFee = ethers.parseEther("0.01");
 
   const reader = new ethers.Contract(ARBITRUM_MAINNET.gmxReader, READER_ABI, ethers.provider);
-  const positions = await reader.getAccountPositions(ARBITRUM_MAINNET.gmxDataStore, myAddress, 0, 10);
+  const positions = await reader.getAccountPositions(
+    ARBITRUM_MAINNET.gmxDataStore,
+    myAddress,
+    0,
+    10
+  );
 
   const shortPosition = positions.find(
     (pos: any) =>
@@ -60,25 +65,8 @@ async function main() {
   const router = await ethers.getContractAt(routerAbi, routerAddress, signer);
 
   const params = [
-    [
-      myAddress,
-      myAddress,
-      ethers.ZeroAddress,
-      ethers.ZeroAddress,
-      marketAddress,
-      usdcAddress,
-      [],
-    ],
-    [
-      sizeDeltaUsd,
-      0,
-      0,
-      acceptablePrice,
-      executionFee,
-      0,
-      0,
-      0,
-    ],
+    [myAddress, myAddress, ethers.ZeroAddress, ethers.ZeroAddress, marketAddress, usdcAddress, []],
+    [sizeDeltaUsd, 0, 0, acceptablePrice, executionFee, 0, 0, 0],
     4, // MarketDecrease
     0, // NoSwap
     false,

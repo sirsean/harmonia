@@ -8,7 +8,11 @@ async function main() {
   const start = Number(process.env.START || "0");
   const end = Number(process.env.END || "10");
 
-  const reader = new ethers.Contract(readerDeployment.address, readerDeployment.abi, ethers.provider);
+  const reader = new ethers.Contract(
+    readerDeployment.address,
+    readerDeployment.abi,
+    ethers.provider
+  );
   const orders = await reader.getAccountOrders(ARBITRUM_MAINNET.gmxDataStore, account, start, end);
 
   console.log("Reader:", readerDeployment.address);

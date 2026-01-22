@@ -89,6 +89,13 @@ npm install
 npx hardhat run scripts/read-positions.ts --network arbitrum
 ```
 
+### Tests
+
+```bash
+# Runs unit + integration tests. Integration tests use cassette replays when available.
+npm test
+```
+
 ### Creating a Short Position
 
 ```bash

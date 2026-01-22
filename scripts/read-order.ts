@@ -30,7 +30,11 @@ async function main() {
     await printEventLogsFromTx(txHash);
   }
 
-  const reader = new ethers.Contract(readerDeployment.address, readerDeployment.abi, ethers.provider);
+  const reader = new ethers.Contract(
+    readerDeployment.address,
+    readerDeployment.abi,
+    ethers.provider
+  );
   const order = await reader.getOrder(ARBITRUM_MAINNET.gmxDataStore, resolvedOrderKey);
 
   const numbers = order.numbers;
@@ -83,7 +87,8 @@ async function findOrderKeyFromTx(txHash: string): Promise<string> {
       const size = map.get("sizeDeltaUsd");
       const execFee = map.get("executionFee");
 
-      if (acceptable) console.log("OrderCreated acceptablePrice:", ethers.formatUnits(acceptable, 30));
+      if (acceptable)
+        console.log("OrderCreated acceptablePrice:", ethers.formatUnits(acceptable, 30));
       if (trigger) console.log("OrderCreated triggerPrice:", ethers.formatUnits(trigger, 30));
       if (size) console.log("OrderCreated sizeDeltaUsd:", ethers.formatUnits(size, 30));
       if (execFee) console.log("OrderCreated executionFee (ETH):", ethers.formatEther(execFee));
