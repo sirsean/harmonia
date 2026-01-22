@@ -527,13 +527,13 @@ contract LiquidityManager is
 
         // If highly skewed (one side empty), swap to balance for new range
         if (balance0 == 0 && balance1 > 0) {
-             _swapSingleSided(token1, balance1, newTickLower, newTickUpper, address(this), deadline);
-             balance0 = IERC20(token0).balanceOf(address(this));
-             balance1 = IERC20(token1).balanceOf(address(this));
+            _swapSingleSided(token1, balance1, newTickLower, newTickUpper, address(this), deadline);
+            balance0 = IERC20(token0).balanceOf(address(this));
+            balance1 = IERC20(token1).balanceOf(address(this));
         } else if (balance1 == 0 && balance0 > 0) {
-             _swapSingleSided(token0, balance0, newTickLower, newTickUpper, address(this), deadline);
-             balance0 = IERC20(token0).balanceOf(address(this));
-             balance1 = IERC20(token1).balanceOf(address(this));
+            _swapSingleSided(token0, balance0, newTickLower, newTickUpper, address(this), deadline);
+            balance0 = IERC20(token0).balanceOf(address(this));
+            balance1 = IERC20(token1).balanceOf(address(this));
         }
 
         // Approve tokens for new position
@@ -1048,7 +1048,7 @@ contract LiquidityManager is
         // Assuming no other funds (which is true for LM usually).
         // Or we can just calculate swapAmount again? No, redundant.
         // Or we can just sweep tokenIn back to msg.sender?
-        
+
         uint256 remaining = IERC20(tokenIn).balanceOf(address(this));
         if (remaining > 0) {
             IERC20(tokenIn).safeTransfer(msg.sender, remaining);
@@ -1118,7 +1118,7 @@ contract LiquidityManager is
                 tokenIn: tokenIn,
                 tokenOut: tokenOut,
                 fee: poolFee,
-                recipient: recipient, 
+                recipient: recipient,
                 deadline: deadline,
                 amountIn: swapAmount,
                 amountOutMinimum: 0,
