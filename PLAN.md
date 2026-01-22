@@ -420,7 +420,7 @@ async function compoundFees(): Promise<void> {
 **Objective:** Build foundational modules for protocol interactions
 
 **Deliverables:**
-- [ ] GMX module (reader, orders)
+- [x] GMX module (reader, orders)
 - [ ] Uniswap module (reader, liquidity, fees)
 - [ ] Math module (delta, yield calculations)
 - [x] Chainlink module (price feeds)
