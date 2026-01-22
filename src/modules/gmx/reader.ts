@@ -1,8 +1,9 @@
 import { ethers } from "ethers";
-import { GMXPosition, GMXReader } from "./types";
+import { GMXMarket, GMXPosition, GMXReader } from "./types";
 
 export const GMX_READER_ABI = [
-  "function getAccountPositions(address dataStore, address account, uint256 start, uint256 end) view returns (tuple(tuple(address account, address market, address collateralToken) addresses, tuple(uint256 sizeInUsd, uint256 sizeInTokens, uint256 collateralAmount, uint256 borrowingFactor, uint256 fundingFeeAmountPerSize, uint256 longTokenClaimableFundingAmountPerSize, uint256 shortTokenClaimableFundingAmountPerSize, uint256 increasedAtBlock, uint256 decreasedAtBlock, uint256 increasedAtTime, uint256 decreasedAtTime) numbers, tuple(bool isLong) flags)[])",
+  "function getAccountPositions(address dataStore, address account, uint256 start, uint256 end) view returns (tuple(tuple(address account, address market, address collateralToken) addresses, tuple(uint256 sizeInUsd, uint256 sizeInTokens, uint256 collateralAmount, uint256 borrowingFactor, uint256 fundingFeeAmountPerSize, uint256 longTokenClaimableFundingAmountPerSize, uint256 shortTokenClaimableFundingAmountPerSize, uint256 increasedAtTime, uint256 decreasedAtTime) numbers, tuple(bool isLong) flags)[])",
+  "function getMarket(address dataStore, address key) view returns (tuple(address marketToken, address indexToken, address longToken, address shortToken))",
 ];
 
 export function createReader(address: string, provider: ethers.Provider): GMXReader {
@@ -61,3 +62,13 @@ export async function getPosition(
     isLong: options.isLong,
   });
 }
+
+export async function getMarket(
+  reader: GMXReader,
+  dataStore: string,
+  marketKey: string
+): Promise<GMXMarket> {
+  return reader.getMarket(dataStore, marketKey);
+}
+
+// getPositionInfo/isPositionLiquidatable helpers intentionally omitted to avoid ABI mismatch

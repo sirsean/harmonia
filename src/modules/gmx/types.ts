@@ -12,8 +12,6 @@ export interface GMXPositionNumbers {
   fundingFeeAmountPerSize: bigint;
   longTokenClaimableFundingAmountPerSize: bigint;
   shortTokenClaimableFundingAmountPerSize: bigint;
-  increasedAtBlock: bigint;
-  decreasedAtBlock: bigint;
   increasedAtTime: bigint;
   decreasedAtTime: bigint;
 }
@@ -28,6 +26,42 @@ export interface GMXPosition {
   flags: GMXPositionFlags;
 }
 
+export interface GMXPriceProps {
+  min: bigint;
+  max: bigint;
+}
+
+export interface GMXMarketPrices {
+  indexTokenPrice: GMXPriceProps;
+  longTokenPrice: GMXPriceProps;
+  shortTokenPrice: GMXPriceProps;
+}
+
+export interface GMXMarket {
+  marketToken: string;
+  indexToken: string;
+  longToken: string;
+  shortToken: string;
+}
+
+export interface GMXPositionInfo {
+  positionKey: string;
+  position: GMXPosition;
+  fees: {
+    totalCostAmount: bigint;
+  };
+  executionPriceResult: {
+    executionPrice: bigint;
+  };
+  pnlAfterPriceImpactUsd: bigint;
+}
+
+export interface GMXLiquidationInfo {
+  remainingCollateralUsd: bigint;
+  minCollateralUsd: bigint;
+  minCollateralUsdForLeverage: bigint;
+}
+
 export interface GMXReader {
   getAccountPositions(
     dataStore: string,
@@ -35,6 +69,7 @@ export interface GMXReader {
     start: number,
     end: number
   ): Promise<GMXPosition[]>;
+  getMarket(dataStore: string, key: string): Promise<GMXMarket>;
 }
 
 export enum GMXOrderType {

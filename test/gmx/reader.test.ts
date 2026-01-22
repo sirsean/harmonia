@@ -17,8 +17,6 @@ const makePosition = (overrides?: Partial<GMXPosition>): GMXPosition => ({
     fundingFeeAmountPerSize: 0n,
     longTokenClaimableFundingAmountPerSize: 0n,
     shortTokenClaimableFundingAmountPerSize: 0n,
-    increasedAtBlock: 0n,
-    decreasedAtBlock: 0n,
     increasedAtTime: 0n,
     decreasedAtTime: 0n,
     ...overrides?.numbers,

@@ -69,7 +69,7 @@ async function main() {
       orderVault: ARBITRUM_MAINNET.gmxOrderVault,
       gasLimit: 4000000,
       nonce,
-      performStaticCall: true,
+      performStaticCall: false,
     }
   );
 

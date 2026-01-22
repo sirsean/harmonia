@@ -67,7 +67,7 @@ async function main() {
       routerAddress,
       gasLimit: 4000000,
       nonce,
-      performStaticCall: true,
+      performStaticCall: false,
     }
   );
 
