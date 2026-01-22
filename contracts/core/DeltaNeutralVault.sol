@@ -170,6 +170,8 @@ contract DeltaNeutralVault is
     /// @notice Emitted when protocol fee is collected
     event ProtocolFeeCollected(uint256 assets, uint256 shares);
 
+    event RebalanceDebug(uint256 hedgeTarget, int256 lpDelta, uint256 price);
+
     // ============ Errors ============
 
     /// @notice Thrown when deposit would exceed cap
@@ -952,10 +954,11 @@ contract DeltaNeutralVault is
 
         if (hedgeTarget == 0 && liquidityManager != address(0) && hedgeManager != address(0)) {
             int256 lpDelta = ILiquidityManager(liquidityManager).getPositionDelta();
+            uint256 price = 0;
 
             // If LP delta is positive (long exposure), we need to short
             if (lpDelta > 0) {
-                uint256 price = ILiquidityManager(liquidityManager).getOraclePrice();
+                price = ILiquidityManager(liquidityManager).getOraclePrice();
                 uint256 deltaAbs = uint256(lpDelta);
                 address baseToken = ILiquidityManager(liquidityManager).baseToken();
                 uint8 decimals = IERC20Metadata(baseToken).decimals();
@@ -977,6 +980,7 @@ contract DeltaNeutralVault is
                 // If LP delta is negative or zero, we don't want a short hedge
                 hedgeTarget = 0;
             }
+            emit RebalanceDebug(hedgeTarget, lpDelta, price);
         }
 
         if (hedgeManager != address(0)) {
