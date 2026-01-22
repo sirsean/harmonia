@@ -7,8 +7,8 @@ async function main() {
     const oldSize = await hm.minPositionSize();
     console.log("Old min position size:", oldSize.toString());
 
-    // Set to 0
-    const newSize = 0;
+    // Set to 100 USD (30 decimals)
+    const newSize = ethers.parseUnits("100", 30);
     console.log("Setting min position size to:", newSize.toString());
 
     const tx = await hm.setMinPositionSize(newSize);
