@@ -1,0 +1,98 @@
+[
+    {
+        "scope": "https://arb-mainnet.g.alchemy.com:443",
+        "method": "POST",
+        "path": "/v2/REDACTED",
+        "body": [
+            {
+                "method": "eth_chainId",
+                "params": [],
+                "id": 1,
+                "jsonrpc": "2.0"
+            },
+            {
+                "method": "eth_call",
+                "params": [
+                    {
+                        "to": "0x639fe6ab55c921f74e7fac1ee960c0b6293ba612",
+                        "data": "0xfeaf968c"
+                    },
+                    "latest"
+                ],
+                "id": 2,
+                "jsonrpc": "2.0"
+            }
+        ],
+        "status": 200,
+        "response": [
+            "1f8b08000000000000008a06000000ffffaa56ca2acecf2b2a4856b25232d23350d251ca4c51b232d4512a4a2d2ecd29018a1a54249a24192ad502000000ffffd201000000ffffc2aed40845a90169c0108969689c62914aa27e28303149344e363337344b264fbf818199a5b991a965b2099df563f85fa9960b000000ffff8a05000000ffff0300df9f36ea94010000"
+        ],
+        "rawHeaders": [
+            "content-type",
+            "application/json",
+            "date",
+            "Thu, 22 Jan 2026 17:09:37 GMT",
+            "content-encoding",
+            "gzip",
+            "x-envoy-upstream-service-time",
+            "25",
+            "server",
+            "istio-envoy",
+            "x-alchemy-response-code",
+            "200",
+            "x-alchemy-trace-id",
+            "9dbf6211-4fef-4a76-ae6e-2944e24788e0",
+            "transfer-encoding",
+            "chunked"
+        ],
+        "responseIsBinary": false
+    },
+    {
+        "scope": "https://arb-mainnet.g.alchemy.com:443",
+        "method": "POST",
+        "path": "/v2/REDACTED",
+        "body": [
+            {
+                "method": "eth_call",
+                "params": [
+                    {
+                        "to": "0x639fe6ab55c921f74e7fac1ee960c0b6293ba612",
+                        "data": "0x313ce567"
+                    },
+                    "latest"
+                ],
+                "id": 3,
+                "jsonrpc": "2.0"
+            },
+            {
+                "method": "eth_chainId",
+                "params": [],
+                "id": 4,
+                "jsonrpc": "2.0"
+            }
+        ],
+        "status": 200,
+        "response": [
+            "1f8b08000000000000008a06000000ffffaa56ca2acecf2b2a4856b25232d23350d251ca4c51b232d6512a4a2d2ecd29018a1a541850062c946ab900000000ffffd201000000ffffc26e8f098a3d892649864ab500000000ffff8a05000000ffff0300fd3f792b94000000"
+        ],
+        "rawHeaders": [
+            "content-type",
+            "application/json",
+            "date",
+            "Thu, 22 Jan 2026 17:09:37 GMT",
+            "content-encoding",
+            "gzip",
+            "x-envoy-upstream-service-time",
+            "23",
+            "server",
+            "istio-envoy",
+            "x-alchemy-response-code",
+            "200",
+            "x-alchemy-trace-id",
+            "5a1de785-b26a-4bdc-998c-eac2d68d880a",
+            "transfer-encoding",
+            "chunked"
+        ],
+        "responseIsBinary": false
+    }
+]
