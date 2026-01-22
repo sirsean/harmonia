@@ -14,7 +14,12 @@ async function main() {
   const marketFilter = (process.env.MARKET || "").toLowerCase();
 
   const reader = new ethers.Contract(ARBITRUM_MAINNET.gmxReader, READER_ABI, ethers.provider);
-  const positions = await reader.getAccountPositions(ARBITRUM_MAINNET.gmxDataStore, account, start, end);
+  const positions = await reader.getAccountPositions(
+    ARBITRUM_MAINNET.gmxDataStore,
+    account,
+    start,
+    end
+  );
 
   console.log("Reader:", ARBITRUM_MAINNET.gmxReader);
   console.log("Account:", account);

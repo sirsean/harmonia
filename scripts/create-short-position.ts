@@ -8,7 +8,7 @@ async function main() {
 
   const [signer] = await ethers.getSigners();
   const myAddress = await signer.getAddress();
-  
+
   // Configuration
   const routerAddress = ARBITRUM_MAINNET.gmxExchangeRouter;
   const orderVaultAddress = ARBITRUM_MAINNET.gmxOrderVault;
@@ -16,15 +16,19 @@ async function main() {
   const usdcAddress = ARBITRUM_MAINNET.usdc;
 
   // 1. Get Real Price for Slippage
-  const feed = await ethers.getContractAt(["function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)"], ARBITRUM_MAINNET.chainlinkEthUsdFeed, signer);
-  const [, price,,,] = await feed.latestRoundData();
+  const feed = await ethers.getContractAt(
+    ["function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)"],
+    ARBITRUM_MAINNET.chainlinkEthUsdFeed,
+    signer
+  );
+  const [, price, , ,] = await feed.latestRoundData();
   console.log("Current ETH Price:", ethers.formatUnits(price, 8));
 
   // Parameters
   const collateralAmount = ethers.parseUnits("20", 6); // 20 USDC
   const executionFee = ethers.parseEther("0.01"); // High fee for safety
   const sizeDeltaUsd = ethers.parseUnits("100", 30); // $100 Position
-  
+
   // Acceptable Price: 1% Slippage allowed for Short
   // GMX expects 12-decimal prices for acceptablePrice in orders.
   const priceUsd12 = ethers.parseUnits(ethers.formatUnits(price, 8), 12);
@@ -34,31 +38,14 @@ async function main() {
     "function multicall(bytes[] calldata data) external payable returns (bytes[] memory results)",
     "function sendTokens(address token, address receiver, uint256 amount) external payable",
     "function sendWnt(address receiver, uint256 amount) external payable",
-    "function createOrder(((address receiver,address cancellationReceiver,address callbackContract,address uiFeeReceiver,address market,address initialCollateralToken,address[] swapPath),(uint256 sizeDeltaUsd,uint256 initialCollateralDeltaAmount,uint256 triggerPrice,uint256 acceptablePrice,uint256 executionFee,uint256 callbackGasLimit,uint256 minOutputAmount,uint256 validFromTime),uint8 orderType,uint8 decreasePositionSwapType,bool isLong,bool shouldUnwrapNativeToken,bool autoCancel,bytes32 referralCode,bytes32[] dataList) params) external payable returns (bytes32 orderKey)"
+    "function createOrder(((address receiver,address cancellationReceiver,address callbackContract,address uiFeeReceiver,address market,address initialCollateralToken,address[] swapPath),(uint256 sizeDeltaUsd,uint256 initialCollateralDeltaAmount,uint256 triggerPrice,uint256 acceptablePrice,uint256 executionFee,uint256 callbackGasLimit,uint256 minOutputAmount,uint256 validFromTime),uint8 orderType,uint8 decreasePositionSwapType,bool isLong,bool shouldUnwrapNativeToken,bool autoCancel,bytes32 referralCode,bytes32[] dataList) params) external payable returns (bytes32 orderKey)",
   ];
   const router = await ethers.getContractAt(routerAbi, routerAddress, signer);
   const usdc = await ethers.getContractAt("IERC20", usdcAddress, signer);
 
   const params = [
-    [
-      myAddress,
-      myAddress,
-      ethers.ZeroAddress,
-      ethers.ZeroAddress,
-      marketAddress,
-      usdcAddress,
-      [],
-    ],
-    [
-      sizeDeltaUsd,
-      collateralAmount,
-      0,
-      acceptablePrice,
-      executionFee,
-      0,
-      0,
-      0,
-    ],
+    [myAddress, myAddress, ethers.ZeroAddress, ethers.ZeroAddress, marketAddress, usdcAddress, []],
+    [sizeDeltaUsd, collateralAmount, 0, acceptablePrice, executionFee, 0, 0, 0],
     2, // MarketIncrease
     0, // NoSwap
     false, // SHORT
@@ -94,7 +81,7 @@ async function main() {
     collateralAmount,
   ]);
   const createOrderData = router.interface.encodeFunctionData("createOrder", [params]);
-  
+
   console.log("Sending Transaction...");
   try {
     const nonce = await signer.getNonce("pending");
@@ -108,11 +95,12 @@ async function main() {
       if (error.data) console.error("Error Data:", error.data);
       return;
     }
-    const tx = await router.multicall(
-      [sendWntData, sendTokensData, createOrderData],
-      { value: executionFee, gasLimit: 4000000, nonce }
-    );
-    
+    const tx = await router.multicall([sendWntData, sendTokensData, createOrderData], {
+      value: executionFee,
+      gasLimit: 4000000,
+      nonce,
+    });
+
     console.log("Tx Hash:", tx.hash);
     await tx.wait();
     console.log("\nSUCCESS! Short Order Created.");

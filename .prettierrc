@@ -1,5 +1,4 @@
 {
-  "plugins": ["prettier-plugin-solidity"],
   "semi": true,
   "singleQuote": false,
   "printWidth": 100,

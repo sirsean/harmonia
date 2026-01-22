@@ -44,7 +44,9 @@ export function scalePrice(price: bigint, priceDecimals: number, outputDecimals:
   return price / 10n ** BigInt(diff);
 }
 
-export function normalizeRoundData(roundData: [bigint, bigint, bigint, bigint, bigint]): ChainlinkRoundData {
+export function normalizeRoundData(
+  roundData: [bigint, bigint, bigint, bigint, bigint]
+): ChainlinkRoundData {
   const [roundId, answer, startedAt, updatedAt, answeredInRound] = roundData;
   return {
     roundId,
@@ -69,10 +71,14 @@ export function validateRoundData(
   }
 
   if (data.answeredInRound < data.roundId) {
-    throw new ChainlinkPriceError("STALE_ROUND", "Chainlink feed answeredInRound is behind roundId.", {
-      roundId: data.roundId.toString(),
-      answeredInRound: data.answeredInRound.toString(),
-    });
+    throw new ChainlinkPriceError(
+      "STALE_ROUND",
+      "Chainlink feed answeredInRound is behind roundId.",
+      {
+        roundId: data.roundId.toString(),
+        answeredInRound: data.answeredInRound.toString(),
+      }
+    );
   }
 
   if (requirePositive && data.answer <= 0n) {
@@ -93,11 +99,15 @@ export function validateRoundData(
   }
 
   if (updatedAt - nowSec > allowFutureSeconds) {
-    throw new ChainlinkPriceError("FUTURE_TIMESTAMP", "Chainlink updatedAt is too far in the future.", {
-      updatedAt,
-      nowSec,
-      allowFutureSeconds,
-    });
+    throw new ChainlinkPriceError(
+      "FUTURE_TIMESTAMP",
+      "Chainlink updatedAt is too far in the future.",
+      {
+        updatedAt,
+        nowSec,
+        allowFutureSeconds,
+      }
+    );
   }
 }
 
