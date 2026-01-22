@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
 
 const HM_ADDRESS = "0x9D81A634c269cf262192886B5cC678E00c9D96d8";
-const ORDER_KEY = "0x931f434c82c898f5656e212b775c6a544ee8b5b36cc7fa0c65eea32e17f42135";
+const ORDER_KEY = "0x522fe5bea27d030c669a01a28ca48460adf6b1d406f3c89cbb28cb899f8fdf74";
 
 // GMX Event Handler address on Arbitrum
 const EVENT_EMITTER = "0xC8ee91A54287DB53897056e12D9819156D3822Fb";
@@ -19,37 +19,49 @@ async function main() {
     EVENT_EMITTER
   );
 
-  // Get block from recent operations
-  const startBlock = await ethers.provider.getBlockNumber() - 500;
+  // Scan last 500 blocks
   const currentBlock = await ethers.provider.getBlockNumber();
+  const startBlock = currentBlock - 500;
+  const maxBlock = currentBlock;
+  const batchSize = 5; // Strict limit
 
-  console.log("Checking events from block", startBlock, "to", currentBlock);
-  console.log("");
+  console.log(`Scanning for ${ORDER_KEY} from ${startBlock} to ${maxBlock}...`);
 
-  // Look for events with this order key
-  const filter = {
-    address: EVENT_EMITTER,
-    fromBlock: startBlock,
-    toBlock: currentBlock,
-    topics: [
-      null, // any event
-      null,
-      ORDER_KEY, // indexed topic for order key
-    ]
-  };
+  for (let from = startBlock; from < maxBlock; from += batchSize) {
+      const to = Math.min(from + batchSize - 1, maxBlock);
+      // process.stdout.write(`Scanning ${from}-${to}\r`);
+      
+      const filter = {
+        address: EVENT_EMITTER,
+        fromBlock: from,
+        toBlock: to,
+        topics: [null, null, ORDER_KEY]
+      };
 
-  try {
-    const logs = await ethers.provider.getLogs(filter);
-    console.log("Found", logs.length, "events related to this order\n");
-
-    for (const log of logs) {
-      console.log("Block:", log.blockNumber);
-      console.log("Tx:", log.transactionHash);
-      console.log("Topics:", log.topics);
-      console.log("---");
-    }
-  } catch (e: any) {
-    console.log("Error fetching events:", e.message);
+      try {
+        const logs = await ethers.provider.getLogs(filter);
+        if (logs.length > 0) {
+            console.log(`\nFound ${logs.length} events in ${from}-${to}!`);
+            for (const log of logs) {
+                console.log("Block:", log.blockNumber);
+                console.log("Tx:", log.transactionHash);
+                
+                // Try to identify event type by common hashes in data
+                const data = log.data.toLowerCase();
+                if (data.includes("4f726465724578656375746564")) console.log("Event: OrderExecuted");
+                if (data.includes("4f7264657243616e63656c6c6564")) console.log("Event: OrderCancelled");
+                if (data.includes("4f7264657243726561746564")) console.log("Event: OrderCreated");
+                if (data.includes("506f736974696f6e496e637265617365")) console.log("Event: PositionIncrease");
+                if (data.includes("506f736974696f6e4465637265617365")) console.log("Event: PositionDecrease");
+                
+                // Decode receipt for errors
+                // const receipt = await ethers.provider.getTransactionReceipt(log.transactionHash);
+                // console.log("Receipt Status:", receipt?.status);
+            }
+        }
+      } catch (e) {
+          // ignore error
+      }
   }
 
   // Also check HedgeManager events

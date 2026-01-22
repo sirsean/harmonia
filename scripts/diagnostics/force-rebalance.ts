@@ -48,23 +48,12 @@ async function main() {
     // Then call rebalance.
     // Then set multiplier back.
     
-    console.log("Setting narrow range multiplier to force out-of-range...");
-    const multiplier = 1; 
-    const tx1 = await vault.setRangeWidthMultiplier(multiplier);
-    await tx1.wait();
-    console.log("Multiplier set to 1.");
-
-    console.log("Executing rebalance...");
-    const tx2 = await vault.rebalance(0); // 0 = auto-calculate
+    // Just call rebalance(0)
+    console.log("Executing rebalance(0)...");
+    const tx2 = await vault.rebalance(0); 
     console.log("Rebalance Tx:", tx2.hash);
     await tx2.wait();
     console.log("Rebalance complete.");
-    
-    // Reset multiplier to default (20)
-    console.log("Resetting multiplier to 20...");
-    const tx3 = await vault.setRangeWidthMultiplier(20);
-    await tx3.wait();
-    console.log("Multiplier reset.");
 }
 
 main().catch((error) => {

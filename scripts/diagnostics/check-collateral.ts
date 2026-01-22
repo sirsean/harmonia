@@ -59,6 +59,23 @@ async function main() {
     const price = await lm.getOraclePrice();
     console.log("Price (18d):", ethers.formatUnits(price, 18));
 
+    // Check actual NFT state
+    const tokenId = await lm.tokenId();
+    const pmAddress = await lm.positionManager();
+    const pm = await ethers.getContractAt("INonfungiblePositionManager", pmAddress);
+    const position = await pm.positions(tokenId);
+    const nftLiquidity = position.liquidity;
+    const lmLiquidity = await lm.liquidity();
+    
+    console.log(`\n--- Liquidity Check ---`);
+    console.log(`LM Liquidity:  ${lmLiquidity.toString()}`);
+    console.log(`NFT Liquidity: ${nftLiquidity.toString()}`);
+    if (lmLiquidity != nftLiquidity) {
+        console.log("MISMATCH! LiquidityManager is out of sync.");
+    } else {
+        console.log("Liquidity synced.");
+    }
+
     // Target Hedge = Delta * Price
     // Delta (ETH) * Price (USD/ETH) = USD exposure.
     console.log("Target Hedge Exposure (approx USD):", ethers.formatUnits((delta * price) / 10n ** 18n, 18));
