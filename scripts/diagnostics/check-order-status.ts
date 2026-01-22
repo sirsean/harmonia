@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
 
 const HM_ADDRESS = "0x9D81A634c269cf262192886B5cC678E00c9D96d8";
-const ORDER_KEY = "0x1d96e30a496580a5309e102e8efd250ba2149c0f00997e812d822315a9ff7b91";
+const ORDER_KEY = "0x931f434c82c898f5656e212b775c6a544ee8b5b36cc7fa0c65eea32e17f42135";
 
 // GMX Event Handler address on Arbitrum
 const EVENT_EMITTER = "0xC8ee91A54287DB53897056e12D9819156D3822Fb";
@@ -19,17 +19,17 @@ async function main() {
     EVENT_EMITTER
   );
 
-  // Get block from the compound tx
-  const compoundTxBlock = 423873298;
+  // Get block from recent operations
+  const startBlock = await ethers.provider.getBlockNumber() - 500;
   const currentBlock = await ethers.provider.getBlockNumber();
 
-  console.log("Checking events from block", compoundTxBlock, "to", currentBlock);
+  console.log("Checking events from block", startBlock, "to", currentBlock);
   console.log("");
 
   // Look for events with this order key
   const filter = {
     address: EVENT_EMITTER,
-    fromBlock: compoundTxBlock,
+    fromBlock: startBlock,
     toBlock: currentBlock,
     topics: [
       null, // any event
@@ -47,14 +47,6 @@ async function main() {
       console.log("Tx:", log.transactionHash);
       console.log("Topics:", log.topics);
       console.log("---");
-
-      // Decode the event name from the data if possible
-      try {
-        const tx = await ethers.provider.getTransactionReceipt(log.transactionHash);
-        console.log("Tx logs count:", tx?.logs.length);
-      } catch (e) {
-        // ignore
-      }
     }
   } catch (e: any) {
     console.log("Error fetching events:", e.message);
@@ -67,7 +59,7 @@ async function main() {
   // Check for order-related events
   const hmFilter = {
     address: HM_ADDRESS,
-    fromBlock: compoundTxBlock,
+    fromBlock: startBlock,
     toBlock: currentBlock,
   };
 
@@ -100,22 +92,13 @@ async function main() {
   console.log("\n=== Current HedgeManager State ===");
   const [
     lastOrderKey,
-    pendingCollateral,
-    pendingOrderType,
-    pendingPositionSize,
     positionSize
   ] = await Promise.all([
     hm.lastOrderKey(),
-    hm.pendingOrderCollateral(),
-    hm.pendingOrderType(),
-    hm.pendingOrderPositionSize(),
     hm.getPositionSizeUsd(),
   ]);
 
   console.log("Last order key:", lastOrderKey);
-  console.log("Pending collateral:", ethers.formatUnits(pendingCollateral, 6), "USDC");
-  console.log("Pending order type:", pendingOrderType);
-  console.log("Pending position size:", pendingPositionSize.toString());
   console.log("Current position size (30d):", positionSize.toString());
   console.log("Current position size (USD):", ethers.formatUnits(positionSize, 30));
 

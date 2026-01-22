@@ -18,8 +18,11 @@ async function main() {
     console.log("--- Vault Balances ---");
     const vaultUsdcBalance = await quoteToken.balanceOf(vaultAddress);
     const vaultWethBalance = await baseToken.balanceOf(vaultAddress);
+    const vaultNativeBalance = await ethers.provider.getBalance(vaultAddress);
+    
     console.log(`Vault USDC: ${ethers.formatUnits(vaultUsdcBalance, 6)}`);
     console.log(`Vault WETH: ${ethers.formatUnits(vaultWethBalance, 18)}`);
+    console.log(`Vault ETH (Native): ${ethers.formatUnits(vaultNativeBalance, 18)}`);
 
     console.log("\n--- Liquidity Manager Balances ---");
     const lmUsdcBalance = await quoteToken.balanceOf(liquidityManagerAddress);
@@ -40,6 +43,17 @@ async function main() {
     // Calculate required hedge
     const delta = await lm.getPositionDelta();
     console.log("\n--- Strategy State ---");
+
+    try {
+        const [amount0, amount1] = await lm.getTokenAmounts();
+        // Assuming baseToken is WETH (18 decimals) and quoteToken is USDC (6 decimals)
+        // We should verify which is which, but standard for Arbitrum is WETH/USDC
+        console.log("LP WETH Amount:", ethers.formatUnits(amount0, 18));
+        console.log("LP USDC Amount:", ethers.formatUnits(amount1, 6));
+    } catch (e) {
+        console.log("Could not fetch LP token amounts:", e.message);
+    }
+
     console.log("LP Delta (18d):", ethers.formatUnits(delta, 18));
     
     const price = await lm.getOraclePrice();

@@ -525,6 +525,17 @@ contract LiquidityManager is
         uint256 balance0 = IERC20(token0).balanceOf(address(this));
         uint256 balance1 = IERC20(token1).balanceOf(address(this));
 
+        // If highly skewed (one side empty), swap to balance for new range
+        if (balance0 == 0 && balance1 > 0) {
+             _swapSingleSided(token1, balance1, newTickLower, newTickUpper, address(this), deadline);
+             balance0 = IERC20(token0).balanceOf(address(this));
+             balance1 = IERC20(token1).balanceOf(address(this));
+        } else if (balance1 == 0 && balance0 > 0) {
+             _swapSingleSided(token0, balance0, newTickLower, newTickUpper, address(this), deadline);
+             balance0 = IERC20(token0).balanceOf(address(this));
+             balance1 = IERC20(token1).balanceOf(address(this));
+        }
+
         // Approve tokens for new position
         if (balance0 > 0) {
             IERC20(token0).safeIncreaseAllowance(address(positionManager), balance0);
@@ -1007,8 +1018,8 @@ contract LiquidityManager is
     ) external onlyVault returns (uint256 amountOut) {
         if (amountIn == 0) return 0;
 
-        address pool = getPool();
-        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(pool).slot0();
+        // Transfer tokens to this contract first
+        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
 
         // Determine range
         int24 _tickLower;
@@ -1019,6 +1030,42 @@ contract LiquidityManager is
         } else {
             (_tickLower, _tickUpper) = this.getRebalanceTicks(rangeWidthMultiplier);
         }
+
+        // Execute swap and send results back to vault
+        amountOut = _swapSingleSided(
+            tokenIn,
+            amountIn,
+            _tickLower,
+            _tickUpper,
+            msg.sender, // Refund to Vault
+            deadline
+        );
+
+        // Refund remaining tokenIn
+        // _swapSingleSided calculates swapAmount inside, but we need it here.
+        // We can't easily get it back from _swapSingleSided without changing signature.
+        // But we know remaining = balance of tokenIn in this contract (since we transferred exactly amountIn and swapped some).
+        // Assuming no other funds (which is true for LM usually).
+        // Or we can just calculate swapAmount again? No, redundant.
+        // Or we can just sweep tokenIn back to msg.sender?
+        
+        uint256 remaining = IERC20(tokenIn).balanceOf(address(this));
+        if (remaining > 0) {
+            IERC20(tokenIn).safeTransfer(msg.sender, remaining);
+        }
+    }
+
+    /// @notice Helper to swap a single asset to the correct ratio for a tick range
+    function _swapSingleSided(
+        address tokenIn,
+        uint256 amountIn,
+        int24 _tickLower,
+        int24 _tickUpper,
+        address recipient,
+        uint256 deadline
+    ) internal returns (uint256 amountOut) {
+        address pool = getPool();
+        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(pool).slot0();
 
         uint160 sqrtPriceLowerX96 = DeltaCalculator.getSqrtRatioAtTick(_tickLower);
         uint160 sqrtPriceUpperX96 = DeltaCalculator.getSqrtRatioAtTick(_tickUpper);
@@ -1065,14 +1112,13 @@ contract LiquidityManager is
         }
 
         if (swapAmount > 0) {
-            IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), swapAmount);
             IERC20(tokenIn).safeIncreaseAllowance(address(swapRouter), swapAmount);
 
             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
                 tokenIn: tokenIn,
                 tokenOut: tokenOut,
                 fee: poolFee,
-                recipient: msg.sender, // Refund to Vault
+                recipient: recipient, 
                 deadline: deadline,
                 amountIn: swapAmount,
                 amountOutMinimum: 0,
