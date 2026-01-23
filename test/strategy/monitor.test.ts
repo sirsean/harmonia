@@ -71,7 +71,7 @@ describe("DeltaNeutralMonitor", () => {
 
   const config = {
     deltaThreshold: 0.05, 
-    minFeeThreshold: 100n,
+    minFeeThresholdUsd: ethers.parseUnits("10", 30),
     minRebalanceInterval: 3600,
   };
   
@@ -100,6 +100,11 @@ describe("DeltaNeutralMonitor", () => {
           if (address === "0xT0" || address === "0xCollat") return 6n;
           if (address === "0xT1" || address === "0xRisk") return 18n;
           return 18n;
+        }),
+        symbol: vi.fn().mockImplementation(async () => {
+          if (address === "0xCollat") return "USDC";
+          if (address === "0xRisk") return "ETH";
+          return "TOKEN";
         }),
         balanceOf: vi.fn(), 
         tokenOfOwnerByIndex: vi.fn(),
@@ -136,6 +141,8 @@ describe("DeltaNeutralMonitor", () => {
       addresses: {} as any,
       numbers: {
         sizeInTokens: 0n,
+        collateralAmount: 0n,
+        sizeInUsd: 0n,
         shortTokenClaimableFundingAmountPerSize: 0n,
       } as any,
       flags: { isLong: false },
@@ -150,6 +157,8 @@ describe("DeltaNeutralMonitor", () => {
       addresses: {} as any,
       numbers: {
         sizeInTokens: targetDelta, 
+        collateralAmount: 0n,
+        sizeInUsd: 0n,
         shortTokenClaimableFundingAmountPerSize: 0n,
       } as any,
       flags: { isLong: false },
@@ -184,7 +193,7 @@ describe("DeltaNeutralMonitor", () => {
     // Healthy delta but high fees
     const highFeesPos = {
         ...mockUniswapPosition,
-        tokensOwed0: 200n, // Above threshold
+        tokensOwed0: 11000000n, // 11 USDC ($11) > $10 threshold
     };
 
     vi.mocked(uniswapReader.getPosition).mockResolvedValue(highFeesPos);
@@ -194,7 +203,11 @@ describe("DeltaNeutralMonitor", () => {
     // Run to get delta
     vi.mocked(gmxReader.getPosition).mockResolvedValue({
         addresses: {} as any,
-        numbers: { sizeInTokens: 0n } as any,
+        numbers: { 
+          sizeInTokens: 0n,
+          collateralAmount: 0n,
+          sizeInUsd: 0n,
+        } as any,
         flags: { isLong: false }
     });
     const run1 = await monitor.check();
@@ -203,7 +216,11 @@ describe("DeltaNeutralMonitor", () => {
     // Set perfect hedge
     vi.mocked(gmxReader.getPosition).mockResolvedValue({
         addresses: {} as any,
-        numbers: { sizeInTokens: targetDelta } as any,
+        numbers: { 
+          sizeInTokens: targetDelta,
+          collateralAmount: 0n,
+          sizeInUsd: 0n,
+        } as any,
         flags: { isLong: false }
     });
     

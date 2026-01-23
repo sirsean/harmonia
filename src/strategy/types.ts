@@ -15,6 +15,10 @@ export interface StrategyStatus {
     tickUpper: number;
     currentTick: number;
     sqrtPriceX96: bigint;
+    priceLower: number;
+    priceUpper: number;
+    currentPrice: number;
+    priceLabel: string;
     unclaimedFees: {
       amount0: bigint;
       amount1: bigint;
@@ -24,6 +28,8 @@ export interface StrategyStatus {
   totalLpDelta: bigint;
   gmx: {
     positionSizeTokens: bigint; // Negative for short
+    collateralAmount: bigint;
+    netValueUsd: bigint;
     pendingFundingRewards: bigint; // This might need refinement based on available data
     delta: bigint; // Usually -size for short
   };
@@ -48,7 +54,7 @@ export interface Recommendation {
 
 export interface MonitorConfig {
   deltaThreshold: number; // e.g. 0.05 for 5%
-  minFeeThreshold: bigint;
+  minFeeThresholdUsd: bigint; // USD value (30 decimals)
   minRebalanceInterval: number;
 }
 

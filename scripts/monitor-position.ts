@@ -13,7 +13,7 @@ async function main() {
 
   const config: MonitorConfig = {
     deltaThreshold: 0.05, // 5% drift allowed
-    minFeeThreshold: ethers.parseUnits("10", 6), // $10 worth of USDC (simplified)
+    minFeeThresholdUsd: ethers.parseUnits("10", 30), // $10 worth of fees (USD 30 decimals)
     minRebalanceInterval: 3600,
   };
 
@@ -45,7 +45,7 @@ async function main() {
     for (const pos of status.uniswap) {
       console.log(`  > Token ID: ${pos.tokenId}`);
       console.log(
-        `    Tick Range: [${pos.tickLower}, ${pos.tickUpper}] (Current: ${pos.currentTick})`
+        `    Price Range: [${pos.priceLower.toFixed(6)}, ${pos.priceUpper.toFixed(6)}] ${pos.priceLabel} (Current: ${pos.currentPrice.toFixed(6)})`
       );
       console.log(`    Zone: ${pos.delta.zone}`);
       console.log(`    Delta: ${ethers.formatEther(pos.delta.delta)} ETH`);
@@ -65,6 +65,8 @@ async function main() {
     console.log("\n[GMX Position]");
     console.log(`  Hedge Size: ${ethers.formatEther(status.gmx.positionSizeTokens)} ETH (Short)`);
     console.log(`  Hedge Delta: ${ethers.formatEther(status.gmx.delta)} ETH`);
+    console.log(`  Collateral: ${ethers.formatUnits(status.gmx.collateralAmount, 6)} USDC`);
+    console.log(`  Net Value: $${ethers.formatUnits(status.gmx.netValueUsd, 30)}`);
 
     console.log("\n[Net Strategy]");
     console.log(`  Net Delta: ${ethers.formatEther(status.netDelta)} ETH`);
