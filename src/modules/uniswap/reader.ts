@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { UniswapPoolState, UniswapPosition, UniswapPositionManager, UniswapV3Pool } from "./types";
+import { getUnclaimedFees } from "./fees";
 
 export const UNISWAP_POOL_ABI = [
   "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
@@ -59,6 +60,20 @@ export async function getPosition(
   };
 }
 
+export async function getPositionWithFees(
+  manager: UniswapPositionManager,
+  tokenId: bigint,
+  owner: string
+): Promise<UniswapPosition> {
+  const position = await getPosition(manager, tokenId);
+  const fees = await getUnclaimedFees(manager, tokenId, owner);
+  return {
+    ...position,
+    tokensOwed0: fees.amount0,
+    tokensOwed1: fees.amount1,
+  };
+}
+
 export async function getTokenIdsForOwner(
   manager: UniswapPositionManager,
   owner: string
@@ -83,7 +98,7 @@ export async function getActivePositionsForOwner(
   const activePositions: { tokenId: bigint; position: UniswapPosition }[] = [];
 
   for (const tokenId of tokenIds) {
-    const position = await getPosition(manager, tokenId);
+    const position = await getPositionWithFees(manager, tokenId, owner);
     if (position.liquidity > 0n) {
       activePositions.push({ tokenId, position });
     }

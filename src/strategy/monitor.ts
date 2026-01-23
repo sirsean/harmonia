@@ -49,7 +49,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     if (uniswap.tokenIds && uniswap.tokenIds.length > 0) {
       // Fetch specific positions
       for (const id of uniswap.tokenIds) {
-        const position = await uniswapReader.getPosition(pmContract, id);
+        const position = await uniswapReader.getPositionWithFees(pmContract, id, gmx.account);
         if (position.liquidity > 0n) {
           positionsToMonitor.push({ tokenId: id, position });
         }
