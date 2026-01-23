@@ -47,14 +47,14 @@ async function main() {
       console.log(`    Tick Range: [${pos.tickLower}, ${pos.tickUpper}] (Current: ${pos.currentTick})`);
       console.log(`    Zone: ${pos.delta.zone}`);
       console.log(`    Delta: ${ethers.formatEther(pos.delta.delta)} ETH`);
-      console.log(`    Fees: ${ethers.formatUnits(pos.unclaimedFees.amount0, 6)} USDC, ${ethers.formatEther(pos.unclaimedFees.amount1)} ETH`);
+      console.log(`    Fees: ${ethers.formatEther(pos.unclaimedFees.amount0)} ETH, ${ethers.formatUnits(pos.unclaimedFees.amount1, 6)} USDC`);
       totalFees0 += pos.unclaimedFees.amount0;
       totalFees1 += pos.unclaimedFees.amount1;
     }
 
     console.log("\n[Uniswap Aggregated]");
     console.log(`  Total LP Delta: ${ethers.formatEther(status.totalLpDelta)} ETH`);
-    console.log(`  Total Unclaimed Fees: ${ethers.formatUnits(totalFees0, 6)} USDC, ${ethers.formatEther(totalFees1)} ETH`);
+    console.log(`  Total Unclaimed Fees: ${ethers.formatEther(totalFees0)} ETH, ${ethers.formatUnits(totalFees1, 6)} USDC`);
 
     console.log("\n[GMX Position]");
     console.log(`  Hedge Size: ${ethers.formatEther(status.gmx.positionSizeTokens)} ETH (Short)`);
