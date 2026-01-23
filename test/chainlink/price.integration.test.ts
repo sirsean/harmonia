@@ -87,6 +87,7 @@ maybeDescribe("chainlink integration", () => {
     try {
       const result = await getLatestPrice(ARBITRUM_MAINNET.chainlinkEthUsdFeed, provider, {
         maxStaleSeconds: 24 * 60 * 60,
+        nowSec: 1769101864, // Thu Jan 22 2026 17:11:04 UTC (slightly after cassette update)
       });
 
       expect(result.decimals).toBe(8);
