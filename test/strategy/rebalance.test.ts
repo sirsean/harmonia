@@ -74,7 +74,7 @@ describe("RebalanceManager", () => {
     
     // Acceptable Price (Sell): Lower bound. Price * 0.995
     // 3000 * 0.995 = 2985
-    expect(callArgs.acceptablePrice).toBe(ethers.parseUnits("2985", 30));
+    expect(callArgs.acceptablePrice).toBe(ethers.parseUnits("2985", 12));
   });
 
   it("decreases short when adjustment is negative", async () => {
@@ -105,7 +105,7 @@ describe("RebalanceManager", () => {
     const callArgs = vi.mocked(gmxOrders.createDecreaseOrder).mock.calls[0][1];
     // Acceptable Price (Buy): Upper bound. Price * 1.005
     // 3000 * 1.005 = 3015
-    expect(callArgs.acceptablePrice).toBe(ethers.parseUnits("3015", 30));
+    expect(callArgs.acceptablePrice).toBe(ethers.parseUnits("3015", 12));
   });
 
   it("does nothing when adjustment is zero", async () => {
