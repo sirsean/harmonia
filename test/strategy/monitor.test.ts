@@ -1,10 +1,42 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+// Mock ethers Contract
+import { vi } from "vitest";
+
+vi.mock("ethers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ethers")>();
+  
+  const MockContract = vi.fn().mockImplementation((address: string, abi: any, provider: any) => {
+    console.log("MockContract implementation called for address:", address);
+    return {
+      decimals: vi.fn().mockImplementation(async () => {
+        if (address === "0xT0" || address === "0xCollat") return 6n;
+        if (address === "0xT1" || address === "0xRisk") return 18n;
+        return 18n;
+      }),
+      balanceOf: vi.fn(), 
+      tokenOfOwnerByIndex: vi.fn(),
+    };
+  });
+
+  // ethers v6 exports an 'ethers' object which contains Contract
+  const mockedEthers = {
+    ...actual.ethers,
+    Contract: MockContract,
+    // Add Provider if needed, but we pass mockProvider
+  };
+
+  return {
+    ...actual,
+    ethers: mockedEthers,
+    Contract: MockContract,
+  };
+});
+
+import { describe, it, expect, beforeEach } from "vitest";
 import { DeltaNeutralMonitor } from "../../src/strategy/monitor";
 import * as gmxReader from "../../src/modules/gmx/reader";
 import * as uniswapReader from "../../src/modules/uniswap/reader";
-import { ethers } from "ethers";
+import { ethers } from "ethers"; // Import after mock
 import { StrategyAction } from "../../src/strategy/types";
-import { GMXPosition } from "../../src/modules/gmx/types";
 import { UniswapPoolState, UniswapPosition } from "../../src/modules/uniswap/types";
 import { getSqrtRatioAtTick } from "../../src/modules/math/ticks";
 
@@ -33,33 +65,48 @@ describe("DeltaNeutralMonitor", () => {
       dataStore: "0xDataStore",
       account: "0xAccount",
       market: "0xMarket",
-      collateralToken: "0xCollat",
+      collateralToken: "0xCollat", // Matches "0xCollat"
     },
   };
 
   beforeEach(() => {
     vi.resetAllMocks();
     
+    // Explicitly set implementation for ethers.Contract mock
+    (ethers.Contract as any).mockImplementation((address: string, abi: any, provider: any) => {
+      // console.log("MockContract implementation called for address:", address);
+      return {
+        decimals: vi.fn().mockImplementation(async () => {
+          if (address === "0xT0" || address === "0xCollat") return 6n;
+          if (address === "0xT1" || address === "0xRisk") return 18n;
+          return 18n;
+        }),
+        balanceOf: vi.fn(), 
+        tokenOfOwnerByIndex: vi.fn(),
+        token0: vi.fn(), // Just in case
+        token1: vi.fn(),
+      };
+    });
+    
     // Setup mocks
     const mockPoolContract = {
-      token0: vi.fn().mockResolvedValue("0xT0"),
-      token1: vi.fn().mockResolvedValue("0xT1"),
+      token0: vi.fn().mockResolvedValue("0xCollat"), // USDC
+      token1: vi.fn().mockResolvedValue("0xRisk"),   // ETH
       slot0: vi.fn(),
       liquidity: vi.fn(),
     };
-
+    
     vi.mocked(uniswapReader.createPool).mockReturnValue(mockPoolContract as any);
     vi.mocked(uniswapReader.createPositionManager).mockReturnValue({} as any);
     vi.mocked(gmxReader.createReader).mockReturnValue({} as any);
-
+    
     monitor = new DeltaNeutralMonitor(mockProvider, config, context);
   });
 
   it("should return NONE when strategy is healthy (neutral delta)", async () => {
     // Setup Uniswap Position (Center range)
-    const tickLower = -887220; // Min tick approx
-    const tickUpper = 887220;  // Max tick approx
-    const currentTick = 0;
+    const tickLower = -887220; 
+    const tickUpper = 887220;  
     
     const centerTick = 69080;
     const tickSpacing = 60;
@@ -78,8 +125,8 @@ describe("DeltaNeutralMonitor", () => {
     const mockUniswapPosition: UniswapPosition = {
       nonce: 0n,
       operator: "0xOp",
-      token0: "0xT0",
-      token1: "0xT1",
+      token0: "0xCollat", // Matches pool tokens
+      token1: "0xRisk",
       fee: 3000,
       tickLower: lower,
       tickUpper: upper,
@@ -128,7 +175,7 @@ describe("DeltaNeutralMonitor", () => {
      // Setup Uniswap Position (Out of range)
      const centerTick = 0;
      const tickSpacing = 60;
-     const lower = centerTick + tickSpacing; // Above current price
+     const lower = centerTick + tickSpacing; 
      const upper = centerTick + tickSpacing * 2;
      
      const mockPoolState: UniswapPoolState = {
@@ -138,7 +185,10 @@ describe("DeltaNeutralMonitor", () => {
      };
      
      const mockUniswapPosition: UniswapPosition = {
-       nonce: 0n, operator: "", token0: "0xT0", token1: "0xT1", fee: 0,
+       nonce: 0n, operator: "", 
+       token0: "0xCollat", 
+       token1: "0xRisk", 
+       fee: 0,
        tickLower: lower,
        tickUpper: upper,
        liquidity: 100n,
@@ -168,10 +218,13 @@ describe("DeltaNeutralMonitor", () => {
     };
     
     const mockUniswapPosition: UniswapPosition = {
-      nonce: 0n, operator: "", token0: "0xT0", token1: "0xT1", fee: 0,
+      nonce: 0n, operator: "", 
+      token0: "0xCollat", 
+      token1: "0xRisk", 
+      fee: 0,
       tickLower: lower,
       tickUpper: upper,
-      liquidity,
+      liquidity: liquidity,
       feeGrowthInside0LastX128: 0n, feeGrowthInside1LastX128: 0n,
       tokensOwed0: 200n, // Above threshold 100n
       tokensOwed1: 0n

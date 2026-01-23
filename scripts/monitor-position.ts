@@ -75,13 +75,9 @@ async function main() {
         console.log(`    Target Delta: ${ethers.formatEther(recommendation.data.targetDelta)} ETH`);
         console.log(`    Current Hedge: ${ethers.formatEther(recommendation.data.currentHedge)} ETH`);
         console.log(`    Adjustment Needed: ${ethers.formatEther(recommendation.data.adjustmentNeeded)} ETH`);
-        
-        // Estimate USD value if we have price data
-        if (status.uniswap.length > 0) {
-           // Approximation of price using the first position's pool state
-           // We assume WETH is the asset we are delta hedging.
-           // adjustmentNeeded is in WETH (18 decimals).
-           // We can try to convert, but strictly speaking, just showing ETH is enough for matching units.
+        if (recommendation.data.targetSizeUsd !== undefined) {
+             console.log(`    Target Size USD: $${ethers.formatUnits(recommendation.data.targetSizeUsd, 30)}`);
+             console.log(`    Adjustment Needed USD: $${ethers.formatUnits(recommendation.data.adjustmentNeededUsd, 30)}`);
         }
       } else {
         console.log(`  Data:`, JSON.stringify(recommendation.data, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2));

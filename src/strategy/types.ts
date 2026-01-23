@@ -32,10 +32,18 @@ export interface StrategyStatus {
   timestamp: number;
 }
 
+export interface RebalanceData {
+  targetDelta: bigint;
+  currentHedge: bigint;
+  adjustmentNeeded: bigint;
+  targetSizeUsd: bigint;
+  adjustmentNeededUsd: bigint;
+}
+
 export interface Recommendation {
   action: StrategyAction;
   reason: string;
-  data?: any;
+  data?: RebalanceData | any;
 }
 
 export interface MonitorConfig {
