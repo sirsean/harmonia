@@ -8,12 +8,8 @@ async function main() {
   console.log("Monitoring account:", signer.address);
 
   // Configuration from environment or defaults
-  const tokenId = process.env.UNISWAP_TOKEN_ID;
-  if (!tokenId) {
-    console.warn("WARNING: UNISWAP_TOKEN_ID not set in environment. This script will likely fail unless you provide a valid NFT ID.");
-    // We could either exit or use a placeholder for demonstration
-    // return;
-  }
+  const tokenIdEnv = process.env.UNISWAP_TOKEN_ID;
+  const tokenIds = tokenIdEnv ? [BigInt(tokenIdEnv)] : undefined;
 
   const config: MonitorConfig = {
     deltaThreshold: 0.05, // 5% drift allowed
@@ -25,7 +21,7 @@ async function main() {
     uniswap: {
       positionManager: ARBITRUM_MAINNET.uniswapV3PositionManager,
       pool: ARBITRUM_MAINNET.uniswapV3EthUsdcPool,
-      tokenId: BigInt(tokenId || "0"),
+      tokenIds: tokenIds,
     },
     gmx: {
       reader: ARBITRUM_MAINNET.gmxReader,
@@ -42,13 +38,23 @@ async function main() {
   try {
     const { status, recommendation } = await monitor.check();
 
-    console.log("\n[Uniswap Position]");
-    console.log(`  Token ID: ${status.uniswap.tokenId}`);
-    console.log(`  Tick Range: [${status.uniswap.tickLower}, ${status.uniswap.tickUpper}]`);
-    console.log(`  Current Tick: ${status.uniswap.currentTick}`);
-    console.log(`  Zone: ${status.uniswap.delta.zone}`);
-    console.log(`  LP Delta: ${ethers.formatEther(status.uniswap.delta.delta)} ETH`);
-    console.log(`  Unclaimed Fees: ${ethers.formatUnits(status.uniswap.unclaimedFees.amount0, 6)} USDC, ${ethers.formatEther(status.uniswap.unclaimedFees.amount1)} ETH`);
+    console.log(`\n[Uniswap Positions] (${status.uniswap.length} active)`);
+    let totalFees0 = 0n;
+    let totalFees1 = 0n;
+
+    for (const pos of status.uniswap) {
+      console.log(`  > Token ID: ${pos.tokenId}`);
+      console.log(`    Tick Range: [${pos.tickLower}, ${pos.tickUpper}] (Current: ${pos.currentTick})`);
+      console.log(`    Zone: ${pos.delta.zone}`);
+      console.log(`    Delta: ${ethers.formatEther(pos.delta.delta)} ETH`);
+      console.log(`    Fees: ${ethers.formatUnits(pos.unclaimedFees.amount0, 6)} USDC, ${ethers.formatEther(pos.unclaimedFees.amount1)} ETH`);
+      totalFees0 += pos.unclaimedFees.amount0;
+      totalFees1 += pos.unclaimedFees.amount1;
+    }
+
+    console.log("\n[Uniswap Aggregated]");
+    console.log(`  Total LP Delta: ${ethers.formatEther(status.totalLpDelta)} ETH`);
+    console.log(`  Total Unclaimed Fees: ${ethers.formatUnits(totalFees0, 6)} USDC, ${ethers.formatEther(totalFees1)} ETH`);
 
     console.log("\n[GMX Position]");
     console.log(`  Hedge Size: ${ethers.formatEther(status.gmx.positionSizeTokens)} ETH (Short)`);
@@ -68,11 +74,7 @@ async function main() {
 
   } catch (error: any) {
     console.error("\nError during monitor check:");
-    if (error.message.includes("NONEXISTENT_TOKEN")) {
-      console.error(`  Uniswap Token ID ${tokenId} does not exist. Please check your UNISWAP_TOKEN_ID.`);
-    } else {
-      console.error(error);
-    }
+    console.error(error);
   }
 }
 
