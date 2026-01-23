@@ -68,8 +68,24 @@ async function main() {
     const color = recommendation.action === StrategyAction.NONE ? "\x1b[32m" : "\x1b[33m"; // Green for NONE, Yellow for others
     console.log(`  Action: ${color}${recommendation.action}\x1b[0m`);
     console.log(`  Reason: ${recommendation.reason}`);
+    
     if (recommendation.data) {
-      console.log(`  Data:`, JSON.stringify(recommendation.data, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2));
+      if (recommendation.action === StrategyAction.REBALANCE) {
+        console.log(`  Data:`);
+        console.log(`    Target Delta: ${ethers.formatEther(recommendation.data.targetDelta)} ETH`);
+        console.log(`    Current Hedge: ${ethers.formatEther(recommendation.data.currentHedge)} ETH`);
+        console.log(`    Adjustment Needed: ${ethers.formatEther(recommendation.data.adjustmentNeeded)} ETH`);
+        
+        // Estimate USD value if we have price data
+        if (status.uniswap.length > 0) {
+           // Approximation of price using the first position's pool state
+           // We assume WETH is the asset we are delta hedging.
+           // adjustmentNeeded is in WETH (18 decimals).
+           // We can try to convert, but strictly speaking, just showing ETH is enough for matching units.
+        }
+      } else {
+        console.log(`  Data:`, JSON.stringify(recommendation.data, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2));
+      }
     }
 
   } catch (error: any) {
