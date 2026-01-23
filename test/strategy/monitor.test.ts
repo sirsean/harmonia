@@ -141,6 +141,8 @@ describe("DeltaNeutralMonitor", () => {
       addresses: {} as any,
       numbers: {
         sizeInTokens: 0n,
+        collateralAmount: 0n,
+        sizeInUsd: 0n,
         shortTokenClaimableFundingAmountPerSize: 0n,
       } as any,
       flags: { isLong: false },
@@ -155,6 +157,8 @@ describe("DeltaNeutralMonitor", () => {
       addresses: {} as any,
       numbers: {
         sizeInTokens: targetDelta, 
+        collateralAmount: 0n,
+        sizeInUsd: 0n,
         shortTokenClaimableFundingAmountPerSize: 0n,
       } as any,
       flags: { isLong: false },
@@ -199,7 +203,11 @@ describe("DeltaNeutralMonitor", () => {
     // Run to get delta
     vi.mocked(gmxReader.getPosition).mockResolvedValue({
         addresses: {} as any,
-        numbers: { sizeInTokens: 0n } as any,
+        numbers: { 
+          sizeInTokens: 0n,
+          collateralAmount: 0n,
+          sizeInUsd: 0n,
+        } as any,
         flags: { isLong: false }
     });
     const run1 = await monitor.check();
@@ -208,7 +216,11 @@ describe("DeltaNeutralMonitor", () => {
     // Set perfect hedge
     vi.mocked(gmxReader.getPosition).mockResolvedValue({
         addresses: {} as any,
-        numbers: { sizeInTokens: targetDelta } as any,
+        numbers: { 
+          sizeInTokens: targetDelta,
+          collateralAmount: 0n,
+          sizeInUsd: 0n,
+        } as any,
         flags: { isLong: false }
     });
     
