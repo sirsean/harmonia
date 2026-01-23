@@ -4,14 +4,19 @@ import { DeltaNeutralMonitor } from "../src/strategy/monitor";
 import { RebalanceManager, RebalanceConfig } from "../src/strategy/rebalance";
 import { StrategyAction } from "../src/strategy/types";
 import { createRouter } from "../src/modules/gmx/orders";
-import { fetchTokenPrices, findTokenPrice, averagePrice, scalePriceTo30 } from "../src/modules/gmx/prices";
+import {
+  fetchTokenPrices,
+  findTokenPrice,
+  averagePrice,
+  scalePriceTo30,
+} from "../src/modules/gmx/prices";
 
 const ERC20_ABI = [
   "function decimals() view returns (uint8)",
   "function symbol() view returns (string)",
   "function allowance(address owner, address spender) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
-  "function balanceOf(address account) view returns (uint256)"
+  "function balanceOf(address account) view returns (uint256)",
 ];
 
 async function main() {
@@ -44,7 +49,7 @@ async function main() {
   };
 
   const monitor = new DeltaNeutralMonitor(ethers.provider, monitorConfig, monitorContext);
-  
+
   console.log("Checking position status...");
   const { status, recommendation } = await monitor.check();
 
@@ -55,7 +60,7 @@ async function main() {
 
   console.log("REBALANCE RECOMMENDED");
   console.log(`Reason: ${recommendation.reason}`);
-  
+
   if (!recommendation.data) {
     console.error("No rebalance data available.");
     return;
@@ -76,7 +81,7 @@ async function main() {
     // GMX execution fee is dynamic but usually around 0.0002-0.001 ETH.
     // Let's use a safe default or fetch it.
   };
-  
+
   // Hardcode execution fee for now or use a safe buffer
   rebalanceConfig.executionFee = ethers.parseEther("0.001");
 
@@ -92,7 +97,7 @@ async function main() {
   // 3. Fetch Prices
   console.log("Fetching GMX prices...");
   const prices = await fetchTokenPrices(ARBITRUM_MAINNET.gmxPriceApi);
-  
+
   // We need Collateral Price (USDC) and Index Token Price (WETH)
   // GMX V2 Market: ETH-USD [WETH, USDC] (Long, Short/Collateral)
   // Our collateral is USDC.
@@ -107,17 +112,17 @@ async function main() {
   // So averagePrice returns 30 decimals BigInt.
   // manager.executeRebalance expects collateralPrice as NUMBER (approx USD per token).
   // If USDC price is 1e30, that's $1.
-  
+
   // RebalanceManager.executeRebalance(data, collateralPrice: number, collateralDecimals: number, indexTokenPrice: bigint)
   // collateralPrice is used for:
-  // const priceScaled = BigInt(Math.floor(collateralPrice * 1e8)); 
+  // const priceScaled = BigInt(Math.floor(collateralPrice * 1e8));
   // It expects a number like 1.0 or 0.999.
   // So we need to convert the BigInt price (30 decimals) to a number.
-  
+
   const usdcPriceRaw = averagePrice(usdcPriceData);
   const usdcPrice30 = scalePriceTo30(usdcPriceRaw, 6); // USDC decimals
   const usdcPriceNum = parseFloat(ethers.formatUnits(usdcPrice30, 30));
-  
+
   const wethPriceRaw = averagePrice(wethPriceData);
   const wethPrice30 = scalePriceTo30(wethPriceRaw, 18); // WETH decimals
 
@@ -126,7 +131,7 @@ async function main() {
   // 4. Execute
   // Check for --execute flag
   const executeFlag = process.argv.includes("--execute");
-  
+
   if (!executeFlag) {
     console.log("\n[Dry Run] Rebalance would be executed with:");
     console.log(`  Adjustment: ${ethers.formatUnits(adjustmentNeededUsd, 30)} USD`);
@@ -141,8 +146,10 @@ async function main() {
         usdcPriceNum,
         6 // USDC decimals
       );
-      
-      console.log(`  Estimated Required Collateral: ${ethers.formatUnits(collateralTokens, 6)} USDC ($${ethers.formatUnits(collateralUsd, 30)})`);
+
+      console.log(
+        `  Estimated Required Collateral: ${ethers.formatUnits(collateralTokens, 6)} USDC ($${ethers.formatUnits(collateralUsd, 30)})`
+      );
     }
 
     console.log("\nTo execute, run with --execute");
@@ -157,7 +164,7 @@ async function main() {
       6, // USDC decimals
       wethPrice30
     );
-    
+
     if (txHash) {
       console.log(`Rebalance order submitted! Tx: ${txHash}`);
     } else {

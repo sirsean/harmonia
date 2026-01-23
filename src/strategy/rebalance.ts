@@ -23,7 +23,7 @@ export class RebalanceManager {
   ) {}
 
   async executeRebalance(
-    data: RebalanceData, 
+    data: RebalanceData,
     collateralPrice: number, // USD per Collateral Token (e.g. 1.0 for USDC)
     collateralDecimals: number,
     indexTokenPrice: bigint // 30 decimals
@@ -35,9 +35,19 @@ export class RebalanceManager {
     }
 
     if (adjustmentUsd > 0n) {
-      return this.increaseShort(adjustmentUsd, collateralPrice, collateralDecimals, indexTokenPrice);
+      return this.increaseShort(
+        adjustmentUsd,
+        collateralPrice,
+        collateralDecimals,
+        indexTokenPrice
+      );
     } else {
-      return this.decreaseShort(adjustmentUsd * -1n, collateralPrice, collateralDecimals, indexTokenPrice);
+      return this.decreaseShort(
+        adjustmentUsd * -1n,
+        collateralPrice,
+        collateralDecimals,
+        indexTokenPrice
+      );
     }
   }
 
@@ -49,16 +59,16 @@ export class RebalanceManager {
     const leverageScaled = BigInt(Math.floor(this.config.targetLeverage * 10000));
     const collateralDeltaUsd = (sizeDeltaUsd * 10000n) / leverageScaled;
 
-    const priceScaled = BigInt(Math.floor(collateralPrice * 1e8)); 
-    const numerator = collateralDeltaUsd * (10n ** BigInt(collateralDecimals));
-    const denominator = priceScaled * (10n ** 22n);
+    const priceScaled = BigInt(Math.floor(collateralPrice * 1e8));
+    const numerator = collateralDeltaUsd * 10n ** BigInt(collateralDecimals);
+    const denominator = priceScaled * 10n ** 22n;
     const collateralAmount = numerator / denominator;
 
     return { amount: collateralAmount, usd: collateralDeltaUsd };
   }
 
   private async increaseShort(
-    sizeDeltaUsd: bigint, 
+    sizeDeltaUsd: bigint,
     collateralPrice: number,
     collateralDecimals: number,
     indexTokenPrice: bigint
@@ -71,7 +81,9 @@ export class RebalanceManager {
       collateralDecimals
     );
 
-    console.log(`Adding collateral: ${ethers.formatUnits(collateralAmount, collateralDecimals)} (${ethers.formatUnits(collateralDeltaUsd, 30)} USD)`);
+    console.log(
+      `Adding collateral: ${ethers.formatUnits(collateralAmount, collateralDecimals)} (${ethers.formatUnits(collateralDeltaUsd, 30)} USD)`
+    );
 
     const executionConfig: GMXOrderExecutionConfig = {
       orderVault: this.context.orderVault,
@@ -117,7 +129,7 @@ export class RebalanceManager {
     // indexTokenPrice * (1 + slippage)
     const slippageFactor = BigInt(Math.round((1 + this.config.slippageBuffer) * 10000));
     const acceptablePrice = (indexTokenPrice * slippageFactor) / 10000n;
-    
+
     const result = await gmxOrders.createDecreaseOrder(
       this.router,
       {
