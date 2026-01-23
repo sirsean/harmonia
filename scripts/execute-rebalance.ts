@@ -128,33 +128,55 @@ async function main() {
 
   console.log(`Prices: USDC=$${usdcPriceNum}, ETH=$${ethers.formatUnits(wethPrice30, 30)}`);
 
-  // 4. Execute
-  // Check for --execute flag
-  const executeFlag = process.argv.includes("--execute");
+    // 4. Execute
 
-  if (!executeFlag) {
-    console.log("\n[Dry Run] Rebalance would be executed with:");
-    console.log(`  Adjustment: ${ethers.formatUnits(adjustmentNeededUsd, 30)} USD`);
-    console.log(`  Collateral Price: ${usdcPriceNum}`);
-    console.log(`  Index Price: ${ethers.formatUnits(wethPrice30, 30)} USD`);
-    console.log(`  Target Leverage: ${rebalanceConfig.targetLeverage}`);
+    // Check for EXECUTE env var
 
-    if (adjustmentNeededUsd > 0n) {
-      // Calculate estimated collateral for Increase Short
-      const { amount: collateralTokens, usd: collateralUsd } = manager.calculateRequiredCollateral(
-        adjustmentNeededUsd,
-        usdcPriceNum,
-        6 // USDC decimals
-      );
+    const executeFlag = process.env.EXECUTE === "true";
 
-      console.log(
-        `  Estimated Required Collateral: ${ethers.formatUnits(collateralTokens, 6)} USDC ($${ethers.formatUnits(collateralUsd, 30)})`
-      );
+    
+
+    if (!executeFlag) {
+
+      console.log("\n[Dry Run] Rebalance would be executed with:");
+
+      console.log(`  Adjustment: ${ethers.formatUnits(adjustmentNeededUsd, 30)} USD`);
+
+      console.log(`  Collateral Price: ${usdcPriceNum}`);
+
+      console.log(`  Index Price: ${ethers.formatUnits(wethPrice30, 30)} USD`);
+
+      console.log(`  Target Leverage: ${rebalanceConfig.targetLeverage}`);
+
+  
+
+      if (adjustmentNeededUsd > 0n) {
+
+        // Calculate estimated collateral for Increase Short
+
+        const { amount: collateralTokens, usd: collateralUsd } = manager.calculateRequiredCollateral(
+
+          adjustmentNeededUsd,
+
+          usdcPriceNum,
+
+          6 // USDC decimals
+
+        );
+
+        
+
+        console.log(`  Estimated Required Collateral: ${ethers.formatUnits(collateralTokens, 6)} USDC (${ethers.formatUnits(collateralUsd, 30)})`);
+
+      }
+
+  
+
+      console.log("\nTo execute, run with EXECUTE=true");
+
+      return;
+
     }
-
-    console.log("\nTo execute, run with --execute");
-    return;
-  }
 
   console.log("\nExecuting rebalance...");
   try {
