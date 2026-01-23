@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 import * as gmxReader from "../modules/gmx/reader";
 import * as uniswapReader from "../modules/uniswap/reader";
 import { calculateDelta, DeltaResult } from "../modules/math/delta";
-import { getSqrtRatioAtTick, sqrtPriceX96ToPrice } from "../modules/math/ticks";
+import { getSqrtRatioAtTick, sqrtPriceX96ToPrice, tickToPriceWithDecimals } from "../modules/math/ticks";
 import {
   MonitorConfig,
   Recommendation,
@@ -14,7 +14,10 @@ import {
 import { GMXPosition } from "../modules/gmx/types";
 import { UniswapPosition } from "../modules/uniswap/types";
 
-const ERC20_ABI = ["function decimals() view returns (uint8)"];
+const ERC20_ABI = [
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)"
+];
 
 export class DeltaNeutralMonitor implements StrategyMonitor {
   constructor(
@@ -64,18 +67,23 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     const poolToken0 = await poolContract.token0();
     const poolToken1 = await poolContract.token1();
 
-    // Fetch decimals
+    // Fetch decimals and symbols
     const token0Contract = new ethers.Contract(poolToken0, ERC20_ABI, this.provider);
     const token1Contract = new ethers.Contract(poolToken1, ERC20_ABI, this.provider);
-    const [decimals0, decimals1] = await Promise.all([
+    const [decimals0, decimals1, symbol0, symbol1] = await Promise.all([
       token0Contract.decimals(),
       token1Contract.decimals(),
+      token0Contract.symbol(),
+      token1Contract.symbol(),
     ]);
 
     // Determine Risk vs Stable (Collateral)
     // We assume the Collateral Token is the stable one (USDC)
     const isToken0Collateral = poolToken0.toLowerCase() === gmx.collateralToken.toLowerCase();
     const riskTokenDecimals = isToken0Collateral ? decimals1 : decimals0;
+    const stableSymbol = isToken0Collateral ? symbol0 : symbol1;
+    const riskSymbol = isToken0Collateral ? symbol1 : symbol0;
+    const priceLabel = `${stableSymbol}/${riskSymbol}`;
 
     // Calculate Price of Risk Token in Stable Token
     const rawPrice = sqrtPriceX96ToPrice(poolState.sqrtPriceX96, decimals0, decimals1);
@@ -114,6 +122,20 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
         position.liquidity
       );
 
+      // Price calculations
+      const rawCurrent = tickToPriceWithDecimals(poolState.tick, decimals0, decimals1);
+      const rawLower = tickToPriceWithDecimals(position.tickLower, decimals0, decimals1);
+      const rawUpper = tickToPriceWithDecimals(position.tickUpper, decimals0, decimals1);
+
+      const currentPrice = isToken0Collateral ? 1 / rawCurrent : rawCurrent;
+      let priceLower = isToken0Collateral ? 1 / rawUpper : rawLower;
+      let priceUpper = isToken0Collateral ? 1 / rawLower : rawUpper;
+
+      // Ensure lower < upper (inversion can flip them)
+      if (priceLower > priceUpper) {
+        [priceLower, priceUpper] = [priceUpper, priceLower];
+      }
+
       uniswapPositions.push({
         tokenId: tokenId.toString(),
         liquidity: position.liquidity,
@@ -121,6 +143,10 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
         tickUpper: position.tickUpper,
         currentTick: poolState.tick,
         sqrtPriceX96: poolState.sqrtPriceX96,
+        currentPrice,
+        priceLower,
+        priceUpper,
+        priceLabel,
         unclaimedFees: {
           amount0: position.tokensOwed0,
           amount1: position.tokensOwed1,

@@ -45,7 +45,7 @@ async function main() {
     for (const pos of status.uniswap) {
       console.log(`  > Token ID: ${pos.tokenId}`);
       console.log(
-        `    Tick Range: [${pos.tickLower}, ${pos.tickUpper}] (Current: ${pos.currentTick})`
+        `    Price Range: [${pos.priceLower.toFixed(6)}, ${pos.priceUpper.toFixed(6)}] ${pos.priceLabel} (Current: ${pos.currentPrice.toFixed(6)})`
       );
       console.log(`    Zone: ${pos.delta.zone}`);
       console.log(`    Delta: ${ethers.formatEther(pos.delta.delta)} ETH`);

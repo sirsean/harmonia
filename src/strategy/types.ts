@@ -15,6 +15,10 @@ export interface StrategyStatus {
     tickUpper: number;
     currentTick: number;
     sqrtPriceX96: bigint;
+    priceLower: number;
+    priceUpper: number;
+    currentPrice: number;
+    priceLabel: string;
     unclaimedFees: {
       amount0: bigint;
       amount1: bigint;

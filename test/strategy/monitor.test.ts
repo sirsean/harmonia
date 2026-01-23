@@ -101,6 +101,11 @@ describe("DeltaNeutralMonitor", () => {
           if (address === "0xT1" || address === "0xRisk") return 18n;
           return 18n;
         }),
+        symbol: vi.fn().mockImplementation(async () => {
+          if (address === "0xCollat") return "USDC";
+          if (address === "0xRisk") return "ETH";
+          return "TOKEN";
+        }),
         balanceOf: vi.fn(), 
         tokenOfOwnerByIndex: vi.fn(),
       };
