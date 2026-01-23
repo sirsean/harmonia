@@ -421,7 +421,7 @@ async function compoundFees(): Promise<void> {
 
 **Deliverables:**
 - [x] GMX module (reader, orders)
-- [ ] Uniswap module (reader, liquidity, fees)
+- [x] Uniswap module (reader, liquidity, fees)
 - [ ] Math module (delta, yield calculations)
 - [x] Chainlink module (price feeds)
 - [ ] Configuration system
@@ -478,7 +478,7 @@ Uniswap v3:
 - Quoter: 0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6
 
 GMX v2:
-- ExchangeRouter: 0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8
+- ExchangeRouter: 0x1C3fa76e6E1088bCE750f23a5BFcffa1efEF6A41
 - OrderVault: 0x31eF83a530Fde1B38EE9A18093A333D8Bbbc40D5
 - DataStore: 0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8
 - Reader: 0xf60becbba223EEA9495Da3f606753867eC10d139
