@@ -1,7 +1,9 @@
 import { ethers } from "ethers";
 import { UniswapPositionManager, DecreaseLiquidityParams, CollectParams } from "./types";
 
-export function buildDecreaseLiquidityParams(params: DecreaseLiquidityParams): DecreaseLiquidityParams {
+export function buildDecreaseLiquidityParams(
+  params: DecreaseLiquidityParams
+): DecreaseLiquidityParams {
   return params;
 }
 
@@ -37,10 +39,10 @@ export async function getUnclaimedFees(
   owner: string
 ): Promise<{ amount0: bigint; amount1: bigint }> {
   const MAX_UINT128 = (1n << 128n) - 1n;
-  
+
   const params = {
     tokenId: tokenId,
-    recipient: owner, 
+    recipient: owner,
     amount0Max: MAX_UINT128,
     amount1Max: MAX_UINT128,
   };
@@ -48,15 +50,15 @@ export async function getUnclaimedFees(
   try {
     // Cast manager to any to access staticCall
     const contract = manager as any;
-    
+
     if (contract.collect && contract.collect.staticCall) {
-       const result = await contract.collect.staticCall(params);
-       return { amount0: result[0], amount1: result[1] };
+      const result = await contract.collect.staticCall(params);
+      return { amount0: result[0], amount1: result[1] };
     }
-    
+
     // If we can't find staticCall, maybe it's a raw ethers Contract and we can try callStatic (v5) logic or just fail gracefully.
     // In ethers v6, staticCall is the way.
-    
+
     return { amount0: 0n, amount1: 0n };
   } catch (error) {
     console.warn(`Failed to simulate fee collection for token ${tokenId}:`, error);

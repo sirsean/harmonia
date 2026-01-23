@@ -38,14 +38,14 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
 
   async check(): Promise<{ status: StrategyStatus; recommendation: Recommendation }> {
     const { uniswap, gmx } = this.context;
-    
+
     // 1. Fetch Uniswap Data for ALL positions
     const poolContract = uniswapReader.createPool(uniswap.pool, this.provider);
     const pmContract = uniswapReader.createPositionManager(uniswap.positionManager, this.provider);
-    
+
     // Determine which positions to monitor
     let positionsToMonitor: { tokenId: bigint; position: UniswapPosition }[] = [];
-    
+
     if (uniswap.tokenIds && uniswap.tokenIds.length > 0) {
       // Fetch specific positions
       for (const id of uniswap.tokenIds) {
@@ -59,7 +59,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       positionsToMonitor = await uniswapReader.getActivePositionsForOwner(pmContract, gmx.account);
     }
 
-    const poolState = await uniswapReader.getPoolState(poolContract); 
+    const poolState = await uniswapReader.getPoolState(poolContract);
 
     const poolToken0 = await poolContract.token0();
     const poolToken1 = await poolContract.token1();
@@ -76,11 +76,11 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     // We assume the Collateral Token is the stable one (USDC)
     const isToken0Collateral = poolToken0.toLowerCase() === gmx.collateralToken.toLowerCase();
     const riskTokenDecimals = isToken0Collateral ? decimals1 : decimals0;
-    
+
     // Calculate Price of Risk Token in Stable Token
     const rawPrice = sqrtPriceX96ToPrice(poolState.sqrtPriceX96, decimals0, decimals1);
     let riskTokenPrice = 0;
-    
+
     if (isToken0Collateral) {
       // Token0 is Stable (USDC). Token1 is Risk (ETH).
       riskTokenPrice = rawPrice === 0 ? 0 : 1 / rawPrice;
@@ -97,14 +97,16 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
 
     for (const { tokenId, position } of positionsToMonitor) {
       // Filter out positions that don't match our pool (token0/token1/fee)
-      if (position.token0.toLowerCase() !== poolToken0.toLowerCase() || 
-          position.token1.toLowerCase() !== poolToken1.toLowerCase()) {
-         continue; // Skip positions from other pools
+      if (
+        position.token0.toLowerCase() !== poolToken0.toLowerCase() ||
+        position.token1.toLowerCase() !== poolToken1.toLowerCase()
+      ) {
+        continue; // Skip positions from other pools
       }
 
       const sqrtPaX96 = getSqrtRatioAtTick(position.tickLower);
       const sqrtPbX96 = getSqrtRatioAtTick(position.tickUpper);
-      
+
       const deltaResult = calculateDelta(
         poolState.sqrtPriceX96,
         sqrtPaX96,
@@ -129,7 +131,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       totalLpDelta += deltaResult.delta;
       totalFees0 += position.tokensOwed0;
       totalFees1 += position.tokensOwed1;
-      
+
       if (deltaResult.zone !== "in" && position.liquidity > 0n) {
         anyOutOfRange = true;
       }
@@ -149,7 +151,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
 
     // 4. Calculate Net Delta and Drift
     const netDelta = totalLpDelta + gmxDelta;
-    
+
     // Avoid division by zero if LP delta is 0
     let deltaDrift = 0;
     if (totalLpDelta !== 0n) {
@@ -160,7 +162,9 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       deltaDrift = 1; // 100% drift relative to being "neutral" (which would be 0 short)
     }
 
-    const pendingFunding = gmxPosition ? gmxPosition.numbers.shortTokenClaimableFundingAmountPerSize : 0n;
+    const pendingFunding = gmxPosition
+      ? gmxPosition.numbers.shortTokenClaimableFundingAmountPerSize
+      : 0n;
 
     const status: StrategyStatus = {
       uniswap: uniswapPositions,
@@ -176,9 +180,9 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     };
 
     const recommendation = this.generateRecommendation(
-      status, 
-      anyOutOfRange, 
-      totalFees0, 
+      status,
+      anyOutOfRange,
+      totalFees0,
       totalFees1,
       riskTokenPrice,
       Number(riskTokenDecimals)
@@ -188,7 +192,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
   }
 
   private generateRecommendation(
-    status: StrategyStatus, 
+    status: StrategyStatus,
     anyOutOfRange: boolean,
     totalFees0: bigint,
     totalFees1: bigint,
@@ -210,15 +214,15 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
         if (amount === 0n) return 0n;
         const sign = amount < 0n ? -1n : 1n;
         const absAmount = amount < 0n ? -amount : amount;
-        
+
         const amountStr = ethers.formatUnits(absAmount, decimals);
         const amountFloat = parseFloat(amountStr);
         const usdFloat = amountFloat * price;
-        
+
         try {
-            return sign * ethers.parseUnits(usdFloat.toFixed(18), 30); 
+          return sign * ethers.parseUnits(usdFloat.toFixed(18), 30);
         } catch (e) {
-            return sign * BigInt(Math.floor(usdFloat * 1e30)); 
+          return sign * BigInt(Math.floor(usdFloat * 1e30));
         }
       };
 
@@ -227,17 +231,17 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       const adjustmentNeeded = status.netDelta;
 
       const data: RebalanceData = {
-          targetDelta,
-          currentHedge,
-          adjustmentNeeded,
-          targetSizeUsd: amountToUsd30(targetDelta),
-          adjustmentNeededUsd: amountToUsd30(adjustmentNeeded),
+        targetDelta,
+        currentHedge,
+        adjustmentNeeded,
+        targetSizeUsd: amountToUsd30(targetDelta),
+        adjustmentNeededUsd: amountToUsd30(adjustmentNeeded),
       };
 
       return {
         action: StrategyAction.REBALANCE,
         reason: `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds threshold ${(this.config.deltaThreshold * 100).toFixed(2)}%`,
-        data
+        data,
       };
     }
 

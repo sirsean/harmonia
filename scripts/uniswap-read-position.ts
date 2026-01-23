@@ -113,7 +113,7 @@ async function main() {
 
   const manager = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, ethers.provider);
   const tokenIds = await getTokenIdsForOwner(manager, owner);
-  
+
   if (tokenIds.length === 0) {
     console.log("No Uniswap V3 positions found for:", owner);
     return;
