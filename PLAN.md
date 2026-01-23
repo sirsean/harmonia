@@ -443,7 +443,8 @@ async function compoundFees(): Promise<void> {
     - [x] `monitor-position` CLI script (Harness)
     - [x] Multiple position support (Aggregation)
     - [x] USD value estimation for adjustments
-- [ ] Rebalance execution
+- [x] Rebalance execution
+    - [x] `RebalanceManager` implemented with collateral and slippage calculation
 - [ ] Compounding logic
 - [ ] Range adjustment
 
