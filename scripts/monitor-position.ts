@@ -65,6 +65,8 @@ async function main() {
     console.log("\n[GMX Position]");
     console.log(`  Hedge Size: ${ethers.formatEther(status.gmx.positionSizeTokens)} ETH (Short)`);
     console.log(`  Hedge Delta: ${ethers.formatEther(status.gmx.delta)} ETH`);
+    console.log(`  Collateral: ${ethers.formatUnits(status.gmx.collateralAmount, 6)} USDC`);
+    console.log(`  Net Value: $${ethers.formatUnits(status.gmx.netValueUsd, 30)}`);
 
     console.log("\n[Net Strategy]");
     console.log(`  Net Delta: ${ethers.formatEther(status.netDelta)} ETH`);

@@ -192,11 +192,48 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       ? gmxPosition.numbers.shortTokenClaimableFundingAmountPerSize
       : 0n;
 
+    // Estimate GMX Net Value
+    let gmxNetValue = 0n;
+    let gmxCollateralAmount = 0n;
+    
+    if (gmxPosition) {
+        gmxCollateralAmount = gmxPosition.numbers.collateralAmount;
+        // Collateral Value (assuming stable USDC $1)
+        // CollateralAmount is 6 decimals. NetValue needs 30 decimals.
+        // val = amount * 10^24.
+        // We should check collateral decimals. We fetch 'decimals0/1' for Uniswap.
+        // We assume gmx.collateralToken matches one of them.
+        const collDecimals = gmx.collateralToken.toLowerCase() === poolToken0.toLowerCase() ? decimals0 : decimals1;
+        const collateralValue30 = this.calculateUsdValue(gmxCollateralAmount, Number(collDecimals), 1.0);
+        
+        // PnL Calculation
+        const sizeTokens = gmxPosition.numbers.sizeInTokens;
+        if (sizeTokens > 0n) {
+            // Entry Price (30 dec) = sizeInUsd (30) / sizeInTokens (18?)
+            // We know riskTokenDecimals.
+            // But simpler: PnL = EntryValue - CurrentValue (for Long).
+            // For Short: PnL = EntryValue - CurrentValue ? No.
+            // Short PnL = (EntryPrice - MarkPrice) * SizeTokens.
+            // EntryValue = SizeInUsd.
+            // CurrentValue = SizeTokens * MarkPrice.
+            const entryValue = gmxPosition.numbers.sizeInUsd;
+            const currentValue = this.calculateUsdValue(sizeTokens, Number(riskTokenDecimals), riskTokenPrice);
+            
+            // Short PnL = EntryValue - CurrentValue
+            const pnl = entryValue - currentValue;
+            gmxNetValue = collateralValue30 + pnl;
+        } else {
+            gmxNetValue = collateralValue30;
+        }
+    }
+
     const status: StrategyStatus = {
       uniswap: uniswapPositions,
       totalLpDelta,
       gmx: {
         positionSizeTokens: shortSizeTokens, // stored as positive int in struct
+        collateralAmount: gmxCollateralAmount,
+        netValueUsd: gmxNetValue,
         pendingFundingRewards: pendingFunding,
         delta: gmxDelta,
       },

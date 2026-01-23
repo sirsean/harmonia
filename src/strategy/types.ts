@@ -28,6 +28,8 @@ export interface StrategyStatus {
   totalLpDelta: bigint;
   gmx: {
     positionSizeTokens: bigint; // Negative for short
+    collateralAmount: bigint;
+    netValueUsd: bigint;
     pendingFundingRewards: bigint; // This might need refinement based on available data
     delta: bigint; // Usually -size for short
   };
