@@ -445,6 +445,7 @@ async function compoundFees(): Promise<void> {
     - [x] USD value estimation for adjustments
 - [x] Rebalance execution
     - [x] `RebalanceManager` implemented with collateral and slippage calculation
+    - [x] `execute-rebalance` CLI script
 - [ ] Compounding logic
 - [ ] Range adjustment
 
