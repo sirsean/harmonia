@@ -13,7 +13,7 @@ async function main() {
 
   const config: MonitorConfig = {
     deltaThreshold: 0.05, // 5% drift allowed
-    minFeeThreshold: ethers.parseUnits("10", 6), // $10 worth of USDC (simplified)
+    minFeeThresholdUsd: ethers.parseUnits("10", 30), // $10 worth of fees (USD 30 decimals)
     minRebalanceInterval: 3600,
   };
 

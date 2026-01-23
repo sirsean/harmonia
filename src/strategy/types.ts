@@ -48,7 +48,7 @@ export interface Recommendation {
 
 export interface MonitorConfig {
   deltaThreshold: number; // e.g. 0.05 for 5%
-  minFeeThreshold: bigint;
+  minFeeThresholdUsd: bigint; // USD value (30 decimals)
   minRebalanceInterval: number;
 }
 

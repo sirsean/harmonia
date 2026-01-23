@@ -29,7 +29,7 @@ async function main() {
 
   const monitorConfig = {
     deltaThreshold: 0.05,
-    minFeeThreshold: ethers.parseUnits("10", 6),
+    minFeeThresholdUsd: ethers.parseUnits("10", 30),
     minRebalanceInterval: 3600,
   };
 

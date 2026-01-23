@@ -179,11 +179,21 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       timestamp: Date.now(),
     };
 
+    let totalFeesUsd = 0n;
+    if (isToken0Collateral) {
+       // Token0 is Stable ($1). Token1 is Risk ($price).
+       totalFeesUsd += this.calculateUsdValue(totalFees0, Number(decimals0), 1.0);
+       totalFeesUsd += this.calculateUsdValue(totalFees1, Number(decimals1), riskTokenPrice);
+    } else {
+       // Token0 is Risk ($price). Token1 is Stable ($1).
+       totalFeesUsd += this.calculateUsdValue(totalFees0, Number(decimals0), riskTokenPrice);
+       totalFeesUsd += this.calculateUsdValue(totalFees1, Number(decimals1), 1.0);
+    }
+
     const recommendation = this.generateRecommendation(
-      status,
-      anyOutOfRange,
-      totalFees0,
-      totalFees1,
+      status, 
+      anyOutOfRange, 
+      totalFeesUsd,
       riskTokenPrice,
       Number(riskTokenDecimals)
     );
@@ -191,11 +201,26 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     return { status, recommendation };
   }
 
+  private calculateUsdValue(amount: bigint, decimals: number, price: number): bigint {
+    if (amount === 0n) return 0n;
+    const sign = amount < 0n ? -1n : 1n;
+    const absAmount = amount < 0n ? -amount : amount;
+    
+    const amountStr = ethers.formatUnits(absAmount, decimals);
+    const amountFloat = parseFloat(amountStr);
+    const usdFloat = amountFloat * price;
+    
+    try {
+        return sign * ethers.parseUnits(usdFloat.toFixed(18), 30); 
+    } catch (e) {
+        return sign * BigInt(Math.floor(usdFloat * 1e30)); 
+    }
+  }
+
   private generateRecommendation(
-    status: StrategyStatus,
+    status: StrategyStatus, 
     anyOutOfRange: boolean,
-    totalFees0: bigint,
-    totalFees1: bigint,
+    totalFeesUsd: bigint,
     price: number,
     decimals: number
   ): Recommendation {
@@ -209,48 +234,30 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
 
     // 2. Check for Rebalancing
     if (status.deltaDrift > this.config.deltaThreshold) {
-      // Calculate USD values
-      const amountToUsd30 = (amount: bigint): bigint => {
-        if (amount === 0n) return 0n;
-        const sign = amount < 0n ? -1n : 1n;
-        const absAmount = amount < 0n ? -amount : amount;
-
-        const amountStr = ethers.formatUnits(absAmount, decimals);
-        const amountFloat = parseFloat(amountStr);
-        const usdFloat = amountFloat * price;
-
-        try {
-          return sign * ethers.parseUnits(usdFloat.toFixed(18), 30);
-        } catch (e) {
-          return sign * BigInt(Math.floor(usdFloat * 1e30));
-        }
-      };
-
       const targetDelta = status.totalLpDelta;
       const currentHedge = -status.gmx.delta;
       const adjustmentNeeded = status.netDelta;
 
       const data: RebalanceData = {
-        targetDelta,
-        currentHedge,
-        adjustmentNeeded,
-        targetSizeUsd: amountToUsd30(targetDelta),
-        adjustmentNeededUsd: amountToUsd30(adjustmentNeeded),
+          targetDelta,
+          currentHedge,
+          adjustmentNeeded,
+          targetSizeUsd: this.calculateUsdValue(targetDelta, decimals, price),
+          adjustmentNeededUsd: this.calculateUsdValue(adjustmentNeeded, decimals, price),
       };
 
       return {
         action: StrategyAction.REBALANCE,
         reason: `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds threshold ${(this.config.deltaThreshold * 100).toFixed(2)}%`,
-        data,
+        data
       };
     }
 
     // 3. Check for Compounding
-    // Simple check: if fees > minFeeThreshold (simplified check on amount0 for now, ideally value in USD)
-    if (totalFees0 > this.config.minFeeThreshold || totalFees1 > this.config.minFeeThreshold) {
+    if (totalFeesUsd > this.config.minFeeThresholdUsd) {
       return {
         action: StrategyAction.COMPOUND,
-        reason: "Unclaimed fees exceed threshold",
+        reason: `Unclaimed fees ($${ethers.formatUnits(totalFeesUsd, 30)}) exceed threshold ($${ethers.formatUnits(this.config.minFeeThresholdUsd, 30)})`,
       };
     }
 

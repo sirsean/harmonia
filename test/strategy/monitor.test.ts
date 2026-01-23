@@ -71,7 +71,7 @@ describe("DeltaNeutralMonitor", () => {
 
   const config = {
     deltaThreshold: 0.05, 
-    minFeeThreshold: 100n,
+    minFeeThresholdUsd: ethers.parseUnits("10", 30),
     minRebalanceInterval: 3600,
   };
   
@@ -184,7 +184,7 @@ describe("DeltaNeutralMonitor", () => {
     // Healthy delta but high fees
     const highFeesPos = {
         ...mockUniswapPosition,
-        tokensOwed0: 200n, // Above threshold
+        tokensOwed0: 11000000n, // 11 USDC ($11) > $10 threshold
     };
 
     vi.mocked(uniswapReader.getPosition).mockResolvedValue(highFeesPos);
