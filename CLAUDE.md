@@ -12,7 +12,7 @@ Harmonia is a delta-neutral yield strategy that combines Uniswap v3 LP positions
 
 ```bash
 npm install                                    # Install dependencies
-npx hardhat run scripts/read-positions.ts     # Read GMX positions
+npx hardhat run scripts/gmx-read-position.ts     # Read GMX positions
 ```
 
 ## Codebase Structure
@@ -21,9 +21,9 @@ npx hardhat run scripts/read-positions.ts     # Read GMX positions
 scripts/
 ├── config/
 │   └── addresses.ts          # Contract addresses and constants
-├── create-short-position.ts  # Open GMX short position
-├── close-short-position.ts   # Close GMX short position
-├── read-positions.ts         # Read GMX positions
+├── gmx-open-short.ts         # Open GMX short position
+├── gmx-close-short.ts        # Close GMX short position
+├── gmx-read-position.ts      # Read GMX positions
 ├── read-orders.ts            # Read pending GMX orders
 ├── read-order.ts             # Read specific GMX order
 ├── scan-order-events.ts      # Scan GMX order events
@@ -68,22 +68,22 @@ LP positions in Uniswap v3 have a delta that varies with price:
 
 ```bash
 # Read all GMX positions
-npx hardhat run scripts/read-positions.ts --network arbitrum
+npx hardhat run scripts/gmx-read-position.ts --network arbitrum
 
 # Read for specific account
-ACCOUNT=0x... npx hardhat run scripts/read-positions.ts --network arbitrum
+ACCOUNT=0x... npx hardhat run scripts/gmx-read-position.ts --network arbitrum
 ```
 
 ### Creating Short Position
 
 ```bash
-npx hardhat run scripts/create-short-position.ts --network arbitrum
+npx hardhat run scripts/gmx-open-short.ts --network arbitrum
 ```
 
 ### Closing Short Position
 
 ```bash
-npx hardhat run scripts/close-short-position.ts --network arbitrum
+npx hardhat run scripts/gmx-close-short.ts --network arbitrum
 ```
 
 ## Important Constants

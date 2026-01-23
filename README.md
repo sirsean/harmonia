@@ -56,9 +56,9 @@ harmonia/
 ├── scripts/
 │   ├── config/
 │   │   └── addresses.ts          # Contract addresses and constants
-│   ├── create-short-position.ts  # Open GMX short position
-│   ├── close-short-position.ts   # Close GMX short position
-│   ├── read-positions.ts         # Read GMX positions
+│   ├── gmx-open-short.ts          # Open GMX short position
+│   ├── gmx-close-short.ts         # Close GMX short position
+│   ├── gmx-read-position.ts       # Read GMX positions
 │   └── ...                       # Other utility scripts
 ├── src/
 │   ├── modules/                  # Core protocol modules (to be built)
@@ -86,7 +86,7 @@ npm install
 ### Reading GMX Positions
 
 ```bash
-npx hardhat run scripts/read-positions.ts --network arbitrum
+npx hardhat run scripts/gmx-read-position.ts --network arbitrum
 ```
 
 ### Tests
@@ -99,13 +99,13 @@ npm test
 ### Creating a Short Position
 
 ```bash
-npx hardhat run scripts/create-short-position.ts --network arbitrum
+npx hardhat run scripts/gmx-open-short.ts --network arbitrum
 ```
 
 ### Closing a Short Position
 
 ```bash
-npx hardhat run scripts/close-short-position.ts --network arbitrum
+npx hardhat run scripts/gmx-close-short.ts --network arbitrum
 ```
 
 ## Configuration

@@ -166,9 +166,9 @@ Handles all GMX V2 perpetual operations:
 | `getMarketPrice()` | Get current market price |
 
 Based on existing scripts:
-- `scripts/create-short-position.ts`
-- `scripts/close-short-position.ts`
-- `scripts/read-positions.ts`
+- `scripts/gmx-open-short.ts`
+- `scripts/gmx-close-short.ts`
+- `scripts/gmx-read-position.ts`
 
 #### Uniswap Module (`src/modules/uniswap/`)
 
