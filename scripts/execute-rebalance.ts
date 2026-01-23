@@ -128,55 +128,43 @@ async function main() {
 
   console.log(`Prices: USDC=$${usdcPriceNum}, ETH=$${ethers.formatUnits(wethPrice30, 30)}`);
 
-    // 4. Execute
+  // 4. Execute
 
-    // Check for EXECUTE env var
+  // Check for EXECUTE env var
 
-    const executeFlag = process.env.EXECUTE === "true";
+  const executeFlag = process.env.EXECUTE === "true";
 
-    
+  if (!executeFlag) {
+    console.log("\n[Dry Run] Rebalance would be executed with:");
 
-    if (!executeFlag) {
+    console.log(`  Adjustment: ${ethers.formatUnits(adjustmentNeededUsd, 30)} USD`);
 
-      console.log("\n[Dry Run] Rebalance would be executed with:");
+    console.log(`  Collateral Price: ${usdcPriceNum}`);
 
-      console.log(`  Adjustment: ${ethers.formatUnits(adjustmentNeededUsd, 30)} USD`);
+    console.log(`  Index Price: ${ethers.formatUnits(wethPrice30, 30)} USD`);
 
-      console.log(`  Collateral Price: ${usdcPriceNum}`);
+    console.log(`  Target Leverage: ${rebalanceConfig.targetLeverage}`);
 
-      console.log(`  Index Price: ${ethers.formatUnits(wethPrice30, 30)} USD`);
+    if (adjustmentNeededUsd > 0n) {
+      // Calculate estimated collateral for Increase Short
 
-      console.log(`  Target Leverage: ${rebalanceConfig.targetLeverage}`);
+      const { amount: collateralTokens, usd: collateralUsd } = manager.calculateRequiredCollateral(
+        adjustmentNeededUsd,
 
-  
+        usdcPriceNum,
 
-      if (adjustmentNeededUsd > 0n) {
+        6 // USDC decimals
+      );
 
-        // Calculate estimated collateral for Increase Short
-
-        const { amount: collateralTokens, usd: collateralUsd } = manager.calculateRequiredCollateral(
-
-          adjustmentNeededUsd,
-
-          usdcPriceNum,
-
-          6 // USDC decimals
-
-        );
-
-        
-
-        console.log(`  Estimated Required Collateral: ${ethers.formatUnits(collateralTokens, 6)} USDC (${ethers.formatUnits(collateralUsd, 30)})`);
-
-      }
-
-  
-
-      console.log("\nTo execute, run with EXECUTE=true");
-
-      return;
-
+      console.log(
+        `  Estimated Required Collateral: ${ethers.formatUnits(collateralTokens, 6)} USDC (${ethers.formatUnits(collateralUsd, 30)})`
+      );
     }
+
+    console.log("\nTo execute, run with EXECUTE=true");
+
+    return;
+  }
 
   console.log("\nExecuting rebalance...");
   try {

@@ -127,13 +127,14 @@ export class RebalanceManager {
       orderVault: this.context.orderVault,
     };
 
-        // Acceptable Price: Upper bound for buying (Short Decrease)
-        // indexTokenPrice * (1 + slippage)
-        const slippageFactor = BigInt(Math.round((1 + this.config.slippageBuffer) * 10000));
-        const acceptablePrice30 = (indexTokenPrice * slippageFactor) / 10000n;
-        const acceptablePrice = price30ToPrice12(acceptablePrice30);
-        
-        const result = await gmxOrders.createDecreaseOrder(      this.router,
+    // Acceptable Price: Upper bound for buying (Short Decrease)
+    // indexTokenPrice * (1 + slippage)
+    const slippageFactor = BigInt(Math.round((1 + this.config.slippageBuffer) * 10000));
+    const acceptablePrice30 = (indexTokenPrice * slippageFactor) / 10000n;
+    const acceptablePrice = price30ToPrice12(acceptablePrice30);
+
+    const result = await gmxOrders.createDecreaseOrder(
+      this.router,
       {
         account: this.context.account,
         market: this.context.market,
