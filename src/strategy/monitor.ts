@@ -2,7 +2,11 @@ import { ethers } from "ethers";
 import * as gmxReader from "../modules/gmx/reader";
 import * as uniswapReader from "../modules/uniswap/reader";
 import { calculateDelta, DeltaResult } from "../modules/math/delta";
-import { getSqrtRatioAtTick, sqrtPriceX96ToPrice, tickToPriceWithDecimals } from "../modules/math/ticks";
+import {
+  getSqrtRatioAtTick,
+  sqrtPriceX96ToPrice,
+  tickToPriceWithDecimals,
+} from "../modules/math/ticks";
 import {
   MonitorConfig,
   Recommendation,
@@ -16,7 +20,7 @@ import { UniswapPosition } from "../modules/uniswap/types";
 
 const ERC20_ABI = [
   "function decimals() view returns (uint8)",
-  "function symbol() view returns (string)"
+  "function symbol() view returns (string)",
 ];
 
 export class DeltaNeutralMonitor implements StrategyMonitor {
@@ -195,36 +199,45 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     // Estimate GMX Net Value
     let gmxNetValue = 0n;
     let gmxCollateralAmount = 0n;
-    
+
     if (gmxPosition) {
-        gmxCollateralAmount = gmxPosition.numbers.collateralAmount;
-        // Collateral Value (assuming stable USDC $1)
-        // CollateralAmount is 6 decimals. NetValue needs 30 decimals.
-        // val = amount * 10^24.
-        // We should check collateral decimals. We fetch 'decimals0/1' for Uniswap.
-        // We assume gmx.collateralToken matches one of them.
-        const collDecimals = gmx.collateralToken.toLowerCase() === poolToken0.toLowerCase() ? decimals0 : decimals1;
-        const collateralValue30 = this.calculateUsdValue(gmxCollateralAmount, Number(collDecimals), 1.0);
-        
-        // PnL Calculation
-        const sizeTokens = gmxPosition.numbers.sizeInTokens;
-        if (sizeTokens > 0n) {
-            // Entry Price (30 dec) = sizeInUsd (30) / sizeInTokens (18?)
-            // We know riskTokenDecimals.
-            // But simpler: PnL = EntryValue - CurrentValue (for Long).
-            // For Short: PnL = EntryValue - CurrentValue ? No.
-            // Short PnL = (EntryPrice - MarkPrice) * SizeTokens.
-            // EntryValue = SizeInUsd.
-            // CurrentValue = SizeTokens * MarkPrice.
-            const entryValue = gmxPosition.numbers.sizeInUsd;
-            const currentValue = this.calculateUsdValue(sizeTokens, Number(riskTokenDecimals), riskTokenPrice);
-            
-            // Short PnL = EntryValue - CurrentValue
-            const pnl = entryValue - currentValue;
-            gmxNetValue = collateralValue30 + pnl;
-        } else {
-            gmxNetValue = collateralValue30;
-        }
+      gmxCollateralAmount = gmxPosition.numbers.collateralAmount;
+      // Collateral Value (assuming stable USDC $1)
+      // CollateralAmount is 6 decimals. NetValue needs 30 decimals.
+      // val = amount * 10^24.
+      // We should check collateral decimals. We fetch 'decimals0/1' for Uniswap.
+      // We assume gmx.collateralToken matches one of them.
+      const collDecimals =
+        gmx.collateralToken.toLowerCase() === poolToken0.toLowerCase() ? decimals0 : decimals1;
+      const collateralValue30 = this.calculateUsdValue(
+        gmxCollateralAmount,
+        Number(collDecimals),
+        1.0
+      );
+
+      // PnL Calculation
+      const sizeTokens = gmxPosition.numbers.sizeInTokens;
+      if (sizeTokens > 0n) {
+        // Entry Price (30 dec) = sizeInUsd (30) / sizeInTokens (18?)
+        // We know riskTokenDecimals.
+        // But simpler: PnL = EntryValue - CurrentValue (for Long).
+        // For Short: PnL = EntryValue - CurrentValue ? No.
+        // Short PnL = (EntryPrice - MarkPrice) * SizeTokens.
+        // EntryValue = SizeInUsd.
+        // CurrentValue = SizeTokens * MarkPrice.
+        const entryValue = gmxPosition.numbers.sizeInUsd;
+        const currentValue = this.calculateUsdValue(
+          sizeTokens,
+          Number(riskTokenDecimals),
+          riskTokenPrice
+        );
+
+        // Short PnL = EntryValue - CurrentValue
+        const pnl = entryValue - currentValue;
+        gmxNetValue = collateralValue30 + pnl;
+      } else {
+        gmxNetValue = collateralValue30;
+      }
     }
 
     const status: StrategyStatus = {
@@ -244,18 +257,18 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
 
     let totalFeesUsd = 0n;
     if (isToken0Collateral) {
-       // Token0 is Stable ($1). Token1 is Risk ($price).
-       totalFeesUsd += this.calculateUsdValue(totalFees0, Number(decimals0), 1.0);
-       totalFeesUsd += this.calculateUsdValue(totalFees1, Number(decimals1), riskTokenPrice);
+      // Token0 is Stable ($1). Token1 is Risk ($price).
+      totalFeesUsd += this.calculateUsdValue(totalFees0, Number(decimals0), 1.0);
+      totalFeesUsd += this.calculateUsdValue(totalFees1, Number(decimals1), riskTokenPrice);
     } else {
-       // Token0 is Risk ($price). Token1 is Stable ($1).
-       totalFeesUsd += this.calculateUsdValue(totalFees0, Number(decimals0), riskTokenPrice);
-       totalFeesUsd += this.calculateUsdValue(totalFees1, Number(decimals1), 1.0);
+      // Token0 is Risk ($price). Token1 is Stable ($1).
+      totalFeesUsd += this.calculateUsdValue(totalFees0, Number(decimals0), riskTokenPrice);
+      totalFeesUsd += this.calculateUsdValue(totalFees1, Number(decimals1), 1.0);
     }
 
     const recommendation = this.generateRecommendation(
-      status, 
-      anyOutOfRange, 
+      status,
+      anyOutOfRange,
       totalFeesUsd,
       riskTokenPrice,
       Number(riskTokenDecimals)
@@ -268,20 +281,20 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     if (amount === 0n) return 0n;
     const sign = amount < 0n ? -1n : 1n;
     const absAmount = amount < 0n ? -amount : amount;
-    
+
     const amountStr = ethers.formatUnits(absAmount, decimals);
     const amountFloat = parseFloat(amountStr);
     const usdFloat = amountFloat * price;
-    
+
     try {
-        return sign * ethers.parseUnits(usdFloat.toFixed(18), 30); 
+      return sign * ethers.parseUnits(usdFloat.toFixed(18), 30);
     } catch (e) {
-        return sign * BigInt(Math.floor(usdFloat * 1e30)); 
+      return sign * BigInt(Math.floor(usdFloat * 1e30));
     }
   }
 
   private generateRecommendation(
-    status: StrategyStatus, 
+    status: StrategyStatus,
     anyOutOfRange: boolean,
     totalFeesUsd: bigint,
     price: number,
@@ -302,17 +315,17 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       const adjustmentNeeded = status.netDelta;
 
       const data: RebalanceData = {
-          targetDelta,
-          currentHedge,
-          adjustmentNeeded,
-          targetSizeUsd: this.calculateUsdValue(targetDelta, decimals, price),
-          adjustmentNeededUsd: this.calculateUsdValue(adjustmentNeeded, decimals, price),
+        targetDelta,
+        currentHedge,
+        adjustmentNeeded,
+        targetSizeUsd: this.calculateUsdValue(targetDelta, decimals, price),
+        adjustmentNeededUsd: this.calculateUsdValue(adjustmentNeeded, decimals, price),
       };
 
       return {
         action: StrategyAction.REBALANCE,
         reason: `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds threshold ${(this.config.deltaThreshold * 100).toFixed(2)}%`,
-        data
+        data,
       };
     }
 
