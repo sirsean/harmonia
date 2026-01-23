@@ -12,6 +12,7 @@ import {
   RebalanceData,
 } from "./types";
 import { GMXPosition } from "../modules/gmx/types";
+import { UniswapPosition } from "../modules/uniswap/types";
 
 const ERC20_ABI = ["function decimals() view returns (uint8)"];
 
@@ -38,29 +39,27 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
   async check(): Promise<{ status: StrategyStatus; recommendation: Recommendation }> {
     const { uniswap, gmx } = this.context;
     
-    // Helper to get all token IDs if not provided
-    let tokenIds = uniswap.tokenIds || [];
-    if (tokenIds.length === 0) {
-      // If no token IDs provided, we need to fetch them from the PositionManager
-      // logic similar to loadTokenIds in script
-      const pmContract = new ethers.Contract(
-        uniswap.positionManager, 
-        ["function balanceOf(address) view returns (uint256)", "function tokenOfOwnerByIndex(address, uint256) view returns (uint256)"],
-        this.provider
-      );
-      // We assume the caller (gmx.account) is the owner of the LP positions too for this strategy
-      const balance = await pmContract.balanceOf(gmx.account);
-      const count = Number(balance);
-      for (let i = 0; i < count; i++) {
-        const id = await pmContract.tokenOfOwnerByIndex(gmx.account, i);
-        tokenIds.push(typeof id === 'bigint' ? id : BigInt(id));
-      }
-    }
-
     // 1. Fetch Uniswap Data for ALL positions
     const poolContract = uniswapReader.createPool(uniswap.pool, this.provider);
     const pmContract = uniswapReader.createPositionManager(uniswap.positionManager, this.provider);
-    const poolState = await uniswapReader.getPoolState(poolContract); // Only need to fetch pool state once if all positions are same pool
+    
+    // Determine which positions to monitor
+    let positionsToMonitor: { tokenId: bigint; position: UniswapPosition }[] = [];
+    
+    if (uniswap.tokenIds && uniswap.tokenIds.length > 0) {
+      // Fetch specific positions
+      for (const id of uniswap.tokenIds) {
+        const position = await uniswapReader.getPosition(pmContract, id);
+        if (position.liquidity > 0n) {
+          positionsToMonitor.push({ tokenId: id, position });
+        }
+      }
+    } else {
+      // Auto-discover active positions
+      positionsToMonitor = await uniswapReader.getActivePositionsForOwner(pmContract, gmx.account);
+    }
+
+    const poolState = await uniswapReader.getPoolState(poolContract); 
 
     const poolToken0 = await poolContract.token0();
     const poolToken1 = await poolContract.token1();
@@ -84,13 +83,9 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     
     if (isToken0Collateral) {
       // Token0 is Stable (USDC). Token1 is Risk (ETH).
-      // rawPrice is "Token1 per Token0". -> "ETH per USDC".
-      // We want USD per ETH. So 1/rawPrice.
       riskTokenPrice = rawPrice === 0 ? 0 : 1 / rawPrice;
     } else {
       // Token0 is Risk (ETH). Token1 is Stable (USDC).
-      // rawPrice is "Token1 per Token0" -> "USDC per ETH".
-      // This is exactly what we want.
       riskTokenPrice = rawPrice;
     }
 
@@ -100,9 +95,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     let totalFees1 = 0n;
     let anyOutOfRange = false;
 
-    for (const tokenId of tokenIds) {
-      const position = await uniswapReader.getPosition(pmContract, tokenId);
-      
+    for (const { tokenId, position } of positionsToMonitor) {
       // Filter out positions that don't match our pool (token0/token1/fee)
       if (position.token0.toLowerCase() !== poolToken0.toLowerCase() || 
           position.token1.toLowerCase() !== poolToken1.toLowerCase()) {

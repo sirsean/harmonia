@@ -10,6 +10,8 @@ export const UNISWAP_POOL_ABI = [
 
 export const UNISWAP_POSITION_MANAGER_ABI = [
   "function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
+  "function balanceOf(address owner) view returns (uint256)",
+  "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
 ];
 
 export function createPool(address: string, provider: ethers.Provider): UniswapV3Pool {
@@ -55,4 +57,37 @@ export async function getPosition(
     tokensOwed0: data[10],
     tokensOwed1: data[11],
   };
+}
+
+export async function getTokenIdsForOwner(
+  manager: UniswapPositionManager,
+  owner: string
+): Promise<bigint[]> {
+  const balance = await manager.balanceOf(owner);
+  const count = Number(balance);
+  const tokenIds: bigint[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const tokenId = await manager.tokenOfOwnerByIndex(owner, i);
+    tokenIds.push(typeof tokenId === "bigint" ? tokenId : BigInt(tokenId.toString()));
+  }
+
+  return tokenIds;
+}
+
+export async function getActivePositionsForOwner(
+  manager: UniswapPositionManager,
+  owner: string
+): Promise<{ tokenId: bigint; position: UniswapPosition }[]> {
+  const tokenIds = await getTokenIdsForOwner(manager, owner);
+  const activePositions: { tokenId: bigint; position: UniswapPosition }[] = [];
+
+  for (const tokenId of tokenIds) {
+    const position = await getPosition(manager, tokenId);
+    if (position.liquidity > 0n) {
+      activePositions.push({ tokenId, position });
+    }
+  }
+
+  return activePositions;
 }

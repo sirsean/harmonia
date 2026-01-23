@@ -5,6 +5,7 @@ import {
   createPositionManager,
   getPoolState,
   getPosition,
+  getTokenIdsForOwner,
 } from "../src/modules/uniswap/reader";
 import {
   getAmountsForLiquidity,
@@ -16,31 +17,12 @@ const ERC20_ABI = [
   "function decimals() view returns (uint8)",
   "function symbol() view returns (string)",
 ];
-const POSITION_MANAGER_ENUM_ABI = [
-  "function balanceOf(address owner) view returns (uint256)",
-  "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
-];
 const FACTORY_ABI = [
   "function getPool(address tokenA, address tokenB, uint24 fee) view returns (address)",
 ];
 
-async function loadTokenIds(managerAddress: string, owner: string): Promise<bigint[]> {
-  const manager = new ethers.Contract(managerAddress, POSITION_MANAGER_ENUM_ABI, ethers.provider);
-  const balance = await manager.balanceOf(owner);
-  const count = Number(balance);
-  const tokenIds: bigint[] = [];
-
-  for (let i = 0; i < count; i += 1) {
-    const tokenId = await manager.tokenOfOwnerByIndex(owner, i);
-    tokenIds.push(typeof tokenId === "bigint" ? tokenId : BigInt(tokenId.toString()));
-  }
-
-  return tokenIds;
-}
-
 async function printPosition(tokenId: bigint) {
   const manager = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, ethers.provider);
-  const showClosed = process.env.SHOW_CLOSED === "true";
   const position = await getPosition(manager, tokenId);
 
   const token0 = new ethers.Contract(position.token0, ERC20_ABI, ethers.provider);
@@ -118,6 +100,7 @@ async function main() {
 
   const [signer] = await ethers.getSigners();
   const owner = process.env.ACCOUNT || signer.address;
+  const showClosed = process.env.SHOW_CLOSED === "true";
 
   const tokenIdRaw = process.env.TOKEN_ID;
   if (tokenIdRaw) {
@@ -125,13 +108,14 @@ async function main() {
     return;
   }
 
-  const tokenIds = await loadTokenIds(ARBITRUM_MAINNET.uniswapV3PositionManager, owner);
+  const manager = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, ethers.provider);
+  const tokenIds = await getTokenIdsForOwner(manager, owner);
+  
   if (tokenIds.length === 0) {
     console.log("No Uniswap V3 positions found for:", owner);
     return;
   }
 
-  const manager = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, ethers.provider);
   const activeTokenIds: bigint[] = [];
 
   for (const tokenId of tokenIds) {

@@ -40,6 +40,8 @@ export interface UniswapPositionManager {
   ): Promise<
     [bigint, string, string, string, number, number, number, bigint, bigint, bigint, bigint, bigint]
   >;
+  balanceOf(owner: string): Promise<bigint>;
+  tokenOfOwnerByIndex(owner: string, index: bigint | number): Promise<bigint>;
   mint(
     params: MintParams,
     overrides?: { nonce?: number }
