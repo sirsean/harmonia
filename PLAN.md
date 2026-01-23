@@ -422,7 +422,7 @@ async function compoundFees(): Promise<void> {
 **Deliverables:**
 - [x] GMX module (reader, orders)
 - [x] Uniswap module (reader, liquidity, fees)
-- [ ] Math module (delta, yield calculations)
+- [x] Math module (delta, yield calculations)
 - [x] Chainlink module (price feeds)
 - [ ] Configuration system
 
