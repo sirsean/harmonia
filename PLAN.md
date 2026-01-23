@@ -439,7 +439,10 @@ async function compoundFees(): Promise<void> {
 **Objective:** Build strategy orchestration
 
 **Deliverables:**
-- [ ] Position monitoring loop
+- [x] Position monitoring loop (`DeltaNeutralMonitor`)
+    - [x] `monitor-position` CLI script (Harness)
+    - [x] Multiple position support (Aggregation)
+    - [x] USD value estimation for adjustments
 - [ ] Rebalance execution
 - [ ] Compounding logic
 - [ ] Range adjustment
