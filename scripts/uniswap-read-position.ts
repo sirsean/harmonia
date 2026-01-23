@@ -5,6 +5,7 @@ import {
   createPositionManager,
   getPoolState,
   getPosition,
+  getPositionWithFees,
   getTokenIdsForOwner,
 } from "../src/modules/uniswap/reader";
 import {
@@ -21,9 +22,9 @@ const FACTORY_ABI = [
   "function getPool(address tokenA, address tokenB, uint24 fee) view returns (address)",
 ];
 
-async function printPosition(tokenId: bigint) {
+async function printPosition(tokenId: bigint, owner: string) {
   const manager = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, ethers.provider);
-  const position = await getPosition(manager, tokenId);
+  const position = await getPositionWithFees(manager, tokenId, owner);
 
   const token0 = new ethers.Contract(position.token0, ERC20_ABI, ethers.provider);
   const token1 = new ethers.Contract(position.token1, ERC20_ABI, ethers.provider);
@@ -89,8 +90,10 @@ async function printPosition(tokenId: bigint) {
       token1Decimals
     )} ${token1Symbol}`
   );
-  console.log("Tokens Owed0:", position.tokensOwed0.toString());
-  console.log("Tokens Owed1:", position.tokensOwed1.toString());
+  console.log(
+    "Claimable Fees:",
+    `${ethers.formatUnits(position.tokensOwed0, token0Decimals)} ${token0Symbol}, ${ethers.formatUnits(position.tokensOwed1, token1Decimals)} ${token1Symbol}`
+  );
 }
 
 async function main() {
@@ -104,7 +107,7 @@ async function main() {
 
   const tokenIdRaw = process.env.TOKEN_ID;
   if (tokenIdRaw) {
-    await printPosition(BigInt(tokenIdRaw));
+    await printPosition(BigInt(tokenIdRaw), owner);
     return;
   }
 
@@ -133,7 +136,7 @@ async function main() {
   console.log("Positions:", activeTokenIds.length);
 
   for (const tokenId of activeTokenIds) {
-    await printPosition(tokenId);
+    await printPosition(tokenId, owner);
   }
 }
 
