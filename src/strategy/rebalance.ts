@@ -41,6 +41,22 @@ export class RebalanceManager {
     }
   }
 
+  public calculateRequiredCollateral(
+    sizeDeltaUsd: bigint,
+    collateralPrice: number,
+    collateralDecimals: number
+  ): { amount: bigint; usd: bigint } {
+    const leverageScaled = BigInt(Math.floor(this.config.targetLeverage * 10000));
+    const collateralDeltaUsd = (sizeDeltaUsd * 10000n) / leverageScaled;
+
+    const priceScaled = BigInt(Math.floor(collateralPrice * 1e8)); 
+    const numerator = collateralDeltaUsd * (10n ** BigInt(collateralDecimals));
+    const denominator = priceScaled * (10n ** 22n);
+    const collateralAmount = numerator / denominator;
+
+    return { amount: collateralAmount, usd: collateralDeltaUsd };
+  }
+
   private async increaseShort(
     sizeDeltaUsd: bigint, 
     collateralPrice: number,
@@ -49,13 +65,11 @@ export class RebalanceManager {
   ): Promise<string> {
     console.log(`Increasing short by $${ethers.formatUnits(sizeDeltaUsd, 30)}`);
 
-    const leverageScaled = BigInt(Math.floor(this.config.targetLeverage * 10000));
-    const collateralDeltaUsd = (sizeDeltaUsd * 10000n) / leverageScaled;
-
-    const priceScaled = BigInt(Math.floor(collateralPrice * 1e8)); 
-    const numerator = collateralDeltaUsd * (10n ** BigInt(collateralDecimals));
-    const denominator = priceScaled * (10n ** 22n);
-    const collateralAmount = numerator / denominator;
+    const { amount: collateralAmount, usd: collateralDeltaUsd } = this.calculateRequiredCollateral(
+      sizeDeltaUsd,
+      collateralPrice,
+      collateralDecimals
+    );
 
     console.log(`Adding collateral: ${ethers.formatUnits(collateralAmount, collateralDecimals)} (${ethers.formatUnits(collateralDeltaUsd, 30)} USD)`);
 
