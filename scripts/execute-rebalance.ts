@@ -133,6 +133,18 @@ async function main() {
     console.log(`  Collateral Price: ${usdcPriceNum}`);
     console.log(`  Index Price: ${ethers.formatUnits(wethPrice30, 30)} USD`);
     console.log(`  Target Leverage: ${rebalanceConfig.targetLeverage}`);
+
+    if (adjustmentNeededUsd > 0n) {
+      // Calculate estimated collateral for Increase Short
+      const leverageScaled = BigInt(Math.floor(rebalanceConfig.targetLeverage * 10000));
+      const collateralUsd = (adjustmentNeededUsd * 10000n) / leverageScaled;
+      
+      // Collateral tokens = (CollateralUSD (30) * 10^Decimals) / Price (30)
+      const collateralTokens = (collateralUsd * 1000000n) / usdcPrice30;
+      
+      console.log(`  Estimated Required Collateral: ${ethers.formatUnits(collateralTokens, 6)} USDC ($${ethers.formatUnits(collateralUsd, 30)})`);
+    }
+
     console.log("\nTo execute, run with --execute");
     return;
   }
