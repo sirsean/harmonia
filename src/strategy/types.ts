@@ -56,6 +56,10 @@ export interface MonitorConfig {
   deltaThreshold: number; // e.g. 0.05 for 5%
   minFeeThresholdUsd: bigint; // USD value (30 decimals)
   minRebalanceInterval: number;
+  // Range adjustment configuration
+  rangeAdjustmentThreshold: number; // e.g. 0.02 for 2% - adjust if within this % of range edge
+  rangeCenterDriftThreshold: number; // e.g. 0.05 for 5% - adjust if price drifted > this % from center
+  minRangeAdjustmentInterval: number; // Minimum seconds between range adjustments
 }
 
 export interface StrategyMonitor {

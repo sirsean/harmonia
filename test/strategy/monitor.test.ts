@@ -70,9 +70,12 @@ describe("DeltaNeutralMonitor", () => {
   };
 
   const config = {
-    deltaThreshold: 0.05, 
+    deltaThreshold: 0.05,
     minFeeThresholdUsd: ethers.parseUnits("10", 30),
     minRebalanceInterval: 3600,
+    rangeAdjustmentThreshold: 0.02,
+    rangeCenterDriftThreshold: 0.05,
+    minRangeAdjustmentInterval: 3600,
   };
   
   const context = {

@@ -271,7 +271,8 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       anyOutOfRange,
       totalFeesUsd,
       riskTokenPrice,
-      Number(riskTokenDecimals)
+      Number(riskTokenDecimals),
+      undefined // lastAdjustmentTime - can be passed from external state if tracking
     );
 
     return { status, recommendation };
@@ -293,18 +294,103 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     }
   }
 
+  /**
+   * Determines if range should be adjusted based on proactive triggers
+   * @param status Current strategy status
+   * @param anyOutOfRange Whether any position is currently out of range
+   * @param currentPrice Current price of the risk token
+   * @param lastAdjustmentTime Optional timestamp of last adjustment (for rate limiting)
+   * @returns Object indicating whether to adjust and the reason
+   */
+  private shouldAdjustRange(
+    status: StrategyStatus,
+    anyOutOfRange: boolean,
+    currentPrice: number,
+    lastAdjustmentTime?: number
+  ): { shouldAdjust: boolean; reason: string } {
+    // Priority 1: Already out of range (must adjust)
+    if (anyOutOfRange) {
+      return {
+        shouldAdjust: true,
+        reason: "One or more positions are out of range.",
+      };
+    }
+
+    // Check minimum interval (if last adjustment time is provided)
+    if (lastAdjustmentTime !== undefined) {
+      const now = Math.floor(Date.now() / 1000);
+      const timeSinceAdjustment = now - lastAdjustmentTime;
+      if (timeSinceAdjustment < this.config.minRangeAdjustmentInterval) {
+        return {
+          shouldAdjust: false,
+          reason: `Too soon since last adjustment (${timeSinceAdjustment}s < ${this.config.minRangeAdjustmentInterval}s)`,
+        };
+      }
+    }
+
+    // Check each Uniswap position for proactive triggers
+    for (const position of status.uniswap) {
+      const { priceLower, priceUpper, currentPrice: posCurrentPrice } = position;
+      const price = posCurrentPrice || currentPrice;
+
+      // Skip if position has no liquidity
+      if (position.liquidity === 0n) {
+        continue;
+      }
+
+      const priceCenter = (priceLower + priceUpper) / 2;
+      const rangeWidth = priceUpper - priceLower;
+
+      // Priority 2: Price near range boundary (within threshold % of edge)
+      const distanceToLower = (price - priceLower) / rangeWidth;
+      const distanceToUpper = (priceUpper - price) / rangeWidth;
+      const minDistanceToEdge = Math.min(distanceToLower, distanceToUpper);
+
+      if (minDistanceToEdge < this.config.rangeAdjustmentThreshold) {
+        const edge = distanceToLower < distanceToUpper ? "lower" : "upper";
+        const distancePercent = (minDistanceToEdge * 100).toFixed(2);
+        return {
+          shouldAdjust: true,
+          reason: `Position ${position.tokenId} price is within ${distancePercent}% of ${edge} edge (threshold: ${(this.config.rangeAdjustmentThreshold * 100).toFixed(2)}%)`,
+        };
+      }
+
+      // Priority 3: Price drifted significantly from center
+      const distanceFromCenter = Math.abs(price - priceCenter) / priceCenter;
+      if (distanceFromCenter > this.config.rangeCenterDriftThreshold) {
+        const driftPercent = (distanceFromCenter * 100).toFixed(2);
+        return {
+          shouldAdjust: true,
+          reason: `Position ${position.tokenId} price has drifted ${driftPercent}% from center (threshold: ${(this.config.rangeCenterDriftThreshold * 100).toFixed(2)}%)`,
+        };
+      }
+    }
+
+    return {
+      shouldAdjust: false,
+      reason: "No range adjustment needed",
+    };
+  }
+
   private generateRecommendation(
     status: StrategyStatus,
     anyOutOfRange: boolean,
     totalFeesUsd: bigint,
     price: number,
-    decimals: number
+    decimals: number,
+    lastAdjustmentTime?: number
   ): Recommendation {
-    // 1. Check for Range Adjustment
-    if (anyOutOfRange) {
+    // 1. Check for Range Adjustment (with proactive triggers)
+    const rangeAdjustment = this.shouldAdjustRange(
+      status,
+      anyOutOfRange,
+      price,
+      lastAdjustmentTime
+    );
+    if (rangeAdjustment.shouldAdjust) {
       return {
         action: StrategyAction.ADJUST_RANGE,
-        reason: `One or more positions are out of range.`,
+        reason: rangeAdjustment.reason,
       };
     }
 

@@ -73,7 +73,8 @@ npm run format        # Auto-format all code
 ```
 scripts/
 ├── config/
-│   └── addresses.ts          # Contract addresses and constants
+│   ├── addresses.ts          # Contract addresses and constants
+│   └── range.ts              # Range configuration for Uniswap positions
 ├── gmx-open-short.ts         # Open GMX short position
 ├── gmx-close-short.ts        # Close GMX short position
 ├── gmx-read-position.ts      # Read GMX positions
@@ -189,14 +190,11 @@ npx hardhat run scripts/uniswap-close-position.ts --network arbitrum
 
 ## Important Constants
 
-All contract addresses and strategy parameters are defined in `scripts/config/addresses.ts`:
+Contract addresses and strategy parameters are defined in `scripts/config/`:
 
+**Addresses** (`scripts/config/addresses.ts`):
 ```typescript
-// From scripts directory:
 import { ARBITRUM_MAINNET, STRATEGY_PARAMS } from './config/addresses';
-
-// From src or test directories:
-import { ARBITRUM_MAINNET, STRATEGY_PARAMS } from '../scripts/config/addresses';
 
 // Key addresses
 ARBITRUM_MAINNET.usdc              // "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
@@ -211,9 +209,27 @@ STRATEGY_PARAMS.MAX_SLIPPAGE       // 1e16 (1%) - slippage tolerance
 STRATEGY_PARAMS.EMERGENCY_THRESHOLD // 20e16 (20%) - emergency alert threshold
 ```
 
+**Range Configuration** (`scripts/config/range.ts`):
+```typescript
+import { RANGE_CONFIG, getDefaultRangeBounds } from './config/range';
+
+RANGE_CONFIG.DEFAULT_RANGE_WIDTH              // 0.2 (20% total = ±10%)
+RANGE_CONFIG.MIN_RANGE_WIDTH                 // 0.1 (10% minimum = ±5%)
+RANGE_CONFIG.MAX_RANGE_WIDTH                 // 0.4 (40% maximum = ±20%)
+RANGE_CONFIG.RANGE_ADJUSTMENT_THRESHOLD      // 0.02 (2% - adjust if near edge)
+RANGE_CONFIG.RANGE_CENTER_DRIFT_THRESHOLD   // 0.05 (5% - adjust if drifted from center)
+RANGE_CONFIG.MIN_RANGE_ADJUSTMENT_INTERVAL   // 3600 (1 hour minimum)
+
+// Helper function to get default range bounds
+const bounds = getDefaultRangeBounds(currentPrice, rangeWidth);
+```
+
 ## Documentation
 
 - `PLAN.md` - Complete technical specification and design decisions
+- `docs/` - Analysis documents and technical deep-dives (e.g., `docs/RANGE_ANALYSIS.md`)
+
+**Note**: Analysis documents, technical deep-dives, and similar documentation should be placed in the `docs/` folder for better organization, rather than in the root directory.
 
 ## Implementation Roadmap
 
