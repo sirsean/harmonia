@@ -3,25 +3,53 @@ import * as gmxOrders from "../modules/gmx/orders";
 import { price30ToPrice12 } from "../modules/gmx/prices";
 import { RebalanceData } from "./types";
 import { GMXOrderExecutionConfig, GMXOrderType } from "../modules/gmx/types";
+import { StrategyConfig } from "../config/strategy";
 
+/**
+ * RebalanceConfig is a subset of StrategyConfig used by RebalanceManager
+ * This interface is kept for backward compatibility but should use StrategyConfig directly
+ * @deprecated Use StrategyConfig from config/strategy instead
+ */
 export interface RebalanceConfig {
   targetLeverage: number; // e.g. 3.0
   slippageBuffer: number; // e.g. 0.005 for 0.5%
   executionFee: bigint;
 }
 
+/**
+ * Convert StrategyConfig to RebalanceConfig for backward compatibility
+ */
+export function strategyConfigToRebalanceConfig(config: StrategyConfig): RebalanceConfig {
+  return {
+    targetLeverage: config.targetLeverage,
+    slippageBuffer: config.slippageBuffer,
+    executionFee: config.defaultExecutionFee,
+  };
+}
+
 export class RebalanceManager {
+  private config: RebalanceConfig;
+
   constructor(
     private router: gmxOrders.GMXRouter,
     private collateralToken: gmxOrders.IERC20,
-    private config: RebalanceConfig,
+    config: RebalanceConfig | StrategyConfig,
     private context: {
       account: string;
       market: string;
       collateralTokenAddress: string;
       orderVault: string;
     }
-  ) {}
+  ) {
+    // Convert StrategyConfig to RebalanceConfig if needed
+    if ("executionFee" in config && typeof config.executionFee === "bigint") {
+      // Already RebalanceConfig
+      this.config = config as RebalanceConfig;
+    } else {
+      // StrategyConfig - convert it
+      this.config = strategyConfigToRebalanceConfig(config as StrategyConfig);
+    }
+  }
 
   async executeRebalance(
     data: RebalanceData,

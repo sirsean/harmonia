@@ -1,4 +1,5 @@
 import { DeltaResult } from "../modules/math/delta";
+import { StrategyConfig } from "../config/strategy";
 
 export enum StrategyAction {
   REBALANCE = "REBALANCE",
@@ -52,6 +53,11 @@ export interface Recommendation {
   data?: RebalanceData | any;
 }
 
+/**
+ * MonitorConfig is a subset of StrategyConfig used by DeltaNeutralMonitor
+ * This interface is kept for backward compatibility but should use StrategyConfig directly
+ * @deprecated Use StrategyConfig from config/strategy instead
+ */
 export interface MonitorConfig {
   deltaThreshold: number; // e.g. 0.05 for 5%
   minFeeThresholdUsd: bigint; // USD value (30 decimals)
@@ -60,6 +66,20 @@ export interface MonitorConfig {
   rangeAdjustmentThreshold: number; // e.g. 0.02 for 2% - adjust if within this % of range edge
   rangeCenterDriftThreshold: number; // e.g. 0.05 for 5% - adjust if price drifted > this % from center
   minRangeAdjustmentInterval: number; // Minimum seconds between range adjustments
+}
+
+/**
+ * Convert StrategyConfig to MonitorConfig for backward compatibility
+ */
+export function strategyConfigToMonitorConfig(config: StrategyConfig): MonitorConfig {
+  return {
+    deltaThreshold: config.deltaThreshold,
+    minFeeThresholdUsd: config.minFeeThresholdUsd,
+    minRebalanceInterval: config.minRebalanceInterval,
+    rangeAdjustmentThreshold: config.rangeAdjustmentThreshold,
+    rangeCenterDriftThreshold: config.rangeCenterDriftThreshold,
+    minRangeAdjustmentInterval: config.minRangeAdjustmentInterval,
+  };
 }
 
 export interface StrategyMonitor {

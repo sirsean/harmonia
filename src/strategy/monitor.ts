@@ -14,7 +14,9 @@ import {
   StrategyMonitor,
   StrategyStatus,
   RebalanceData,
+  strategyConfigToMonitorConfig,
 } from "./types";
+import { StrategyConfig } from "../config/strategy";
 import { GMXPosition } from "../modules/gmx/types";
 import { UniswapPosition } from "../modules/uniswap/types";
 
@@ -24,9 +26,11 @@ const ERC20_ABI = [
 ];
 
 export class DeltaNeutralMonitor implements StrategyMonitor {
+  private config: MonitorConfig;
+
   constructor(
     private provider: ethers.Provider,
-    private config: MonitorConfig,
+    config: MonitorConfig | StrategyConfig,
     private context: {
       uniswap: {
         positionManager: string;
@@ -41,7 +45,16 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
         collateralToken: string;
       };
     }
-  ) {}
+  ) {
+    // Convert StrategyConfig to MonitorConfig if needed
+    if ("minFeeThresholdUsd" in config && typeof config.minFeeThresholdUsd === "bigint") {
+      // Already MonitorConfig
+      this.config = config;
+    } else {
+      // StrategyConfig - convert it
+      this.config = strategyConfigToMonitorConfig(config as StrategyConfig);
+    }
+  }
 
   async check(): Promise<{ status: StrategyStatus; recommendation: Recommendation }> {
     const { uniswap, gmx } = this.context;
