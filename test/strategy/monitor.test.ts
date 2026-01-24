@@ -227,4 +227,49 @@ describe("DeltaNeutralMonitor", () => {
     const result = await monitor.check();
     expect(result.recommendation.action).toBe(StrategyAction.COMPOUND);
   });
+
+  it("should recommend ADJUST_RANGE when range width exceeds configured default", async () => {
+    // Create a position with wider range than default (0.15 = 15%)
+    // Default is ±7.5%, so we'll create ±10% (20% total = 0.2)
+    // This should trigger adjustment since 0.2 > 0.15 * 1.1 (10% tolerance)
+    
+    // Calculate ticks for a ±10% range (20% total width)
+    // For tick 69080, price is approximately 1.0001^69080
+    // ±10% means lower = price * 0.9, upper = price * 1.1
+    // We need ticks that create a range wider than ±7.5%
+    // Using a much wider range to ensure it triggers: ±15% (30% total)
+    const centerTick = 69080;
+    const wideRangePos = {
+        ...mockUniswapPosition,
+        tickLower: centerTick - 1500, // Much wider range
+        tickUpper: centerTick + 1500,
+        liquidity: 100n,
+    };
+
+    vi.mocked(uniswapReader.getPosition).mockResolvedValue(wideRangePos);
+    vi.mocked(uniswapReader.getPositionWithFees).mockResolvedValue(wideRangePos);
+    vi.mocked(uniswapReader.getActivePositionsForOwner).mockResolvedValue([{ tokenId: 123n, position: wideRangePos }]);
+
+    // Set GMX position to match LP delta to avoid rebalance trigger
+    // First get the LP delta
+    vi.mocked(gmxReader.getPosition).mockResolvedValue({
+        addresses: {} as any,
+        numbers: { 
+          sizeInTokens: 0n,
+          collateralAmount: 0n,
+          sizeInUsd: 0n,
+          shortTokenClaimableFundingAmountPerSize: 0n,
+        } as any,
+        flags: { isLong: false }
+    });
+    
+    const result = await monitor.check();
+    
+    // Should recommend range adjustment due to wide range
+    // The check compares (priceUpper - priceLower) / priceCenter to defaultRangeWidth * 1.1
+    // With a ±15% range (30% total), this should definitely trigger
+    expect(result.recommendation.action).toBe(StrategyAction.ADJUST_RANGE);
+    expect(result.recommendation.reason).toContain("range width");
+    expect(result.recommendation.reason).toContain("exceeds configured default");
+  });
 });
