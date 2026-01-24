@@ -67,7 +67,7 @@ harmonia/
 │   │   └── math/                 # Delta/yield calculations
 │   └── strategy/                 # Strategy orchestration
 ├── PLAN.md                       # Technical specification
-└── CLAUDE.md                     # Development guidelines
+└── AGENTS.md                     # Development guidelines
 ```
 
 ## Installation
