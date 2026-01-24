@@ -413,61 +413,19 @@ async function compoundFees(): Promise<void> {
 
 ---
 
-## Part 6: Implementation Roadmap
+## Part 6: Implementation Status
 
-### Phase 1: Core Modules (Current)
+**Note:** The implementation roadmap has been moved to GitHub issues for better tracking and project management. All remaining work items are documented as detailed issues that can be picked up and executed independently.
 
-**Objective:** Build foundational modules for protocol interactions
+To view the current implementation status and remaining work:
+- Visit the [GitHub Issues](https://github.com/sirsean/harmonia/issues) page
+- Issues are organized by phase and include detailed requirements, acceptance criteria, and dependencies
 
-**Deliverables:**
-- [x] GMX module (reader, orders)
-- [x] Uniswap module (reader, liquidity, fees)
-- [x] Math module (delta, yield calculations)
-- [x] Chainlink module (price feeds)
-- [ ] Configuration system
-
-**Key Files to Create:**
-- `src/modules/gmx/reader.ts`
-- `src/modules/gmx/orders.ts`
-- `src/modules/uniswap/reader.ts`
-- `src/modules/uniswap/liquidity.ts`
-- `src/modules/math/delta.ts`
-- `src/modules/math/yield.ts`
-
-### Phase 2: Strategy Layer
-
-**Objective:** Build strategy orchestration
-
-**Deliverables:**
-- [x] Position monitoring loop (`DeltaNeutralMonitor`)
-    - [x] `monitor-position` CLI script (Harness)
-    - [x] Multiple position support (Aggregation)
-    - [x] USD value estimation for adjustments
-- [x] Rebalance execution
-    - [x] `RebalanceManager` implemented with collateral and slippage calculation
-    - [x] `execute-rebalance` CLI script
-- [ ] Compounding logic
-- [ ] Range adjustment
-
-### Phase 3: Operations
-
-**Objective:** Build operational tooling
-
-**Deliverables:**
-- [ ] CLI commands for manual operations
-- [ ] Monitoring dashboard/logs
-- [ ] Alert system
-- [ ] Position reporting
-
-### Phase 4: Automation
-
-**Objective:** Automated strategy execution
-
-**Deliverables:**
-- [ ] Cron-based monitoring
-- [ ] Automated rebalancing
-- [ ] Automated compounding
-- [ ] Error recovery
+**Current Implementation Status:**
+- ✅ Core modules (GMX, Uniswap, Math, Chainlink) - Complete
+- ✅ Position monitoring (`DeltaNeutralMonitor`) - Complete
+- ✅ Rebalance execution (`RebalanceManager`) - Complete
+- 🔄 Remaining work tracked in GitHub issues
 
 ---
 
