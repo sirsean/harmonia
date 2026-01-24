@@ -2,13 +2,13 @@ import { ethers } from "ethers";
 import * as gmxOrders from "../modules/gmx/orders";
 import { price30ToPrice12 } from "../modules/gmx/prices";
 import { RebalanceData } from "./types";
-import { GMXOrderExecutionConfig, GMXOrderType } from "../modules/gmx/types";
+import { GMXOrderExecutionConfig, GMXOrderType, GMXRouter, IERC20 } from "../modules/gmx/types";
 import { StrategyConfig } from "../config/strategy";
 
 export class RebalanceManager {
   constructor(
-    private router: gmxOrders.GMXRouter,
-    private collateralToken: gmxOrders.IERC20,
+    private router: GMXRouter,
+    private collateralToken: IERC20,
     private config: StrategyConfig,
     private context: {
       account: string;

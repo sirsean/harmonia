@@ -1,53 +1,100 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "../src/config/addresses";
-import { DeltaNeutralMonitor } from "../src/strategy/monitor";
-import { StrategyAction } from "../src/strategy/types";
-import { loadStrategyConfig, DEFAULT_STRATEGY_CONFIG, PRECISION } from "../src/config/strategy";
-import { getDefaultRangeBounds } from "../src/config/markets";
-import {
-  createPositionManager,
-  getPosition,
-  getActivePositionsForOwner,
-} from "../src/modules/uniswap/reader";
-import { collectFees, decreaseLiquidity } from "../src/modules/uniswap/fees";
+import { ARBITRUM_MAINNET } from "../../../config/addresses";
+import { DeltaNeutralMonitor } from "../../../strategy/monitor";
+import { StrategyAction } from "../../../strategy/types";
+import { loadStrategyConfig, DEFAULT_STRATEGY_CONFIG, PRECISION } from "../../../config/strategy";
+import { getDefaultRangeBounds } from "../../../config/markets";
+import { createPositionManager, getPosition } from "../../../modules/uniswap/reader";
+import { collectFees, decreaseLiquidity } from "../../../modules/uniswap/fees";
 import {
   createPositionManager as createPositionManagerWriter,
   mintPosition,
-} from "../src/modules/uniswap/liquidity";
-import { createPool, getPoolState } from "../src/modules/uniswap/reader";
+} from "../../../modules/uniswap/liquidity";
+import { createPool, getPoolState } from "../../../modules/uniswap/reader";
 import {
   priceToTickWithDecimals,
   roundTickDown,
   roundTickUp,
   tickToPriceWithDecimals,
-} from "../src/modules/math/ticks";
-import { ERC20_ABI, POOL_TOKEN_ABI, ROUTER_ABI, QUOTER_ABI, toBigInt } from "./utils";
-import * as gmxReader from "../src/modules/gmx/reader";
-import * as gmxOrders from "../src/modules/gmx/orders";
-import { getLatestPrice } from "../src/modules/chainlink/price";
-import { calculateOptimalAllocation, calculateLpTokenAmounts } from "../src/strategy/allocation";
-import { RebalanceManager } from "../src/strategy/rebalance";
+} from "../../../modules/math/ticks";
+import * as gmxReader from "../../../modules/gmx/reader";
+import * as gmxOrders from "../../../modules/gmx/orders";
+import { getLatestPrice } from "../../../modules/chainlink/price";
+import { calculateOptimalAllocation, calculateLpTokenAmounts } from "../../../strategy/allocation";
+import { RebalanceManager } from "../../../strategy/rebalance";
 import {
   fetchTokenPrices,
   findTokenPrice,
   averagePrice,
   scalePriceTo30,
-} from "../src/modules/gmx/prices";
+} from "../../../modules/gmx/prices";
+import { getSignerAndAccount } from "../base";
+import { IERC20 as UniswapIERC20 } from "../../../modules/uniswap/types";
 
 const MAX_UINT128 = (1n << 128n) - 1n;
 
-async function main() {
+const ERC20_ABI = [
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function balanceOf(address account) view returns (uint256)",
+];
+const POOL_TOKEN_ABI = [
+  "function token0() view returns (address)",
+  "function token1() view returns (address)",
+];
+const ROUTER_ABI = [
+  "function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 deadline,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)",
+];
+const QUOTER_ABI = [
+  "function quoteExactInputSingle(address tokenIn,address tokenOut,uint24 fee,uint256 amountIn,uint160 sqrtPriceLimitX96) returns (uint256 amountOut)",
+];
+
+function toBigInt(value: unknown): bigint {
+  try {
+    const { ethers } = require("hardhat");
+    if (ethers && typeof ethers.getBigInt === "function") {
+      return ethers.getBigInt(value as unknown);
+    }
+  } catch {
+    // ethers not available, continue
+  }
+
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") return BigInt(value);
+  if (typeof value === "string") return BigInt(value);
+  if (Array.isArray(value) && value.length > 0) return toBigInt(value[0]);
+  if (value && typeof value === "object") {
+    const maybeValue = (value as { value?: unknown }).value;
+    if (maybeValue !== undefined) return toBigInt(maybeValue);
+    const maybeResult = (value as { result?: unknown }).result;
+    if (Array.isArray(maybeResult) && maybeResult.length > 0) return toBigInt(maybeResult[0]);
+  }
+  return BigInt(String(value));
+}
+
+export interface ExecuteAdjustRangeOptions {
+  account?: string;
+  tokenId?: string;
+  rangeWidth?: number;
+  priceLower?: number;
+  priceUpper?: number;
+  slippageBps?: bigint;
+  dryRun?: boolean;
+}
+
+export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}): Promise<void> {
+  const { signer, account } = await getSignerAndAccount(options.account);
+
   console.log("\n" + "=".repeat(60));
   console.log("EXECUTE RANGE ADJUSTMENT");
   console.log("=".repeat(60) + "\n");
 
-  const [signer] = await ethers.getSigners();
-  const account = await signer.getAddress();
   console.log("Executing account:", account);
 
   // 1. Check Strategy Status
-  const tokenIdEnv = process.env.UNISWAP_TOKEN_ID;
-  const tokenIds = tokenIdEnv ? [BigInt(tokenIdEnv)] : undefined;
+  const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
 
   const monitorConfig = loadStrategyConfig({
     minFeeThresholdUsd: ethers.parseUnits("10", 30),
@@ -143,15 +190,15 @@ async function main() {
   const priceUsdcPerWeth = isToken0Weth ? priceToken1PerToken0 : 1 / priceToken1PerToken0;
 
   // Calculate new range bounds using configured default
-  const rangeWidth = Number(process.env.RANGE_WIDTH || DEFAULT_STRATEGY_CONFIG.defaultRangeWidth);
+  const rangeWidth = options.rangeWidth ?? Number(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth);
   const defaultBounds = getDefaultRangeBounds(priceUsdcPerWeth, rangeWidth);
-  const lowerPrice = Number(process.env.PRICE_LOWER || defaultBounds.lower.toFixed(6));
-  const upperPrice = Number(process.env.PRICE_UPPER || defaultBounds.upper.toFixed(6));
+  const lowerPrice = options.priceLower ?? Number(defaultBounds.lower.toFixed(6));
+  const upperPrice = options.priceUpper ?? Number(defaultBounds.upper.toFixed(6));
 
   const priceLowerForTicks = isToken0Weth ? lowerPrice : 1 / lowerPrice;
   const priceUpperForTicks = isToken0Weth ? upperPrice : 1 / upperPrice;
 
-  const tickSpacing = Number(process.env.TICK_SPACING || "10");
+  const tickSpacing = 10;
   const tickLower = roundTickDown(
     priceToTickWithDecimals(priceLowerForTicks, token0Decimals, token1Decimals),
     tickSpacing
@@ -175,8 +222,8 @@ async function main() {
   console.log(`  Tick Lower: ${tickLower}`);
   console.log(`  Tick Upper: ${tickUpper}`);
 
-  // 4. Check for EXECUTE env var
-  const executeFlag = process.env.EXECUTE === "true";
+  // 4. Check for dry run
+  const executeFlag = !options.dryRun;
 
   // 5. Execute: Close old positions and open new one
   if (!executeFlag) {
@@ -252,8 +299,12 @@ async function main() {
 
       console.log(`  Close GMX order tx: ${closeResult.txHash}`);
       // Wait for transaction confirmation
-      const txReceipt = await signer.provider.waitForTransaction(closeResult.txHash);
-      console.log(`  Transaction confirmed in block ${txReceipt.blockNumber}`);
+      if (signer.provider) {
+        const txReceipt = await signer.provider.waitForTransaction(closeResult.txHash);
+        if (txReceipt) {
+          console.log(`  Transaction confirmed in block ${txReceipt.blockNumber}`);
+        }
+      }
     } else {
       console.log(`\nWould close GMX short position`);
       console.log(`  Size: $${ethers.formatUnits(gmxPosition.numbers.sizeInUsd, 30)}`);
@@ -278,29 +329,27 @@ async function main() {
         const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
         console.log(`  Removing liquidity: ${position.liquidity.toString()}`);
 
-        const decreaseTx = await decreaseLiquidity(manager, {
+        await decreaseLiquidity(manager, {
           tokenId,
           liquidity: position.liquidity,
           amount0Min: 0n,
           amount1Min: 0n,
           deadline,
         });
-        console.log(`  Decrease liquidity tx: ${decreaseTx.hash}`);
-        await decreaseTx.wait();
+        console.log(`  Decrease liquidity transaction submitted`);
       } else {
         console.log(`  Position has no liquidity; collecting fees only.`);
       }
 
       // Always collect fees (even if liquidity was 0)
       console.log(`  Collecting fees...`);
-      const collectTx = await collectFees(manager, {
+      await collectFees(manager, {
         tokenId,
         recipient: account,
         amount0Max: MAX_UINT128,
         amount1Max: MAX_UINT128,
       });
-      console.log(`  Collect fees tx: ${collectTx.hash}`);
-      await collectTx.wait();
+      console.log(`  Collect fees transaction submitted`);
     } else {
       if (position.liquidity > 0n) {
         console.log(`  Would remove liquidity: ${position.liquidity.toString()}`);
@@ -389,18 +438,14 @@ async function main() {
   const wethContract = isToken0Weth ? token0Contract : token1Contract;
   const usdcContract = isToken0Usdc ? token0Contract : token1Contract;
   const fee = 500; // 0.05% fee tier
-  const slippageBps = BigInt(process.env.SLIPPAGE_BPS || "50"); // 0.5% slippage
+  const slippageBps = options.slippageBps ?? 50n; // 0.5% slippage
 
   let finalBalance0 = balance0;
   let finalBalance1 = balance1;
   let nonce = await signer.getNonce("pending");
 
   // If we need more WETH, swap USDC for WETH
-  if (wethShortfall > 0n) {
-    // Calculate how much USDC to swap (need enough to cover shortfall + some buffer)
-    // Convert WETH shortfall (in 18 decimals) to USDC value (in 6 decimals)
-    // wethShortfall is in WETH native decimals (18), price is USDC per WETH
-    // USDC needed = wethShortfall * price (convert from 18 dec to 6 dec)
+  if (wethShortfall > 0n && executeFlag) {
     const wethShortfallNum = Number(ethers.formatUnits(wethShortfall, wethDecimals));
     const usdcNeededNum = wethShortfallNum * priceUsdcPerWeth;
     const usdcToSwap = ethers.parseUnits(
@@ -408,7 +453,6 @@ async function main() {
       usdcDecimals
     ); // Add 1% buffer
 
-    // Minimum swap amount to avoid quoter issues (e.g., $1 USDC)
     const minSwapAmount = ethers.parseUnits("1", usdcDecimals);
 
     if (usdcAvailable >= usdcToSwap && usdcToSwap >= minSwapAmount) {
@@ -417,7 +461,6 @@ async function main() {
 
       let quoteOut: bigint;
       try {
-        // Use staticCall to handle reverts properly
         const quoteOutRaw = await quoter.quoteExactInputSingle.staticCall(
           usdcToken,
           wethToken,
@@ -430,83 +473,49 @@ async function main() {
           throw new Error("Quoter returned 0 - insufficient liquidity or invalid parameters");
         }
       } catch (error: any) {
-        // Check if it's a revert (insufficient liquidity, etc.)
         const errorMsg = error.reason || error.message || String(error);
-        if (errorMsg.includes("revert") || errorMsg.includes("STF") || errorMsg.includes("SPL")) {
-          console.error(`  Quoter reverted - likely insufficient liquidity for this swap`);
-          console.error(
-            `  Consider: reducing swap amount, checking pool liquidity, or using a different fee tier`
-          );
-        }
         console.error(`  Error getting quote: ${errorMsg}`);
-        console.error(
-          `  Token in: ${usdcToken}, Token out: ${wethToken}, Fee: ${fee}, Amount: ${ethers.formatUnits(amountIn, usdcDecimals)}`
-        );
         throw new Error(`Failed to get swap quote: ${errorMsg}`);
       }
       const amountOutMin = (quoteOut * (10_000n - slippageBps)) / 10_000n;
 
-      if (executeFlag) {
-        const allowance = await usdcContract.allowance(
-          account,
-          ARBITRUM_MAINNET.uniswapV3SwapRouter
-        );
-        if (allowance < amountIn) {
-          const approval = await usdcContract.approve(
-            ARBITRUM_MAINNET.uniswapV3SwapRouter,
-            amountIn,
-            { nonce }
-          );
-          await approval.wait();
-          nonce += 1;
-        }
-        const swapTx = await swapRouter.exactInputSingle(
-          {
-            tokenIn: usdcToken,
-            tokenOut: wethToken,
-            fee,
-            recipient: account,
-            deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
-            amountIn,
-            amountOutMinimum: amountOutMin,
-            sqrtPriceLimitX96: 0,
-          },
+      const allowance = await usdcContract.allowance(account, ARBITRUM_MAINNET.uniswapV3SwapRouter);
+      if (allowance < amountIn) {
+        const approval = await usdcContract.approve(
+          ARBITRUM_MAINNET.uniswapV3SwapRouter,
+          amountIn,
           { nonce }
         );
-        console.log(`  Swap tx: ${swapTx.hash}`);
-        await swapTx.wait();
+        await approval.wait();
         nonce += 1;
-
-        // Update balances
-        const [newBalance0, newBalance1] = await Promise.all([
-          token0Contract.balanceOf(account),
-          token1Contract.balanceOf(account),
-        ]);
-        finalBalance0 = newBalance0;
-        finalBalance1 = newBalance1;
-      } else {
-        console.log(`  [DRY RUN] Would swap ${ethers.formatUnits(amountIn, usdcDecimals)} USDC`);
-        console.log(`  Expected WETH out: ${ethers.formatUnits(quoteOut, wethDecimals)}`);
-        // Update final balances for dry run (simulate the swap)
-        finalBalance0 = isToken0Weth ? finalBalance0 + quoteOut : finalBalance0 - amountIn;
-        finalBalance1 = isToken1Weth ? finalBalance1 + quoteOut : finalBalance1 - amountIn;
       }
-    } else if (usdcToSwap < minSwapAmount) {
-      console.log(
-        `\nSkipping swap: amount too small (${ethers.formatUnits(usdcToSwap, usdcDecimals)} USDC < ${ethers.formatUnits(minSwapAmount, usdcDecimals)} USDC minimum)`
+      const swapTx = await swapRouter.exactInputSingle(
+        {
+          tokenIn: usdcToken,
+          tokenOut: wethToken,
+          fee,
+          recipient: account,
+          deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
+          amountIn,
+          amountOutMinimum: amountOutMin,
+          sqrtPriceLimitX96: 0,
+        },
+        { nonce }
       );
-      console.log(`  WETH shortfall: ${ethers.formatUnits(wethShortfall, wethDecimals)}`);
-      console.log(`  Will use available WETH: ${ethers.formatUnits(wethAvailable, wethDecimals)}`);
-    } else {
-      console.log(
-        `\nInsufficient USDC to swap: need ${ethers.formatUnits(usdcToSwap, usdcDecimals)}, have ${ethers.formatUnits(usdcAvailable, usdcDecimals)}`
-      );
+      console.log(`  Swap tx: ${swapTx.hash}`);
+      await swapTx.wait();
+      nonce += 1;
+
+      const [newBalance0, newBalance1] = await Promise.all([
+        token0Contract.balanceOf(account),
+        token1Contract.balanceOf(account),
+      ]);
+      finalBalance0 = newBalance0;
+      finalBalance1 = newBalance1;
     }
   }
   // If we need more USDC, swap WETH for USDC
-  else if (usdcShortfall > 0n) {
-    // Calculate how much WETH to swap
-    // Convert USDC shortfall (in 6 decimals) to WETH value (in 18 decimals)
+  else if (usdcShortfall > 0n && executeFlag) {
     const usdcShortfallNum = Number(ethers.formatUnits(usdcShortfall, usdcDecimals));
     const wethNeededNum = usdcShortfallNum / priceUsdcPerWeth;
     const wethToSwap = ethers.parseUnits(
@@ -514,7 +523,6 @@ async function main() {
       wethDecimals
     ); // Add 1% buffer
 
-    // Minimum swap amount to avoid quoter issues (e.g., 0.001 WETH ≈ $3)
     const minSwapAmount = ethers.parseUnits("0.001", wethDecimals);
 
     if (wethAvailable >= wethToSwap && wethToSwap >= minSwapAmount) {
@@ -523,7 +531,6 @@ async function main() {
 
       let quoteOut: bigint;
       try {
-        // Use staticCall to handle reverts properly
         const quoteOutRaw = await quoter.quoteExactInputSingle.staticCall(
           wethToken,
           usdcToken,
@@ -536,80 +543,54 @@ async function main() {
           throw new Error("Quoter returned 0 - insufficient liquidity or invalid parameters");
         }
       } catch (error: any) {
-        // Check if it's a revert (insufficient liquidity, etc.)
         const errorMsg = error.reason || error.message || String(error);
-        if (errorMsg.includes("revert") || errorMsg.includes("STF") || errorMsg.includes("SPL")) {
-          console.error(`  Quoter reverted - likely insufficient liquidity for this swap`);
-          console.error(
-            `  Consider: reducing swap amount, checking pool liquidity, or using a different fee tier`
-          );
-        }
         console.error(`  Error getting quote: ${errorMsg}`);
-        console.error(
-          `  Token in: ${wethToken}, Token out: ${usdcToken}, Fee: ${fee}, Amount: ${ethers.formatUnits(amountIn, wethDecimals)}`
-        );
         throw new Error(`Failed to get swap quote: ${errorMsg}`);
       }
       const amountOutMin = (quoteOut * (10_000n - slippageBps)) / 10_000n;
 
-      if (executeFlag) {
-        const allowance = await wethContract.allowance(
-          account,
-          ARBITRUM_MAINNET.uniswapV3SwapRouter
-        );
-        if (allowance < amountIn) {
-          const approval = await wethContract.approve(
-            ARBITRUM_MAINNET.uniswapV3SwapRouter,
-            amountIn,
-            { nonce }
-          );
-          await approval.wait();
-          nonce += 1;
-        }
-        const swapTx = await swapRouter.exactInputSingle(
-          {
-            tokenIn: wethToken,
-            tokenOut: usdcToken,
-            fee,
-            recipient: account,
-            deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
-            amountIn,
-            amountOutMinimum: amountOutMin,
-            sqrtPriceLimitX96: 0,
-          },
+      const allowance = await wethContract.allowance(account, ARBITRUM_MAINNET.uniswapV3SwapRouter);
+      if (allowance < amountIn) {
+        const approval = await wethContract.approve(
+          ARBITRUM_MAINNET.uniswapV3SwapRouter,
+          amountIn,
           { nonce }
         );
-        console.log(`  Swap tx: ${swapTx.hash}`);
-        await swapTx.wait();
+        await approval.wait();
         nonce += 1;
-
-        // Update balances
-        const [newBalance0, newBalance1] = await Promise.all([
-          token0Contract.balanceOf(account),
-          token1Contract.balanceOf(account),
-        ]);
-        finalBalance0 = newBalance0;
-        finalBalance1 = newBalance1;
-      } else {
-        console.log(`  [DRY RUN] Would swap ${ethers.formatUnits(amountIn, wethDecimals)} WETH`);
-        console.log(`  Expected USDC out: ${ethers.formatUnits(quoteOut, usdcDecimals)}`);
-        // Update final balances for dry run (simulate the swap)
-        finalBalance0 = isToken0Weth ? finalBalance0 - amountIn : finalBalance0 + quoteOut;
-        finalBalance1 = isToken1Weth ? finalBalance1 - amountIn : finalBalance1 + quoteOut;
       }
-    } else if (wethToSwap < minSwapAmount) {
-      console.log(
-        `\nSkipping swap: amount too small (${ethers.formatUnits(wethToSwap, wethDecimals)} WETH < ${ethers.formatUnits(minSwapAmount, wethDecimals)} WETH minimum)`
+      const swapTx = await swapRouter.exactInputSingle(
+        {
+          tokenIn: wethToken,
+          tokenOut: usdcToken,
+          fee,
+          recipient: account,
+          deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
+          amountIn,
+          amountOutMinimum: amountOutMin,
+          sqrtPriceLimitX96: 0,
+        },
+        { nonce }
       );
-      console.log(`  USDC shortfall: ${ethers.formatUnits(usdcShortfall, usdcDecimals)}`);
-      console.log(`  Will use available USDC: ${ethers.formatUnits(usdcAvailable, usdcDecimals)}`);
-    } else {
-      console.log(
-        `\nInsufficient WETH to swap: need ${ethers.formatUnits(wethToSwap, wethDecimals)}, have ${ethers.formatUnits(wethAvailable, wethDecimals)}`
-      );
+      console.log(`  Swap tx: ${swapTx.hash}`);
+      await swapTx.wait();
+      nonce += 1;
+
+      const [newBalance0, newBalance1] = await Promise.all([
+        token0Contract.balanceOf(account),
+        token1Contract.balanceOf(account),
+      ]);
+      finalBalance0 = newBalance0;
+      finalBalance1 = newBalance1;
     }
-  } else {
-    console.log(`\nToken amounts are sufficient for LP position.`);
+  } else if (!executeFlag) {
+    if (wethShortfall > 0n) {
+      console.log(`\nWould swap USDC for WETH to cover shortfall`);
+    } else if (usdcShortfall > 0n) {
+      console.log(`\nWould swap WETH for USDC to cover shortfall`);
+    } else {
+      console.log(`\nToken amounts are sufficient for LP position.`);
+    }
   }
 
   // Get final balances after swap
@@ -664,8 +645,8 @@ async function main() {
 
     const mintResult = await mintPosition(
       manager,
-      token0Contract,
-      token1Contract,
+      token0Contract as unknown as UniswapIERC20,
+      token1Contract as unknown as UniswapIERC20,
       {
         token0,
         token1,
@@ -740,14 +721,14 @@ async function main() {
       const acceptablePrice = (priceResult.outputPrice * 99n) / 100n;
 
       // Approve USDC for GMX
-      const usdcContract = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer);
-      const usdcAllowance = await usdcContract.allowance(
+      const usdcContractForGmx = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer);
+      const usdcAllowance = await usdcContractForGmx.allowance(
         account,
         ARBITRUM_MAINNET.gmxExchangeRouter
       );
       if (usdcAllowance < collateralAmount) {
         console.log(`  Approving USDC for GMX...`);
-        const approval = await usdcContract.approve(
+        const approval = await usdcContractForGmx.approve(
           ARBITRUM_MAINNET.gmxExchangeRouter,
           collateralAmount,
           {
@@ -761,7 +742,7 @@ async function main() {
       const gmxRouter = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
       const gmxResult = await gmxOrders.createIncreaseOrder(
         gmxRouter,
-        usdcContract as any,
+        usdcContractForGmx as any,
         {
           account,
           market: ARBITRUM_MAINNET.gmxEthUsdMarket,
@@ -797,11 +778,6 @@ async function main() {
     console.log(`   - Short size: $${ethers.formatUnits(allocation.gmxShortSizeUsd, 30)}`);
     console.log(`   - Collateral: $${ethers.formatUnits(allocation.gmxCollateralUsd, 30)}`);
     console.log(`   - Total capital used: $${ethers.formatUnits(allocation.totalCapitalUsd, 30)}`);
-    console.log("\nTo execute, run with EXECUTE=true");
+    console.log("\nTo execute, run without --dry-run flag");
   }
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

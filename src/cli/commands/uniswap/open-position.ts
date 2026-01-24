@@ -1,34 +1,90 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "../src/config/addresses";
-import { getDefaultRangeBounds } from "../src/config/markets";
-import { DEFAULT_STRATEGY_CONFIG } from "../src/config/strategy";
-import { createPool, getPoolState } from "../src/modules/uniswap/reader";
-import { createPositionManager, mintPosition } from "../src/modules/uniswap/liquidity";
+import { ARBITRUM_MAINNET } from "../../../config/addresses";
+import { getDefaultRangeBounds } from "../../../config/markets";
+import { DEFAULT_STRATEGY_CONFIG } from "../../../config/strategy";
+import { createPool, getPoolState } from "../../../modules/uniswap/reader";
+import { createPositionManager, mintPosition } from "../../../modules/uniswap/liquidity";
+import { IERC20 } from "../../../modules/uniswap/types";
 import {
   priceToTickWithDecimals,
   roundTickDown,
   roundTickUp,
   tickToPriceWithDecimals,
-} from "../src/modules/math/ticks";
+} from "../../../modules/math/ticks";
+import { getSignerAndAccount } from "../base";
 
-import { ERC20_ABI, POOL_TOKEN_ABI, ROUTER_ABI, QUOTER_ABI, toBigInt } from "./utils";
+const ERC20_ABI = [
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function balanceOf(address account) view returns (uint256)",
+];
+const POOL_TOKEN_ABI = [
+  "function token0() view returns (address)",
+  "function token1() view returns (address)",
+];
+const ROUTER_ABI = [
+  "function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 deadline,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)",
+];
+const QUOTER_ABI = [
+  "function quoteExactInputSingle(address tokenIn,address tokenOut,uint24 fee,uint256 amountIn,uint160 sqrtPriceLimitX96) returns (uint256 amountOut)",
+];
 
-async function main() {
+function toBigInt(value: unknown): bigint {
+  try {
+    const { ethers } = require("hardhat");
+    if (ethers && typeof ethers.getBigInt === "function") {
+      return ethers.getBigInt(value as unknown);
+    }
+  } catch {
+    // ethers not available, continue
+  }
+
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") return BigInt(value);
+  if (typeof value === "string") return BigInt(value);
+  if (Array.isArray(value) && value.length > 0) return toBigInt(value[0]);
+  if (value && typeof value === "object") {
+    const maybeValue = (value as { value?: unknown }).value;
+    if (maybeValue !== undefined) return toBigInt(maybeValue);
+    const maybeResult = (value as { result?: unknown }).result;
+    if (Array.isArray(maybeResult) && maybeResult.length > 0) return toBigInt(maybeResult[0]);
+  }
+  return BigInt(String(value));
+}
+
+export interface UniswapOpenPositionOptions {
+  account?: string;
+  pool?: string;
+  fee?: number;
+  tickSpacing?: number;
+  slippageBps?: bigint;
+  rangeWidth?: number;
+  priceLower?: number;
+  priceUpper?: number;
+  tickLower?: number;
+  tickUpper?: number;
+  amount0Desired?: string;
+  amount1Desired?: string;
+  usdcAmount?: string;
+}
+
+export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = {}): Promise<void> {
+  const { signer, account } = await getSignerAndAccount(options.account);
+
   console.log("\n" + "=".repeat(60));
   console.log("UNISWAP V3 OPEN POSITION");
   console.log("=".repeat(60) + "\n");
 
-  const [signer] = await ethers.getSigners();
-  const account = await signer.getAddress();
+  const poolAddress = options.pool || ARBITRUM_MAINNET.uniswapV3EthUsdcPool;
+  const fee = options.fee ?? 500;
+  const tickSpacing = options.tickSpacing ?? 10;
+  const slippageBps = options.slippageBps ?? 50n;
 
-  const poolAddress = process.env.POOL || ARBITRUM_MAINNET.uniswapV3EthUsdcPool;
-  const fee = Number(process.env.FEE || "500");
-  const tickSpacing = Number(process.env.TICK_SPACING || "10");
-  const slippageBps = BigInt(process.env.SLIPPAGE_BPS || "50");
-
-  const manualTicks = process.env.TICK_LOWER && process.env.TICK_UPPER;
-  const amount0DesiredRaw = process.env.AMOUNT0_DESIRED;
-  const amount1DesiredRaw = process.env.AMOUNT1_DESIRED;
+  const manualTicks = options.tickLower !== undefined && options.tickUpper !== undefined;
+  const amount0DesiredRaw = options.amount0Desired;
+  const amount1DesiredRaw = options.amount1Desired;
 
   const pool = createPool(poolAddress, ethers.provider);
   const poolTokens = new ethers.Contract(poolAddress, POOL_TOKEN_ABI, ethers.provider);
@@ -69,23 +125,23 @@ async function main() {
 
   const priceUsdcPerWeth = isToken0Weth ? priceToken1PerToken0 : 1 / priceToken1PerToken0;
 
-  // Use range config for default bounds, but allow override via env vars
-  const rangeWidth = Number(process.env.RANGE_WIDTH || DEFAULT_STRATEGY_CONFIG.defaultRangeWidth);
+  // Use range config for default bounds, but allow override via options
+  const rangeWidth = options.rangeWidth ?? Number(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth);
   const defaultBounds = getDefaultRangeBounds(priceUsdcPerWeth, rangeWidth);
-  const lowerPrice = Number(process.env.PRICE_LOWER || defaultBounds.lower.toFixed(6));
-  const upperPrice = Number(process.env.PRICE_UPPER || defaultBounds.upper.toFixed(6));
+  const lowerPrice = options.priceLower ?? Number(defaultBounds.lower.toFixed(6));
+  const upperPrice = options.priceUpper ?? Number(defaultBounds.upper.toFixed(6));
 
   const priceLowerForTicks = isToken0Weth ? lowerPrice : 1 / lowerPrice;
   const priceUpperForTicks = isToken0Weth ? upperPrice : 1 / upperPrice;
 
   const tickLower = manualTicks
-    ? Number(process.env.TICK_LOWER)
+    ? options.tickLower!
     : roundTickDown(
         priceToTickWithDecimals(priceLowerForTicks, token0Decimals, token1Decimals),
         tickSpacing
       );
   const tickUpper = manualTicks
-    ? Number(process.env.TICK_UPPER)
+    ? options.tickUpper!
     : roundTickUp(
         priceToTickWithDecimals(priceUpperForTicks, token0Decimals, token1Decimals),
         tickSpacing
@@ -123,8 +179,8 @@ async function main() {
 
     const mintResult = await mintPosition(
       manager,
-      token0Contract,
-      token1Contract,
+      token0Contract as unknown as IERC20,
+      token1Contract as unknown as IERC20,
       {
         token0,
         token1,
@@ -152,7 +208,7 @@ async function main() {
     return;
   }
 
-  const usdcAmount = Number(process.env.USDC_AMOUNT || "100");
+  const usdcAmount = options.usdcAmount ? Number(options.usdcAmount) : 100;
   const usdcAmountUnits = ethers.parseUnits(usdcAmount.toString(), 6);
   const usdcToken = isToken0Usdc ? token0 : token1;
   const wethToken = isToken0Weth ? token0 : token1;
@@ -207,15 +263,15 @@ async function main() {
     wethContract.balanceOf(account),
   ]);
 
-  const wethDelta = wethBalanceAfter - wethBalanceBefore;
+  const wethDelta = BigInt(wethBalanceAfter.toString()) - BigInt(wethBalanceBefore.toString());
   const usdcRemaining = usdcAmountUnits - amountIn;
 
   if (wethDelta <= 0n) {
     throw new Error("Swap produced no WETH.");
   }
 
-  const amount0Desired = isToken0Weth ? wethDelta : usdcRemaining;
-  const amount1Desired = isToken1Weth ? wethDelta : usdcRemaining;
+  const amount0Desired: bigint = isToken0Weth ? wethDelta : usdcRemaining;
+  const amount1Desired: bigint = isToken1Weth ? wethDelta : usdcRemaining;
 
   // Calculate minimum amounts based on slippage tolerance
   const amount0Min = (amount0Desired * (10_000n - slippageBps)) / 10_000n;
@@ -255,8 +311,8 @@ async function main() {
 
   const mintResult = await mintPosition(
     manager,
-    token0Contract,
-    token1Contract,
+    token0Contract as unknown as IERC20,
+    token1Contract as unknown as IERC20,
     {
       token0,
       token1,
@@ -283,8 +339,3 @@ async function main() {
   }
   console.log("\nMint transaction submitted (auto mode). ");
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

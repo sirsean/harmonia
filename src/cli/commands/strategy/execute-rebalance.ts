@@ -1,26 +1,38 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "../src/config/addresses";
-import { DeltaNeutralMonitor } from "../src/strategy/monitor";
-import { RebalanceManager } from "../src/strategy/rebalance";
-import { StrategyAction } from "../src/strategy/types";
-import { loadStrategyConfig } from "../src/config/strategy";
-import { createRouter } from "../src/modules/gmx/orders";
+import { ARBITRUM_MAINNET } from "../../../config/addresses";
+import { DeltaNeutralMonitor } from "../../../strategy/monitor";
+import { RebalanceManager } from "../../../strategy/rebalance";
+import { StrategyAction } from "../../../strategy/types";
+import { loadStrategyConfig } from "../../../config/strategy";
+import { createRouter } from "../../../modules/gmx/orders";
 import {
   fetchTokenPrices,
   findTokenPrice,
   averagePrice,
   scalePriceTo30,
-} from "../src/modules/gmx/prices";
+} from "../../../modules/gmx/prices";
+import { getSignerAndAccount } from "../base";
 
-import { ERC20_ABI } from "./utils";
+const ERC20_ABI = [
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function balanceOf(address account) view returns (uint256)",
+];
 
-async function main() {
-  const [signer] = await ethers.getSigners();
-  console.log("Executing account:", signer.address);
+export interface ExecuteRebalanceOptions {
+  account?: string;
+  tokenId?: string;
+  dryRun?: boolean;
+}
+
+export async function executeRebalance(options: ExecuteRebalanceOptions = {}): Promise<void> {
+  const { signer, account } = await getSignerAndAccount(options.account);
+  console.log("Executing account:", account);
 
   // 1. Check Strategy Status
-  const tokenIdEnv = process.env.UNISWAP_TOKEN_ID;
-  const tokenIds = tokenIdEnv ? [BigInt(tokenIdEnv)] : undefined;
+  const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
 
   const monitorConfig = loadStrategyConfig({
     minFeeThresholdUsd: ethers.parseUnits("10", 30),
@@ -35,7 +47,7 @@ async function main() {
     gmx: {
       reader: ARBITRUM_MAINNET.gmxReader,
       dataStore: ARBITRUM_MAINNET.gmxDataStore,
-      account: signer.address,
+      account: account,
       market: ARBITRUM_MAINNET.gmxEthUsdMarket,
       collateralToken: ARBITRUM_MAINNET.usdc,
     },
@@ -67,11 +79,11 @@ async function main() {
   const collateralToken = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer) as any;
 
   const rebalanceConfig = loadStrategyConfig({
-    defaultExecutionFee: ethers.parseEther("0.001"), // GMX execution fee is dynamic but usually around 0.0002-0.001 ETH
+    defaultExecutionFee: ethers.parseEther("0.001"),
   });
 
   const rebalanceContext = {
-    account: signer.address,
+    account: account,
     market: ARBITRUM_MAINNET.gmxEthUsdMarket,
     collateralTokenAddress: ARBITRUM_MAINNET.usdc,
     orderVault: ARBITRUM_MAINNET.gmxOrderVault,
@@ -83,41 +95,20 @@ async function main() {
   console.log("Fetching GMX prices...");
   const prices = await fetchTokenPrices(ARBITRUM_MAINNET.gmxPriceApi);
 
-  // We need Collateral Price (USDC) and Index Token Price (WETH)
-  // GMX V2 Market: ETH-USD [WETH, USDC] (Long, Short/Collateral)
-  // Our collateral is USDC.
   const usdcPriceData = findTokenPrice(prices, ARBITRUM_MAINNET.usdc);
   const wethPriceData = findTokenPrice(prices, ARBITRUM_MAINNET.weth);
 
-  const usdcPrice = Number(averagePrice(usdcPriceData)) / 1e12; // API usually 12-30 decimals?
-  // Checking prices.ts: normalizeTokenPrice parses minPrice/maxPrice as BigInt.
-  // GMX tickers API returns prices with 30 decimals usually.
-  // Wait, price30ToPrice12 exists.
-  // Let's verify API return format. Standard GMX v2 API returns 30 decimals.
-  // So averagePrice returns 30 decimals BigInt.
-  // manager.executeRebalance expects collateralPrice as NUMBER (approx USD per token).
-  // If USDC price is 1e30, that's $1.
-
-  // RebalanceManager.executeRebalance(data, collateralPrice: number, collateralDecimals: number, indexTokenPrice: bigint)
-  // collateralPrice is used for:
-  // const priceScaled = BigInt(Math.floor(collateralPrice * 1e8));
-  // It expects a number like 1.0 or 0.999.
-  // So we need to convert the BigInt price (30 decimals) to a number.
-
   const usdcPriceRaw = averagePrice(usdcPriceData);
-  const usdcPrice30 = scalePriceTo30(usdcPriceRaw, 6); // USDC decimals
+  const usdcPrice30 = scalePriceTo30(usdcPriceRaw, 6);
   const usdcPriceNum = parseFloat(ethers.formatUnits(usdcPrice30, 30));
 
   const wethPriceRaw = averagePrice(wethPriceData);
-  const wethPrice30 = scalePriceTo30(wethPriceRaw, 18); // WETH decimals
+  const wethPrice30 = scalePriceTo30(wethPriceRaw, 18);
 
   console.log(`Prices: USDC=$${usdcPriceNum}, ETH=$${ethers.formatUnits(wethPrice30, 30)}`);
 
   // 4. Execute
-
-  // Check for EXECUTE env var
-
-  const executeFlag = process.env.EXECUTE === "true";
+  const executeFlag = !options.dryRun;
 
   if (!executeFlag) {
     console.log("\n[Dry Run] Rebalance would be executed with:");
@@ -132,13 +123,9 @@ async function main() {
     console.log(`  Execution Fee: ${ethers.formatEther(rebalanceConfig.defaultExecutionFee)} ETH`);
 
     if (adjustmentNeededUsd > 0n) {
-      // Calculate estimated collateral for Increase Short
-
       const { amount: collateralTokens, usd: collateralUsd } = manager.calculateRequiredCollateral(
         adjustmentNeededUsd,
-
         usdcPriceNum,
-
         6 // USDC decimals
       );
 
@@ -147,7 +134,7 @@ async function main() {
       );
     }
 
-    console.log("\nTo execute, run with EXECUTE=true");
+    console.log("\nTo execute, run without --dry-run flag");
 
     return;
   }
@@ -168,10 +155,6 @@ async function main() {
     }
   } catch (error) {
     console.error("Rebalance failed:", error);
+    throw error;
   }
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

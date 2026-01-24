@@ -1,19 +1,20 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "../src/config/addresses";
-import { createReader, getAccountPositions, getMarket } from "../src/modules/gmx/reader";
+import { ARBITRUM_MAINNET } from "../../../config/addresses";
+import { createReader, getAccountPositions, getMarket } from "../../../modules/gmx/reader";
 import {
   averagePrice,
   fetchTokenPrices,
   findTokenPrice,
   price30ToPrice12,
   scalePriceTo30,
-} from "../src/modules/gmx/prices";
+} from "../../../modules/gmx/prices";
 import {
   computeCollateralUsd30,
   computeEntryPrice12,
   computePnlUsd30FromPrices,
   computeLiquidationPrice12,
-} from "../src/modules/gmx/position";
+} from "../../../modules/gmx/position";
+import { getSignerAndAccount } from "../base";
 
 const ERC20_ABI = ["function decimals() view returns (uint8)"];
 
@@ -22,12 +23,19 @@ async function getTokenDecimals(tokenAddress: string) {
   return Number(await token.decimals());
 }
 
-async function main() {
-  const [signer] = await ethers.getSigners();
-  const account = process.env.ACCOUNT || signer.address;
-  const start = Number(process.env.START || "0");
-  const end = Number(process.env.END || "10");
-  const marketFilter = (process.env.MARKET || "").toLowerCase();
+export interface GmxReadPositionOptions {
+  account?: string;
+  start?: number;
+  end?: number;
+  market?: string;
+  maintenanceMarginBps?: bigint;
+}
+
+export async function gmxReadPosition(options: GmxReadPositionOptions = {}): Promise<void> {
+  const { account } = await getSignerAndAccount(options.account);
+  const start = options.start ?? 0;
+  const end = options.end ?? 10;
+  const marketFilter = options.market?.toLowerCase() || "";
 
   const reader = createReader(ARBITRUM_MAINNET.gmxReader, ethers.provider);
   const positions = await getAccountPositions(
@@ -44,7 +52,7 @@ async function main() {
   console.log("Positions:", positions.length);
 
   const prices = await fetchTokenPrices(ARBITRUM_MAINNET.gmxPriceApi);
-  const maintenanceMarginBps = BigInt(process.env.MAINTENANCE_MARGIN_BPS || "100");
+  const maintenanceMarginBps = options.maintenanceMarginBps ?? 100n;
 
   for (const position of positions) {
     const addresses = position.addresses;
@@ -115,8 +123,3 @@ async function main() {
     console.log("Decreased At:", numbers.decreasedAtTime?.toString?.() || "0");
   }
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

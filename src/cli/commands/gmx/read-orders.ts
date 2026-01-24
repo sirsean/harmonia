@@ -1,13 +1,31 @@
 import { ethers } from "hardhat";
-import readerDeployment from "../deployments/Reader.arbitrum.json";
-import { ARBITRUM_MAINNET } from "../src/config/addresses";
+import { ARBITRUM_MAINNET } from "../../../config/addresses";
+import { getSignerAndAccount } from "../base";
 
-async function main() {
-  const [signer] = await ethers.getSigners();
-  const account = process.env.ACCOUNT || signer.address;
-  const start = Number(process.env.START || "0");
-  const end = Number(process.env.END || "10");
+// Lazy load deployment files to handle missing files gracefully
+function getReaderDeployment() {
+  try {
+    // @ts-ignore - deployment file may not exist
+    return require("../../../../deployments/Reader.arbitrum.json");
+  } catch {
+    throw new Error(
+      "Reader deployment file not found. Please ensure deployments/Reader.arbitrum.json exists."
+    );
+  }
+}
 
+export interface GmxReadOrdersOptions {
+  account?: string;
+  start?: number;
+  end?: number;
+}
+
+export async function gmxReadOrders(options: GmxReadOrdersOptions = {}): Promise<void> {
+  const { account } = await getSignerAndAccount(options.account);
+  const start = options.start ?? 0;
+  const end = options.end ?? 10;
+
+  const readerDeployment = getReaderDeployment();
   const reader = new ethers.Contract(
     readerDeployment.address,
     readerDeployment.abi,
@@ -42,8 +60,3 @@ async function main() {
     console.log("  Valid From:", numbers.validFromTime?.toString?.() || "0");
   }
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

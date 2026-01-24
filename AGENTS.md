@@ -12,8 +12,11 @@ Harmonia is a delta-neutral yield strategy that combines Uniswap v3 LP positions
 
 ```bash
 npm install                                    # Install dependencies
-npx hardhat run scripts/gmx-read-position.ts     # Read GMX positions
+npm run cli -- gmx read-position --network arbitrum  # Read GMX positions
+npm run cli -- monitor --network arbitrum            # Monitor positions
 ```
+
+See `docs/CLI.md` for complete CLI documentation.
 
 ## Development Workflow
 
@@ -71,26 +74,21 @@ npm run format        # Auto-format all code
 ## Codebase Structure
 
 ```
-scripts/
-├── config/
+scripts/                      # Legacy scripts (use CLI instead)
+├── config/                   # Configuration files
 │   ├── addresses.ts          # Contract addresses and constants
 │   └── range.ts              # Range configuration for Uniswap positions
-├── gmx-open-short.ts         # Open GMX short position
-├── gmx-close-short.ts        # Close GMX short position
-├── gmx-read-position.ts      # Read GMX positions
-├── read-orders.ts            # Read pending GMX orders
-├── read-order.ts             # Read specific GMX order
-├── scan-order-events.ts      # Scan GMX order events
-├── uniswap-open-position.ts  # Open Uniswap LP position
-├── uniswap-close-position.ts # Close Uniswap LP position
-├── uniswap-read-position.ts  # Read Uniswap LP positions
-├── execute-rebalance.ts      # Execute rebalance operation
-├── monitor-position.ts       # Monitor delta-neutral positions
-├── check-pool.ts             # Check Uniswap pool state
-├── check-balance.ts          # Check token balances
-└── check-usdc.ts             # Check USDC balance
+└── ...                       # Legacy script files
 
-src/                          # Core modules
+src/                          # Core modules and CLI
+├── cli/                      # Unified CLI interface
+│   ├── index.ts              # CLI entry point
+│   └── commands/             # Command implementations
+│       ├── gmx/              # GMX commands
+│       ├── uniswap/          # Uniswap commands
+│       ├── utility/          # Utility commands
+│       ├── strategy/         # Strategy commands
+│       └── monitor.ts        # Monitor command
 ├── modules/
 │   ├── gmx/                  # GMX V2 perpetual operations
 │   │   ├── reader.ts         # Read positions and orders
@@ -139,60 +137,83 @@ LP positions in Uniswap v3 have a delta that varies with price:
 
 ## Common Tasks
 
+All tasks are now performed using the unified CLI. See `docs/CLI.md` for complete documentation.
+
 ### Reading Positions
 
 ```bash
 # Read all GMX positions
-npx hardhat run scripts/gmx-read-position.ts --network arbitrum
+npm run cli -- gmx read-position --network arbitrum
 
 # Read for specific account
-ACCOUNT=0x... npx hardhat run scripts/gmx-read-position.ts --network arbitrum
+npm run cli -- gmx read-position --network arbitrum --account 0x...
+
+# Read Uniswap positions
+npm run cli -- uniswap read-position --network arbitrum
+
+# Monitor all positions (recommended)
+npm run cli -- monitor --network arbitrum
 ```
 
-### Creating Short Position
+### GMX Operations
 
 ```bash
-npx hardhat run scripts/gmx-open-short.ts --network arbitrum
+# Open short position
+npm run cli -- gmx open-short --network arbitrum --collateral 20 --size 100
+
+# Close short position
+npm run cli -- gmx close-short --network arbitrum --market <market-address>
+
+# Read pending orders
+npm run cli -- gmx read-orders --network arbitrum
+
+# Read specific order
+npm run cli -- gmx read-order --network arbitrum --order-key <key>
 ```
 
-### Closing Short Position
-
-```bash
-npx hardhat run scripts/gmx-close-short.ts --network arbitrum
-```
-
-### Monitoring Positions
+### Strategy Operations
 
 ```bash
 # Monitor delta-neutral positions
-npx hardhat run scripts/monitor-position.ts --network arbitrum
+npm run cli -- monitor --network arbitrum
+
+# Execute rebalance (when implemented)
+npm run cli -- strategy rebalance --network arbitrum --token-id <id>
+
+# Adjust range (when implemented)
+npm run cli -- strategy adjust-range --network arbitrum --token-id <id>
 ```
 
-### Executing Rebalance
+### Utility Commands
 
 ```bash
-# Execute rebalance operation
-npx hardhat run scripts/execute-rebalance.ts --network arbitrum
+# Check ETH balance
+npm run cli -- util balance --network arbitrum
+
+# Check USDC balance
+npm run cli -- util usdc --network arbitrum
+
+# Check Uniswap pool state
+npm run cli -- uniswap check-pool --network arbitrum --pool <address>
 ```
 
-### Uniswap Position Management
+### Using Environment Variables
+
+For convenience, you can set the network once:
 
 ```bash
-# Open Uniswap LP position
-npx hardhat run scripts/uniswap-open-position.ts --network arbitrum
+export NETWORK=arbitrum
 
-# Read Uniswap positions
-npx hardhat run scripts/uniswap-read-position.ts --network arbitrum
-
-# Close Uniswap position
-npx hardhat run scripts/uniswap-close-position.ts --network arbitrum
+npm run cli -- monitor
+npm run cli -- gmx read-position
+npm run cli -- uniswap read-position
 ```
 
 ## Important Constants
 
-Contract addresses and strategy parameters are defined in `scripts/config/`:
+Contract addresses and strategy parameters are defined in `src/config/`:
 
-**Addresses** (`scripts/config/addresses.ts`):
+**Addresses** (`src/config/addresses.ts`):
 ```typescript
 import { ARBITRUM_MAINNET, STRATEGY_PARAMS } from './config/addresses';
 
@@ -209,7 +230,7 @@ STRATEGY_PARAMS.MAX_SLIPPAGE       // 1e16 (1%) - slippage tolerance
 STRATEGY_PARAMS.EMERGENCY_THRESHOLD // 20e16 (20%) - emergency alert threshold
 ```
 
-**Range Configuration** (`scripts/config/range.ts`):
+**Range Configuration** (`src/config/markets.ts` or `src/config/strategy.ts`):
 ```typescript
 import { RANGE_CONFIG, getDefaultRangeBounds } from './config/range';
 
@@ -237,11 +258,14 @@ See `PLAN.md` Part 6 for the detailed implementation roadmap:
 
 1. **Phase 1**: Core modules (GMX, Uniswap, Math, Chainlink) ✅ **Complete**
 2. **Phase 2**: Strategy layer (monitor, rebalance, compound) 🔄 **In Progress**
-   - ✅ Position monitoring (`monitor.ts`, `monitor-position.ts` script)
-   - ✅ Rebalance execution (`rebalance.ts`, `execute-rebalance.ts` script)
+   - ✅ Position monitoring (`monitor.ts`, `monitor` CLI command)
+   - ✅ Rebalance execution (`rebalance.ts`, `strategy rebalance` CLI command)
    - ⏳ Compounding logic
    - ⏳ Range adjustment
-3. **Phase 3**: Operations (CLI, monitoring, alerts) ⏳ **Pending**
+3. **Phase 3**: Operations (CLI, monitoring, alerts) ✅ **Complete**
+   - ✅ Unified CLI interface (`src/cli/`)
+   - ✅ All commands accessible via CLI
+   - ⏳ Monitoring and alerts
 4. **Phase 4**: Automation (cron-based execution) ⏳ **Pending**
 
 ## Previous Approach

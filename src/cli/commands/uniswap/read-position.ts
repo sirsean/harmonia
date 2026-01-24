@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "../src/config/addresses";
+import { ARBITRUM_MAINNET } from "../../../config/addresses";
 import {
   createPool,
   createPositionManager,
@@ -7,12 +7,13 @@ import {
   getPosition,
   getPositionWithFees,
   getTokenIdsForOwner,
-} from "../src/modules/uniswap/reader";
+} from "../../../modules/uniswap/reader";
 import {
   getAmountsForLiquidity,
   getSqrtRatioAtTick,
   tickToPriceWithDecimals,
-} from "../src/modules/math/ticks";
+} from "../../../modules/math/ticks";
+import { getSignerAndAccount } from "../base";
 
 const ERC20_ABI = [
   "function decimals() view returns (uint8)",
@@ -42,11 +43,9 @@ async function printPosition(tokenId: bigint, owner: string) {
   );
   const poolAddress = await factory.getPool(position.token0, position.token1, position.fee);
   const pool = createPool(poolAddress, ethers.provider);
-  const [poolState, poolToken0, poolToken1] = await Promise.all([
-    getPoolState(pool),
-    pool.token0(),
-    pool.token1(),
-  ]);
+  const poolState = await getPoolState(pool);
+  const poolToken0 = await pool.token0();
+  const poolToken1 = await pool.token1();
 
   const sqrtLower = getSqrtRatioAtTick(position.tickLower);
   const sqrtUpper = getSqrtRatioAtTick(position.tickUpper);
@@ -96,26 +95,31 @@ async function printPosition(tokenId: bigint, owner: string) {
   );
 }
 
-async function main() {
+export interface UniswapReadPositionOptions {
+  account?: string;
+  tokenId?: string;
+  showClosed?: boolean;
+}
+
+export async function uniswapReadPosition(options: UniswapReadPositionOptions = {}): Promise<void> {
   console.log("\n" + "=".repeat(60));
   console.log("UNISWAP V3 READ POSITION");
   console.log("=".repeat(60) + "\n");
 
-  const [signer] = await ethers.getSigners();
-  const owner = process.env.ACCOUNT || signer.address;
-  const showClosed = process.env.SHOW_CLOSED === "true";
+  const { account } = await getSignerAndAccount(options.account);
+  const showClosed = options.showClosed ?? false;
 
-  const tokenIdRaw = process.env.TOKEN_ID;
+  const tokenIdRaw = options.tokenId;
   if (tokenIdRaw) {
-    await printPosition(BigInt(tokenIdRaw), owner);
+    await printPosition(BigInt(tokenIdRaw), account);
     return;
   }
 
   const manager = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, ethers.provider);
-  const tokenIds = await getTokenIdsForOwner(manager, owner);
+  const tokenIds = await getTokenIdsForOwner(manager, account);
 
   if (tokenIds.length === 0) {
-    console.log("No Uniswap V3 positions found for:", owner);
+    console.log("No Uniswap V3 positions found for:", account);
     return;
   }
 
@@ -132,15 +136,10 @@ async function main() {
     activeTokenIds.push(tokenId);
   }
 
-  console.log("Owner:", owner);
+  console.log("Owner:", account);
   console.log("Positions:", activeTokenIds.length);
 
   for (const tokenId of activeTokenIds) {
-    await printPosition(tokenId, owner);
+    await printPosition(tokenId, account);
   }
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

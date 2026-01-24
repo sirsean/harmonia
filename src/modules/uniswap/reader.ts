@@ -85,7 +85,7 @@ export async function getTokenIdsForOwner(
 
   for (let i = 0; i < count; i++) {
     const tokenId = await manager.tokenOfOwnerByIndex(owner, i);
-    tokenIds.push(typeof tokenId === "bigint" ? tokenId : BigInt(tokenId.toString()));
+    tokenIds.push(typeof tokenId === "bigint" ? tokenId : BigInt(String(tokenId)));
   }
 
   return tokenIds;

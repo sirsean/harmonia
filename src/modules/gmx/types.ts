@@ -118,11 +118,10 @@ export interface GMXRouter {
   interface: {
     encodeFunctionData(name: string, values: unknown[]): string;
   };
-  multicall(
+  multicall: ((
     data: string[],
     overrides: { value: bigint; gasLimit?: number; nonce?: number }
-  ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
-  multicall?: {
+  ) => Promise<{ hash: string; wait: () => Promise<unknown> }>) & {
     staticCall?: (data: string[], overrides: { value: bigint }) => Promise<unknown>;
   };
 }

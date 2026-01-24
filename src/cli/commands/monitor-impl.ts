@@ -1,21 +1,31 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "../src/config/addresses";
-import { DeltaNeutralMonitor } from "../src/strategy/monitor";
-import { StrategyAction } from "../src/strategy/types";
-import { loadStrategyConfig } from "../src/config/strategy";
-import { getAmountsForLiquidity, getSqrtRatioAtTick } from "../src/modules/math/ticks";
-import * as uniswapReader from "../src/modules/uniswap/reader";
+import { ARBITRUM_MAINNET } from "../../config/addresses";
+import { DeltaNeutralMonitor } from "../../strategy/monitor";
+import { StrategyAction } from "../../strategy/types";
+import { loadStrategyConfig } from "../../config/strategy";
+import { getAmountsForLiquidity, getSqrtRatioAtTick } from "../../modules/math/ticks";
+import * as uniswapReader from "../../modules/uniswap/reader";
+import { getSignerAndAccount } from "./base";
 
-async function main() {
-  const [signer] = await ethers.getSigners();
-  console.log("Monitoring account:", signer.address);
+export interface MonitorOptions {
+  account?: string;
+  tokenId?: string;
+  minFeeThreshold?: string;
+}
+
+export async function monitor(options: MonitorOptions = {}): Promise<void> {
+  const { account } = await getSignerAndAccount(options.account);
+  console.log("Monitoring account:", account);
 
   // Configuration from environment or defaults
-  const tokenIdEnv = process.env.UNISWAP_TOKEN_ID;
-  const tokenIds = tokenIdEnv ? [BigInt(tokenIdEnv)] : undefined;
+  const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
+
+  const minFeeThresholdUsd = options.minFeeThreshold
+    ? ethers.parseUnits(options.minFeeThreshold, 30)
+    : ethers.parseUnits("10", 30); // $10 worth of fees (USD 30 decimals)
 
   const config = loadStrategyConfig({
-    minFeeThresholdUsd: ethers.parseUnits("10", 30), // $10 worth of fees (USD 30 decimals)
+    minFeeThresholdUsd,
   });
 
   const context = {
@@ -27,17 +37,17 @@ async function main() {
     gmx: {
       reader: ARBITRUM_MAINNET.gmxReader,
       dataStore: ARBITRUM_MAINNET.gmxDataStore,
-      account: signer.address,
+      account: account,
       market: ARBITRUM_MAINNET.gmxEthUsdMarket,
       collateralToken: ARBITRUM_MAINNET.usdc,
     },
   };
 
-  const monitor = new DeltaNeutralMonitor(ethers.provider, config, context);
+  const monitorInstance = new DeltaNeutralMonitor(ethers.provider, config, context);
 
   console.log("--- Strategy Check ---");
   try {
-    const { status, recommendation } = await monitor.check();
+    const { status, recommendation } = await monitorInstance.check();
 
     // Get pool contract to determine token order and decimals
     const poolContract = uniswapReader.createPool(context.uniswap.pool, ethers.provider);
@@ -100,7 +110,6 @@ async function main() {
       );
 
       // Calculate USD value of this position
-
       let positionValueUsd = 0n;
       if (isToken0Collateral) {
         // Token0 is stable (USDC), Token1 is risk (ETH)
@@ -195,10 +204,6 @@ async function main() {
   } catch (error: any) {
     console.error("\nError during monitor check:");
     console.error(error);
+    throw error;
   }
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
