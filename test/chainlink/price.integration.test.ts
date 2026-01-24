@@ -4,7 +4,7 @@ import { ethers } from "ethers";
 import nock from "nock";
 import { describe, expect, it } from "vitest";
 import { getLatestPrice } from "../../src/modules/chainlink/price";
-import { ARBITRUM_MAINNET } from "../../scripts/config/addresses";
+import { ARBITRUM_MAINNET } from "../../src/config/addresses";
 
 const cassetteDir = path.join(__dirname, "..", "cassettes");
 const cassetteName = "chainlink-eth-usd.json";

@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
 import readerDeployment from "../deployments/Reader.arbitrum.json";
 import eventEmitterDeployment from "../deployments/EventEmitter.arbitrum.json";
-import { ARBITRUM_MAINNET } from "./config/addresses";
+import { ARBITRUM_MAINNET } from "../src/config/addresses";
 
 type EventLogData = {
   addressItems?: { items: Array<{ key: string; value: string }> };

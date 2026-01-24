@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "./config/addresses";
+import { ARBITRUM_MAINNET } from "../src/config/addresses";
 import { getLatestPrice } from "../src/modules/chainlink/price";
 import { createDecreaseOrder, createRouter } from "../src/modules/gmx/orders";
 import { createReader, getPosition } from "../src/modules/gmx/reader";
