@@ -1,5 +1,6 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "./config/addresses";
+import { RANGE_CONFIG, getDefaultRangeBounds } from "./config/range";
 import { createPool, getPoolState } from "../src/modules/uniswap/reader";
 import { createPositionManager, mintPosition } from "../src/modules/uniswap/liquidity";
 import {
@@ -147,8 +148,12 @@ async function main() {
   }
 
   const priceUsdcPerWeth = isToken0Weth ? priceToken1PerToken0 : 1 / priceToken1PerToken0;
-  const lowerPrice = Number(process.env.PRICE_LOWER || (priceUsdcPerWeth * 0.9).toFixed(6));
-  const upperPrice = Number(process.env.PRICE_UPPER || (priceUsdcPerWeth * 1.1).toFixed(6));
+
+  // Use range config for default bounds, but allow override via env vars
+  const rangeWidth = Number(process.env.RANGE_WIDTH || RANGE_CONFIG.DEFAULT_RANGE_WIDTH);
+  const defaultBounds = getDefaultRangeBounds(priceUsdcPerWeth, rangeWidth);
+  const lowerPrice = Number(process.env.PRICE_LOWER || defaultBounds.lower.toFixed(6));
+  const upperPrice = Number(process.env.PRICE_UPPER || defaultBounds.upper.toFixed(6));
 
   const priceLowerForTicks = isToken0Weth ? lowerPrice : 1 / lowerPrice;
   const priceUpperForTicks = isToken0Weth ? upperPrice : 1 / upperPrice;

@@ -15,6 +15,10 @@ async function main() {
     deltaThreshold: 0.05, // 5% drift allowed
     minFeeThresholdUsd: ethers.parseUnits("10", 30), // $10 worth of fees (USD 30 decimals)
     minRebalanceInterval: 3600,
+    // Range adjustment configuration
+    rangeAdjustmentThreshold: 0.02, // Adjust if within 2% of range edge
+    rangeCenterDriftThreshold: 0.05, // Adjust if >5% from center
+    minRangeAdjustmentInterval: 3600, // 1 hour minimum between adjustments
   };
 
   const context = {
