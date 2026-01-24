@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import eventEmitterDeployment from "../deployments/EventEmitter.arbitrum.json";
+import { loadEventEmitterDeployment } from "../src/utils/deployments";
 
 type EventLogData = {
   addressItems?: { items: Array<{ key: string; value: string }> };
@@ -19,6 +19,7 @@ async function main() {
   const blocksBack = Number(process.env.BLOCKS_BACK || "200");
   const chunkSize = Number(process.env.CHUNK_SIZE || "10");
 
+  const eventEmitterDeployment = loadEventEmitterDeployment();
   const provider = ethers.provider;
   const latestBlock = await provider.getBlockNumber();
   const fromBlock = Math.max(0, latestBlock - blocksBack);

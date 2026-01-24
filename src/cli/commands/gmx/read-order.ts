@@ -1,29 +1,7 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../../config/addresses";
+import { loadReaderDeployment, loadEventEmitterDeployment } from "../../../utils/deployments";
 import { getSignerAndAccount } from "../base";
-
-// Lazy load deployment files to handle missing files gracefully
-function getReaderDeployment() {
-  try {
-    // @ts-ignore - deployment file may not exist
-    return require("../../../../deployments/Reader.arbitrum.json");
-  } catch {
-    throw new Error(
-      "Reader deployment file not found. Please ensure deployments/Reader.arbitrum.json exists."
-    );
-  }
-}
-
-function getEventEmitterDeployment() {
-  try {
-    // @ts-ignore - deployment file may not exist
-    return require("../../../../deployments/EventEmitter.arbitrum.json");
-  } catch {
-    throw new Error(
-      "EventEmitter deployment file not found. Please ensure deployments/EventEmitter.arbitrum.json exists."
-    );
-  }
-}
 
 type EventLogData = {
   addressItems?: { items: Array<{ key: string; value: string }> };
@@ -56,7 +34,7 @@ export async function gmxReadOrder(options: GmxReadOrderOptions): Promise<void> 
     await printEventLogsFromTx(options.txHash);
   }
 
-  const readerDeployment = getReaderDeployment();
+  const readerDeployment = loadReaderDeployment();
   const reader = new ethers.Contract(
     readerDeployment.address,
     readerDeployment.abi,
@@ -87,7 +65,7 @@ async function findOrderKeyFromTx(txHash: string): Promise<string> {
     throw new Error("No receipt for tx: " + txHash);
   }
 
-  const eventEmitterDeployment = getEventEmitterDeployment();
+  const eventEmitterDeployment = loadEventEmitterDeployment();
   const emitterAddr = eventEmitterDeployment.address.toLowerCase();
   const iface = new ethers.Interface(eventEmitterDeployment.abi);
 
@@ -139,7 +117,7 @@ async function printEventLogsFromTx(txHash: string): Promise<void> {
     throw new Error("No receipt for tx: " + txHash);
   }
 
-  const eventEmitterDeployment = getEventEmitterDeployment();
+  const eventEmitterDeployment = loadEventEmitterDeployment();
   const emitterAddr = eventEmitterDeployment.address.toLowerCase();
   const iface = new ethers.Interface(eventEmitterDeployment.abi);
 

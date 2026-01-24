@@ -1,18 +1,7 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../../config/addresses";
+import { loadReaderDeployment } from "../../../utils/deployments";
 import { getSignerAndAccount } from "../base";
-
-// Lazy load deployment files to handle missing files gracefully
-function getReaderDeployment() {
-  try {
-    // @ts-ignore - deployment file may not exist
-    return require("../../../../deployments/Reader.arbitrum.json");
-  } catch {
-    throw new Error(
-      "Reader deployment file not found. Please ensure deployments/Reader.arbitrum.json exists."
-    );
-  }
-}
 
 export interface GmxReadOrdersOptions {
   account?: string;
@@ -25,7 +14,7 @@ export async function gmxReadOrders(options: GmxReadOrdersOptions = {}): Promise
   const start = options.start ?? 0;
   const end = options.end ?? 10;
 
-  const readerDeployment = getReaderDeployment();
+  const readerDeployment = loadReaderDeployment();
   const reader = new ethers.Contract(
     readerDeployment.address,
     readerDeployment.abi,
