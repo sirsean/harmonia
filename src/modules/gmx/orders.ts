@@ -10,13 +10,7 @@ import {
   GMXRouter,
   IERC20,
 } from "./types";
-
-export const GMX_ROUTER_ABI = [
-  "function multicall(bytes[] calldata data) external payable returns (bytes[] memory results)",
-  "function sendTokens(address token, address receiver, uint256 amount) external payable",
-  "function sendWnt(address receiver, uint256 amount) external payable",
-  "function createOrder(((address receiver,address cancellationReceiver,address callbackContract,address uiFeeReceiver,address market,address initialCollateralToken,address[] swapPath),(uint256 sizeDeltaUsd,uint256 initialCollateralDeltaAmount,uint256 triggerPrice,uint256 acceptablePrice,uint256 executionFee,uint256 callbackGasLimit,uint256 minOutputAmount,uint256 validFromTime),uint8 orderType,uint8 decreasePositionSwapType,bool isLong,bool shouldUnwrapNativeToken,bool autoCancel,bytes32 referralCode,bytes32[] dataList) params) external payable returns (bytes32 orderKey)",
-];
+import { GMX_ROUTER_ABI } from "../../utils/abis";
 
 export function createRouter(address: string, signer: ethers.Signer): GMXRouter {
   return new ethers.Contract(address, GMX_ROUTER_ABI, signer) as unknown as GMXRouter;

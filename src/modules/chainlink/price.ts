@@ -5,11 +5,9 @@ import {
   ChainlinkPriceResult,
   ChainlinkRoundData,
 } from "./types";
+import { CHAINLINK_FEED_ABI } from "../../utils/abis";
 
-const FEED_ABI = [
-  "function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)",
-  "function decimals() view returns (uint8)",
-];
+const FEED_ABI = CHAINLINK_FEED_ABI;
 
 const DEFAULT_MAX_STALE_SECONDS = 60 * 60; // 1 hour
 const DEFAULT_ALLOW_FUTURE_SECONDS = 5 * 60; // 5 minutes

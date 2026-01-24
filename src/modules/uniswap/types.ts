@@ -17,6 +17,9 @@ export interface UniswapPoolState {
 export interface UniswapV3Pool {
   slot0(): Promise<[bigint, number, number, number, number, number, boolean]>;
   liquidity(): Promise<bigint>;
+  token0(): Promise<string>;
+  token1(): Promise<string>;
+  fee(): Promise<number>;
 }
 
 export interface UniswapPosition {
@@ -45,19 +48,19 @@ export interface UniswapPositionManager {
   mint(
     params: MintParams,
     overrides?: { nonce?: number }
-  ): Promise<{ wait: () => Promise<unknown> }>;
+  ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
   increaseLiquidity(
     params: IncreaseLiquidityParams,
     overrides?: { nonce?: number }
-  ): Promise<{ wait: () => Promise<unknown> }>;
+  ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
   decreaseLiquidity(
     params: DecreaseLiquidityParams,
     overrides?: { nonce?: number }
-  ): Promise<{ wait: () => Promise<unknown> }>;
+  ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
   collect(
     params: CollectParams,
     overrides?: { nonce?: number }
-  ): Promise<{ wait: () => Promise<unknown> }>;
+  ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
 }
 
 export interface IERC20 {

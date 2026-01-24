@@ -53,19 +53,16 @@ This project uses an **EOA-based approach** with TypeScript scripts rather than 
 
 ```
 harmonia/
-├── scripts/
-│   ├── config/
-│   │   └── addresses.ts          # Contract addresses and constants
-│   ├── gmx-open-short.ts          # Open GMX short position
-│   ├── gmx-close-short.ts         # Close GMX short position
-│   ├── gmx-read-position.ts       # Read GMX positions
-│   └── ...                       # Other utility scripts
+├── scripts/                      # Legacy scripts (use CLI instead)
 ├── src/
-│   ├── modules/                  # Core protocol modules (to be built)
+│   ├── cli/                      # Unified CLI interface
+│   ├── modules/                  # Core protocol modules
 │   │   ├── gmx/                  # GMX V2 operations
 │   │   ├── uniswap/              # Uniswap V3 operations
 │   │   └── math/                 # Delta/yield calculations
 │   └── strategy/                 # Strategy orchestration
+├── docs/
+│   └── CLI.md                    # CLI documentation
 ├── PLAN.md                       # Technical specification
 └── AGENTS.md                     # Development guidelines
 ```
@@ -83,10 +80,55 @@ npm install
 
 ## Usage
 
-### Reading GMX Positions
+The project includes a unified CLI interface for all operations. See `docs/CLI.md` for complete documentation.
+
+### Quick Start
 
 ```bash
-npx hardhat run scripts/gmx-read-position.ts --network arbitrum
+# Monitor your delta-neutral positions
+npm run cli -- monitor --network arbitrum
+
+# Read GMX positions
+npm run cli -- gmx read-position --network arbitrum
+
+# Read Uniswap positions
+npm run cli -- uniswap read-position --network arbitrum
+```
+
+### Common Commands
+
+**Reading Positions:**
+```bash
+# GMX positions
+npm run cli -- gmx read-position --network arbitrum
+
+# Uniswap positions
+npm run cli -- uniswap read-position --network arbitrum
+
+# Monitor all positions
+npm run cli -- monitor --network arbitrum
+```
+
+**GMX Operations:**
+```bash
+# Open short position
+npm run cli -- gmx open-short --network arbitrum --collateral 20 --size 100
+
+# Close short position
+npm run cli -- gmx close-short --network arbitrum --market <market-address>
+
+# Read pending orders
+npm run cli -- gmx read-orders --network arbitrum
+```
+
+**Using Environment Variables:**
+```bash
+# Set network once for all commands
+export NETWORK=arbitrum
+
+npm run cli -- monitor
+npm run cli -- gmx read-position
+npm run cli -- uniswap read-position
 ```
 
 ### Tests
@@ -94,18 +136,6 @@ npx hardhat run scripts/gmx-read-position.ts --network arbitrum
 ```bash
 # Runs unit + integration tests. Integration tests use cassette replays when available.
 npm test
-```
-
-### Creating a Short Position
-
-```bash
-npx hardhat run scripts/gmx-open-short.ts --network arbitrum
-```
-
-### Closing a Short Position
-
-```bash
-npx hardhat run scripts/gmx-close-short.ts --network arbitrum
 ```
 
 ## Configuration

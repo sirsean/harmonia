@@ -1,13 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   ERC20_ABI,
-  ERC20_MINIMAL_ABI,
-  POOL_TOKEN_ABI,
-  ROUTER_ABI,
-  QUOTER_ABI,
-} from "../../../scripts/utils/abis";
+  UNISWAP_POOL_ABI,
+  UNISWAP_ROUTER_ABI,
+  UNISWAP_QUOTER_ABI,
+} from "../../../src/utils/abis";
 
-describe("Script ABIs", () => {
+describe("ABI Definitions", () => {
   describe("ERC20_ABI", () => {
     it("should contain all standard ERC20 functions", () => {
       expect(ERC20_ABI).toContain("function decimals() view returns (uint8)");
@@ -27,40 +26,37 @@ describe("Script ABIs", () => {
     });
   });
 
-  describe("ERC20_MINIMAL_ABI", () => {
-    it("should contain only decimals function", () => {
-      expect(ERC20_MINIMAL_ABI).toContain("function decimals() view returns (uint8)");
-      expect(ERC20_MINIMAL_ABI.length).toBe(1);
+  describe("UNISWAP_POOL_ABI", () => {
+    it("should contain pool functions including token0 and token1", () => {
+      const abiStrings = UNISWAP_POOL_ABI.join(" ");
+      expect(abiStrings).toContain("function token0() view returns (address)");
+      expect(abiStrings).toContain("function token1() view returns (address)");
+      expect(abiStrings).toContain("function slot0()");
+      expect(abiStrings).toContain("function liquidity()");
+      expect(abiStrings).toContain("function fee()");
+      expect(UNISWAP_POOL_ABI.length).toBeGreaterThanOrEqual(5);
     });
   });
 
-  describe("POOL_TOKEN_ABI", () => {
-    it("should contain token0 and token1 functions", () => {
-      expect(POOL_TOKEN_ABI).toContain("function token0() view returns (address)");
-      expect(POOL_TOKEN_ABI).toContain("function token1() view returns (address)");
-      expect(POOL_TOKEN_ABI.length).toBe(2);
-    });
-  });
-
-  describe("ROUTER_ABI", () => {
+  describe("UNISWAP_ROUTER_ABI", () => {
     it("should contain exactInputSingle function", () => {
-      expect(ROUTER_ABI.length).toBe(1);
-      expect(ROUTER_ABI[0]).toContain("exactInputSingle");
-      expect(ROUTER_ABI[0]).toContain("returns (uint256 amountOut)");
+      expect(UNISWAP_ROUTER_ABI.length).toBe(1);
+      expect(UNISWAP_ROUTER_ABI[0]).toContain("exactInputSingle");
+      expect(UNISWAP_ROUTER_ABI[0]).toContain("returns (uint256 amountOut)");
     });
   });
 
-  describe("QUOTER_ABI", () => {
+  describe("UNISWAP_QUOTER_ABI", () => {
     it("should contain quoteExactInputSingle function", () => {
-      expect(QUOTER_ABI.length).toBe(1);
-      expect(QUOTER_ABI[0]).toContain("quoteExactInputSingle");
-      expect(QUOTER_ABI[0]).toContain("returns (uint256 amountOut)");
+      expect(UNISWAP_QUOTER_ABI.length).toBe(1);
+      expect(UNISWAP_QUOTER_ABI[0]).toContain("quoteExactInputSingle");
+      expect(UNISWAP_QUOTER_ABI[0]).toContain("returns (uint256 amountOut)");
     });
   });
 
   describe("ABI consistency", () => {
     it("should have all ABIs as readonly arrays", () => {
-      const abis = [ERC20_ABI, ERC20_MINIMAL_ABI, POOL_TOKEN_ABI, ROUTER_ABI, QUOTER_ABI];
+      const abis = [ERC20_ABI, UNISWAP_POOL_ABI, UNISWAP_ROUTER_ABI, UNISWAP_QUOTER_ABI];
       for (const abi of abis) {
         expect(Array.isArray(abi)).toBe(true);
         expect(abi.length).toBeGreaterThan(0);
@@ -70,10 +66,9 @@ describe("Script ABIs", () => {
     it("should have valid function signatures", () => {
       const allAbis = [
         ...ERC20_ABI,
-        ...ERC20_MINIMAL_ABI,
-        ...POOL_TOKEN_ABI,
-        ...ROUTER_ABI,
-        ...QUOTER_ABI,
+        ...UNISWAP_POOL_ABI,
+        ...UNISWAP_ROUTER_ABI,
+        ...UNISWAP_QUOTER_ABI,
       ];
 
       for (const funcSig of allAbis) {

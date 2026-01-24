@@ -1,37 +1,64 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "../src/config/addresses";
-import { getDefaultRangeBounds } from "../src/config/markets";
-import { DEFAULT_STRATEGY_CONFIG } from "../src/config/strategy";
-import { createPool, getPoolState } from "../src/modules/uniswap/reader";
-import { createPositionManager, mintPosition } from "../src/modules/uniswap/liquidity";
+import { ARBITRUM_MAINNET } from "../../../config/addresses";
+import { getDefaultRangeBounds } from "../../../config/markets";
+import { DEFAULT_STRATEGY_CONFIG } from "../../../config/strategy";
+import { createPool, getPoolState } from "../../../modules/uniswap/reader";
+import { createPositionManager, mintPosition } from "../../../modules/uniswap/liquidity";
+import { IERC20 } from "../../../modules/uniswap/types";
 import {
   priceToTickWithDecimals,
   roundTickDown,
   roundTickUp,
   tickToPriceWithDecimals,
-} from "../src/modules/math/ticks";
+} from "../../../modules/math/ticks";
+import { getSignerAndAccount } from "../base";
+import {
+  ERC20_ABI,
+  UNISWAP_POOL_ABI,
+  UNISWAP_ROUTER_ABI,
+  UNISWAP_QUOTER_ABI,
+} from "../../../utils/abis";
+import { toBigInt } from "../../../utils/helpers";
 
-import { ERC20_ABI, POOL_TOKEN_ABI, ROUTER_ABI, QUOTER_ABI, toBigInt } from "./utils";
+export interface UniswapOpenPositionOptions {
+  account?: string;
+  pool?: string;
+  fee?: number;
+  tickSpacing?: number;
+  slippageBps?: bigint;
+  rangeWidth?: number;
+  priceLower?: number;
+  priceUpper?: number;
+  tickLower?: number;
+  tickUpper?: number;
+  amount0Desired?: string;
+  amount1Desired?: string;
+  usdcAmount?: string;
+  execute?: boolean;
+}
 
-async function main() {
+export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = {}): Promise<void> {
+  const { signer, account } = await getSignerAndAccount(options.account);
+  const executeFlag = options.execute ?? false;
+
   console.log("\n" + "=".repeat(60));
   console.log("UNISWAP V3 OPEN POSITION");
+  if (!executeFlag) {
+    console.log("[DRY RUN MODE]");
+  }
   console.log("=".repeat(60) + "\n");
 
-  const [signer] = await ethers.getSigners();
-  const account = await signer.getAddress();
+  const poolAddress = options.pool || ARBITRUM_MAINNET.uniswapV3EthUsdcPool;
+  const fee = options.fee ?? 500;
+  const tickSpacing = options.tickSpacing ?? 10;
+  const slippageBps = options.slippageBps ?? 50n;
 
-  const poolAddress = process.env.POOL || ARBITRUM_MAINNET.uniswapV3EthUsdcPool;
-  const fee = Number(process.env.FEE || "500");
-  const tickSpacing = Number(process.env.TICK_SPACING || "10");
-  const slippageBps = BigInt(process.env.SLIPPAGE_BPS || "50");
-
-  const manualTicks = process.env.TICK_LOWER && process.env.TICK_UPPER;
-  const amount0DesiredRaw = process.env.AMOUNT0_DESIRED;
-  const amount1DesiredRaw = process.env.AMOUNT1_DESIRED;
+  const manualTicks = options.tickLower !== undefined && options.tickUpper !== undefined;
+  const amount0DesiredRaw = options.amount0Desired;
+  const amount1DesiredRaw = options.amount1Desired;
 
   const pool = createPool(poolAddress, ethers.provider);
-  const poolTokens = new ethers.Contract(poolAddress, POOL_TOKEN_ABI, ethers.provider);
+  const poolTokens = new ethers.Contract(poolAddress, UNISWAP_POOL_ABI, ethers.provider);
   const manager = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, signer);
 
   const [poolState, token0, token1] = await Promise.all([
@@ -69,23 +96,23 @@ async function main() {
 
   const priceUsdcPerWeth = isToken0Weth ? priceToken1PerToken0 : 1 / priceToken1PerToken0;
 
-  // Use range config for default bounds, but allow override via env vars
-  const rangeWidth = Number(process.env.RANGE_WIDTH || DEFAULT_STRATEGY_CONFIG.defaultRangeWidth);
+  // Use range config for default bounds, but allow override via options
+  const rangeWidth = options.rangeWidth ?? Number(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth);
   const defaultBounds = getDefaultRangeBounds(priceUsdcPerWeth, rangeWidth);
-  const lowerPrice = Number(process.env.PRICE_LOWER || defaultBounds.lower.toFixed(6));
-  const upperPrice = Number(process.env.PRICE_UPPER || defaultBounds.upper.toFixed(6));
+  const lowerPrice = options.priceLower ?? Number(defaultBounds.lower.toFixed(6));
+  const upperPrice = options.priceUpper ?? Number(defaultBounds.upper.toFixed(6));
 
   const priceLowerForTicks = isToken0Weth ? lowerPrice : 1 / lowerPrice;
   const priceUpperForTicks = isToken0Weth ? upperPrice : 1 / upperPrice;
 
   const tickLower = manualTicks
-    ? Number(process.env.TICK_LOWER)
+    ? options.tickLower!
     : roundTickDown(
         priceToTickWithDecimals(priceLowerForTicks, token0Decimals, token1Decimals),
         tickSpacing
       );
   const tickUpper = manualTicks
-    ? Number(process.env.TICK_UPPER)
+    ? options.tickUpper!
     : roundTickUp(
         priceToTickWithDecimals(priceUpperForTicks, token0Decimals, token1Decimals),
         tickSpacing
@@ -121,10 +148,24 @@ async function main() {
       `  Amount1 Min: ${ethers.formatUnits(amount1Min, token1Decimals)} ${token1Symbol} (${ethers.formatUnits(amount1Desired, token1Decimals)} desired)`
     );
 
+    if (!executeFlag) {
+      console.log("\n[DRY RUN] Would mint position with:");
+      console.log(
+        `  Token0: ${ethers.formatUnits(amount0Desired, token0Decimals)} ${token0Symbol}`
+      );
+      console.log(
+        `  Token1: ${ethers.formatUnits(amount1Desired, token1Decimals)} ${token1Symbol}`
+      );
+      console.log(`  Tick Lower: ${tickLower}`);
+      console.log(`  Tick Upper: ${tickUpper}`);
+      console.log("\nTo execute, run with --execute flag");
+      return;
+    }
+
     const mintResult = await mintPosition(
       manager,
-      token0Contract,
-      token1Contract,
+      token0Contract as unknown as IERC20,
+      token1Contract as unknown as IERC20,
       {
         token0,
         token1,
@@ -152,13 +193,17 @@ async function main() {
     return;
   }
 
-  const usdcAmount = Number(process.env.USDC_AMOUNT || "100");
+  const usdcAmount = options.usdcAmount ? Number(options.usdcAmount) : 100;
   const usdcAmountUnits = ethers.parseUnits(usdcAmount.toString(), 6);
   const usdcToken = isToken0Usdc ? token0 : token1;
   const wethToken = isToken0Weth ? token0 : token1;
 
-  const router = new ethers.Contract(ARBITRUM_MAINNET.uniswapV3SwapRouter, ROUTER_ABI, signer);
-  const quoter = new ethers.Contract(ARBITRUM_MAINNET.uniswapV3Quoter, QUOTER_ABI, signer);
+  const router = new ethers.Contract(
+    ARBITRUM_MAINNET.uniswapV3SwapRouter,
+    UNISWAP_ROUTER_ABI,
+    signer
+  );
+  const quoter = new ethers.Contract(ARBITRUM_MAINNET.uniswapV3Quoter, UNISWAP_QUOTER_ABI, signer);
   const usdcContract = isToken0Usdc ? token0Contract : token1Contract;
   const wethContract = isToken0Weth ? token0Contract : token1Contract;
 
@@ -173,6 +218,15 @@ async function main() {
   const amountOutMin = (quoteOut * (10_000n - slippageBps)) / 10_000n;
 
   console.log(`Swapping ${ethers.formatUnits(amountIn, 6)} USDC for WETH...`);
+
+  if (!executeFlag) {
+    const wethDecimals = isToken0Weth ? token0Decimals : token1Decimals;
+    console.log("\n[DRY RUN] Would swap tokens:");
+    console.log(`  Amount In: ${ethers.formatUnits(amountIn, 6)} USDC`);
+    console.log(`  Expected Out (min): ${ethers.formatUnits(amountOutMin, wethDecimals)} WETH`);
+    console.log("\nTo execute, run with --execute flag");
+    return;
+  }
 
   let nonce = await signer.getNonce("pending");
 
@@ -207,15 +261,15 @@ async function main() {
     wethContract.balanceOf(account),
   ]);
 
-  const wethDelta = wethBalanceAfter - wethBalanceBefore;
+  const wethDelta = BigInt(wethBalanceAfter.toString()) - BigInt(wethBalanceBefore.toString());
   const usdcRemaining = usdcAmountUnits - amountIn;
 
   if (wethDelta <= 0n) {
     throw new Error("Swap produced no WETH.");
   }
 
-  const amount0Desired = isToken0Weth ? wethDelta : usdcRemaining;
-  const amount1Desired = isToken1Weth ? wethDelta : usdcRemaining;
+  const amount0Desired: bigint = isToken0Weth ? wethDelta : usdcRemaining;
+  const amount1Desired: bigint = isToken1Weth ? wethDelta : usdcRemaining;
 
   // Calculate minimum amounts based on slippage tolerance
   const amount0Min = (amount0Desired * (10_000n - slippageBps)) / 10_000n;
@@ -242,6 +296,16 @@ async function main() {
     token1Contract.allowance(account, positionManager),
   ]);
 
+  if (!executeFlag) {
+    console.log("\n[DRY RUN] Would mint position with:");
+    console.log(`  Token0: ${ethers.formatUnits(amount0Desired, token0Decimals)} ${token0Symbol}`);
+    console.log(`  Token1: ${ethers.formatUnits(amount1Desired, token1Decimals)} ${token1Symbol}`);
+    console.log(`  Tick Lower: ${tickLower}`);
+    console.log(`  Tick Upper: ${tickUpper}`);
+    console.log("\nTo execute, run with --execute flag");
+    return;
+  }
+
   if (allowance0 < amount0Desired) {
     const approval = await token0Contract.approve(positionManager, amount0Desired, { nonce });
     await approval.wait();
@@ -255,8 +319,8 @@ async function main() {
 
   const mintResult = await mintPosition(
     manager,
-    token0Contract,
-    token1Contract,
+    token0Contract as unknown as IERC20,
+    token1Contract as unknown as IERC20,
     {
       token0,
       token1,
@@ -283,8 +347,3 @@ async function main() {
   }
   console.log("\nMint transaction submitted (auto mode). ");
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

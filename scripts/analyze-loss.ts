@@ -13,8 +13,7 @@ import {
   price30ToPrice12,
   scalePriceTo30,
 } from "../src/modules/gmx/prices";
-
-const ERC20_ABI = ["function decimals() view returns (uint8)"];
+import { ERC20_ABI } from "../src/utils/abis";
 
 async function getTokenDecimals(tokenAddress: string) {
   const token = new ethers.Contract(tokenAddress, ERC20_ABI, ethers.provider);

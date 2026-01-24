@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
-import readerDeployment from "../deployments/Reader.arbitrum.json";
-import eventEmitterDeployment from "../deployments/EventEmitter.arbitrum.json";
-import { ARBITRUM_MAINNET } from "../src/config/addresses";
+import { ARBITRUM_MAINNET } from "../../../config/addresses";
+import { loadReaderDeployment, loadEventEmitterDeployment } from "../../../utils/deployments";
+import { getSignerAndAccount } from "../base";
 
 type EventLogData = {
   addressItems?: { items: Array<{ key: string; value: string }> };
@@ -11,25 +11,30 @@ type EventLogData = {
   bytes32Items?: { items: Array<{ key: string; value: string }> };
 };
 
-async function main() {
-  const orderKey = process.env.ORDER_KEY;
-  const txHash = process.env.TX_HASH;
+export interface GmxReadOrderOptions {
+  account?: string;
+  orderKey: string;
+  txHash?: string;
+}
 
-  let resolvedOrderKey = orderKey || "";
+export async function gmxReadOrder(options: GmxReadOrderOptions): Promise<void> {
+  await getSignerAndAccount(options.account); // Ensure we have a provider
 
-  if (!resolvedOrderKey && txHash) {
-    resolvedOrderKey = await findOrderKeyFromTx(txHash);
+  let resolvedOrderKey = options.orderKey;
+
+  if (!resolvedOrderKey && options.txHash) {
+    resolvedOrderKey = await findOrderKeyFromTx(options.txHash);
   }
 
   if (!resolvedOrderKey) {
-    console.error("Provide ORDER_KEY or TX_HASH.");
-    process.exit(1);
+    throw new Error("Provide orderKey or txHash.");
   }
 
-  if (txHash) {
-    await printEventLogsFromTx(txHash);
+  if (options.txHash) {
+    await printEventLogsFromTx(options.txHash);
   }
 
+  const readerDeployment = loadReaderDeployment();
   const reader = new ethers.Contract(
     readerDeployment.address,
     readerDeployment.abi,
@@ -57,10 +62,10 @@ async function main() {
 async function findOrderKeyFromTx(txHash: string): Promise<string> {
   const receipt = await ethers.provider.getTransactionReceipt(txHash);
   if (!receipt) {
-    console.error("No receipt for tx:", txHash);
-    return "";
+    throw new Error("No receipt for tx: " + txHash);
   }
 
+  const eventEmitterDeployment = loadEventEmitterDeployment();
   const emitterAddr = eventEmitterDeployment.address.toLowerCase();
   const iface = new ethers.Interface(eventEmitterDeployment.abi);
 
@@ -72,6 +77,8 @@ async function findOrderKeyFromTx(txHash: string): Promise<string> {
     } catch {
       continue;
     }
+
+    if (!parsed) continue;
 
     const eventName = parsed.args.eventName as string;
     if (eventName !== "OrderCreated") continue;
@@ -101,17 +108,16 @@ async function findOrderKeyFromTx(txHash: string): Promise<string> {
     }
   }
 
-  console.error("OrderCreated event not found for tx:", txHash);
-  return "";
+  throw new Error("OrderCreated event not found for tx: " + txHash);
 }
 
 async function printEventLogsFromTx(txHash: string): Promise<void> {
   const receipt = await ethers.provider.getTransactionReceipt(txHash);
   if (!receipt) {
-    console.error("No receipt for tx:", txHash);
-    return;
+    throw new Error("No receipt for tx: " + txHash);
   }
 
+  const eventEmitterDeployment = loadEventEmitterDeployment();
   const emitterAddr = eventEmitterDeployment.address.toLowerCase();
   const iface = new ethers.Interface(eventEmitterDeployment.abi);
 
@@ -123,6 +129,8 @@ async function printEventLogsFromTx(txHash: string): Promise<void> {
     } catch {
       continue;
     }
+
+    if (!parsed) continue;
 
     const eventName = parsed.args.eventName as string;
     const eventData = parsed.args.eventData as EventLogData;
@@ -157,8 +165,3 @@ function printItems(kind: string, items: Array<{ key: string; value: any }>) {
     console.log(`  ${item.key}: ${value}`);
   }
 }
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});

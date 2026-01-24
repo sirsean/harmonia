@@ -16,11 +16,7 @@ import {
 import { getAmountsForLiquidity, getSqrtRatioAtTick } from "../src/modules/math/ticks";
 import * as uniswapReader from "../src/modules/uniswap/reader";
 import { getLatestPrice } from "../src/modules/chainlink/price";
-
-const ERC20_ABI = [
-  "function decimals() view returns (uint8)",
-  "function symbol() view returns (string)",
-];
+import { ERC20_ABI } from "../src/utils/abis";
 
 async function getTokenInfo(tokenAddress: string, provider: ethers.Provider) {
   const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
