@@ -68,10 +68,13 @@ maybeDescribe("chainlink integration", () => {
       return definitions.map((definition) => {
         const redacted = {
           ...definition,
-          scope: definition.scope.replace(apiKey, "REDACTED"),
+          scope:
+            typeof definition.scope === "string"
+              ? definition.scope.replace(apiKey, "REDACTED")
+              : definition.scope,
         };
 
-        if (redacted.path.includes(apiKey)) {
+        if (typeof redacted.path === "string" && redacted.path.includes(apiKey)) {
           redacted.path = redacted.path.replace(apiKey, "REDACTED");
         }
 

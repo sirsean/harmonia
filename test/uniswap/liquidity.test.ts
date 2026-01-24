@@ -52,10 +52,12 @@ describe("uniswap liquidity", () => {
   it("mints position with approvals", async () => {
     const manager: UniswapPositionManager = {
       positions: vi.fn(),
+      balanceOf: vi.fn(),
+      tokenOfOwnerByIndex: vi.fn(),
       mint: vi.fn().mockResolvedValue({ hash: "0x1", wait: vi.fn() }),
       increaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x2", wait: vi.fn() }),
-      decreaseLiquidity: vi.fn().mockResolvedValue({ wait: vi.fn() }),
-      collect: vi.fn().mockResolvedValue({ wait: vi.fn() }),
+      decreaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x3", wait: vi.fn() }),
+      collect: vi.fn().mockResolvedValue({ hash: "0x4", wait: vi.fn() }),
     };
 
     const token: IERC20 = {
@@ -90,6 +92,8 @@ describe("uniswap liquidity", () => {
   it("increases liquidity", async () => {
     const manager: UniswapPositionManager = {
       positions: vi.fn(),
+      balanceOf: vi.fn(),
+      tokenOfOwnerByIndex: vi.fn(),
       mint: vi.fn().mockResolvedValue({ hash: "0x1", wait: vi.fn() }),
       increaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x2", wait: vi.fn() }),
       decreaseLiquidity: vi.fn().mockResolvedValue({ wait: vi.fn() }),

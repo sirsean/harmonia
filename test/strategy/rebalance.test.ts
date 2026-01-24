@@ -4,14 +4,15 @@ import * as gmxOrders from "../../src/modules/gmx/orders";
 import { ethers } from "ethers";
 import { RebalanceData } from "../../src/strategy/types";
 import { DEFAULT_STRATEGY_CONFIG } from "../../src/config/strategy";
+import type { GMXRouter, IERC20 } from "../../src/modules/gmx/types";
 
 // Mock gmx orders
 vi.mock("../../src/modules/gmx/orders");
 
 describe("RebalanceManager", () => {
   let manager: RebalanceManager;
-  const mockRouter = {} as gmxOrders.GMXRouter;
-  const mockToken = {} as gmxOrders.IERC20;
+  const mockRouter = {} as GMXRouter;
+  const mockToken = {} as IERC20;
   
   const config = {
     ...DEFAULT_STRATEGY_CONFIG,

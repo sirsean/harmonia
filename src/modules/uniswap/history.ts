@@ -10,41 +10,6 @@ export interface HistoricalPricePoint {
 }
 
 /**
- * Fetch historical prices from CoinGecko API
- * This provides longer history but may not match exact pool price
- *
- * @param tokenId CoinGecko token ID (e.g., "ethereum" for ETH)
- * @param days Number of days of history to fetch
- * @returns Array of historical price points
- */
-export async function fetchHistoricalPricesFromCoinGecko(
-  tokenId: string,
-  days: number
-): Promise<HistoricalPricePoint[]> {
-  // CoinGecko free API - use market_chart endpoint
-  // For daily data, use days parameter directly
-  // For hourly data, we'd need to use a different endpoint (pro API)
-  const url = `https://api.coingecko.com/api/v3/coins/${tokenId}/market_chart?vs_currency=usd&days=${days}`;
-
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`CoinGecko API error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const prices = data.prices as [number, number][]; // [timestamp_ms, price_usd]
-
-    return prices.map(([timestampMs, price]) => ({
-      timestamp: Math.floor(timestampMs / 1000),
-      price,
-    }));
-  } catch (error) {
-    throw new Error(`Failed to fetch historical prices from CoinGecko: ${error}`);
-  }
-}
-
-/**
  * Query Uniswap v3 pool swap events to get historical prices
  * Uses 10-block windows to work within free RPC tier limits
  *
@@ -229,40 +194,6 @@ export async function fetchHistoricalPricesFromSwapEvents(
 }
 
 /**
- * Fetch historical prices from CoinGecko API (fallback)
- * This provides longer history but may not match exact pool price
- */
-export async function fetchHistoricalPricesFromCoinGecko(
-  tokenId: string, // e.g., "ethereum" for ETH
-  days: number
-): Promise<HistoricalPricePoint[]> {
-  const endTime = Math.floor(Date.now() / 1000);
-  const startTime = endTime - days * 24 * 3600;
-
-  // CoinGecko free API doesn't support custom date ranges well
-  // We'll use the market_chart endpoint which gives us daily data
-  const url = `https://api.coingecko.com/api/v3/coins/${tokenId}/market_chart?vs_currency=usd&days=${days}&interval=daily`;
-
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`CoinGecko API error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const prices = data.prices as [number, number][]; // [timestamp_ms, price]
-
-    return prices.map(([timestampMs, price]) => ({
-      timestamp: Math.floor(timestampMs / 1000),
-      price,
-      tick: 0, // Not available from CoinGecko
-    }));
-  } catch (error) {
-    throw new Error(`Failed to fetch historical prices from CoinGecko: ${error}`);
-  }
-}
-
-/**
  * Fetch historical prices with automatic fallback
  * Tries swap events first (most accurate), falls back to CoinGecko
  *
@@ -328,9 +259,21 @@ export async function fetchHistoricalPrices(
   if (coinGeckoTokenId) {
     try {
       console.log(`Falling back to CoinGecko API for ${coinGeckoTokenId}...`);
-      const prices = await fetchHistoricalPricesFromCoinGecko(coinGeckoTokenId, days);
-      console.log(`Successfully fetched ${prices.length} price points from CoinGecko`);
-      return prices;
+      // Use the CoinGecko function directly
+      const url = `https://api.coingecko.com/api/v3/coins/${coinGeckoTokenId}/market_chart?vs_currency=usd&days=${days}&interval=daily`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`CoinGecko API error: ${response.statusText}`);
+      }
+      const data = await response.json();
+      const prices = data.prices as [number, number][];
+      const pricePoints = prices.map(([timestampMs, price]) => ({
+        timestamp: Math.floor(timestampMs / 1000),
+        price,
+        tick: 0, // Not available from CoinGecko
+      }));
+      console.log(`Successfully fetched ${pricePoints.length} price points from CoinGecko`);
+      return pricePoints;
     } catch (error) {
       console.warn(`Failed to fetch from CoinGecko: ${error}`);
     }
