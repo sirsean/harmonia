@@ -1,8 +1,9 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET, STRATEGY_PARAMS } from "./config/addresses";
+import { ARBITRUM_MAINNET } from "../src/config/addresses";
 import { DeltaNeutralMonitor } from "../src/strategy/monitor";
-import { RebalanceManager, RebalanceConfig } from "../src/strategy/rebalance";
+import { RebalanceManager } from "../src/strategy/rebalance";
 import { StrategyAction } from "../src/strategy/types";
+import { loadStrategyConfig } from "../src/config/strategy";
 import { createRouter } from "../src/modules/gmx/orders";
 import {
   fetchTokenPrices,
@@ -27,15 +28,9 @@ async function main() {
   const tokenIdEnv = process.env.UNISWAP_TOKEN_ID;
   const tokenIds = tokenIdEnv ? [BigInt(tokenIdEnv)] : undefined;
 
-  const monitorConfig = {
-    deltaThreshold: 0.05,
+  const monitorConfig = loadStrategyConfig({
     minFeeThresholdUsd: ethers.parseUnits("10", 30),
-    minRebalanceInterval: 3600,
-    // Range adjustment configuration
-    rangeAdjustmentThreshold: 0.02, // Adjust if within 2% of range edge
-    rangeCenterDriftThreshold: 0.05, // Adjust if >5% from center
-    minRangeAdjustmentInterval: 3600, // 1 hour minimum between adjustments
-  };
+  });
 
   const monitorContext = {
     uniswap: {
@@ -77,17 +72,9 @@ async function main() {
   const router = createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
   const collateralToken = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer) as any;
 
-  const rebalanceConfig: RebalanceConfig = {
-    targetLeverage: 3.0, // Configurable?
-    slippageBuffer: 0.005, // 0.5%
-    executionFee: STRATEGY_PARAMS.MAX_SLIPPAGE, // reusing value or defining new one?
-    // executionFee: ethers.parseEther("0.0001")?
-    // GMX execution fee is dynamic but usually around 0.0002-0.001 ETH.
-    // Let's use a safe default or fetch it.
-  };
-
-  // Hardcode execution fee for now or use a safe buffer
-  rebalanceConfig.executionFee = ethers.parseEther("0.001");
+  const rebalanceConfig = loadStrategyConfig({
+    defaultExecutionFee: ethers.parseEther("0.001"), // GMX execution fee is dynamic but usually around 0.0002-0.001 ETH
+  });
 
   const rebalanceContext = {
     account: signer.address,
@@ -148,6 +135,7 @@ async function main() {
     console.log(`  Index Price: ${ethers.formatUnits(wethPrice30, 30)} USD`);
 
     console.log(`  Target Leverage: ${rebalanceConfig.targetLeverage}`);
+    console.log(`  Execution Fee: ${ethers.formatEther(rebalanceConfig.defaultExecutionFee)} ETH`);
 
     if (adjustmentNeededUsd > 0n) {
       // Calculate estimated collateral for Increase Short

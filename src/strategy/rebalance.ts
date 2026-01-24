@@ -3,18 +3,13 @@ import * as gmxOrders from "../modules/gmx/orders";
 import { price30ToPrice12 } from "../modules/gmx/prices";
 import { RebalanceData } from "./types";
 import { GMXOrderExecutionConfig, GMXOrderType } from "../modules/gmx/types";
-
-export interface RebalanceConfig {
-  targetLeverage: number; // e.g. 3.0
-  slippageBuffer: number; // e.g. 0.005 for 0.5%
-  executionFee: bigint;
-}
+import { StrategyConfig } from "../config/strategy";
 
 export class RebalanceManager {
   constructor(
     private router: gmxOrders.GMXRouter,
     private collateralToken: gmxOrders.IERC20,
-    private config: RebalanceConfig,
+    private config: StrategyConfig,
     private context: {
       account: string;
       market: string;
@@ -106,7 +101,7 @@ export class RebalanceManager {
         sizeDeltaUsd,
         collateralAmount,
         acceptablePrice,
-        executionFee: this.config.executionFee,
+        executionFee: this.config.defaultExecutionFee,
         isLong: false,
       },
       executionConfig
@@ -141,7 +136,7 @@ export class RebalanceManager {
         collateralToken: this.context.collateralTokenAddress,
         sizeDeltaUsd,
         acceptablePrice,
-        executionFee: this.config.executionFee,
+        executionFee: this.config.defaultExecutionFee,
         isLong: false,
       },
       executionConfig

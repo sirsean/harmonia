@@ -38,6 +38,7 @@ import { ethers } from "ethers";
 import { StrategyAction } from "../../src/strategy/types";
 import { UniswapPoolState, UniswapPosition } from "../../src/modules/uniswap/types";
 import { getSqrtRatioAtTick } from "../../src/modules/math/ticks";
+import { DEFAULT_STRATEGY_CONFIG } from "../../src/config/strategy";
 
 vi.mock("../../src/modules/gmx/reader");
 vi.mock("../../src/modules/uniswap/reader");
@@ -70,12 +71,8 @@ describe("DeltaNeutralMonitor", () => {
   };
 
   const config = {
-    deltaThreshold: 0.05,
+    ...DEFAULT_STRATEGY_CONFIG,
     minFeeThresholdUsd: ethers.parseUnits("10", 30),
-    minRebalanceInterval: 3600,
-    rangeAdjustmentThreshold: 0.02,
-    rangeCenterDriftThreshold: 0.05,
-    minRangeAdjustmentInterval: 3600,
   };
   
   const context = {

@@ -1,5 +1,5 @@
 import { ethers, network } from "hardhat";
-import { ARBITRUM_MAINNET } from "./config/addresses";
+import { ARBITRUM_MAINNET } from "../src/config/addresses";
 
 async function main() {
   const [signer] = await ethers.getSigners();

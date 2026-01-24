@@ -3,6 +3,7 @@ import { RebalanceManager } from "../../src/strategy/rebalance";
 import * as gmxOrders from "../../src/modules/gmx/orders";
 import { ethers } from "ethers";
 import { RebalanceData } from "../../src/strategy/types";
+import { DEFAULT_STRATEGY_CONFIG } from "../../src/config/strategy";
 
 // Mock gmx orders
 vi.mock("../../src/modules/gmx/orders");
@@ -13,9 +14,8 @@ describe("RebalanceManager", () => {
   const mockToken = {} as gmxOrders.IERC20;
   
   const config = {
-    targetLeverage: 3.0,
-    slippageBuffer: 0.005, // 0.5%
-    executionFee: 100000000000000n, // 0.0001 ETH
+    ...DEFAULT_STRATEGY_CONFIG,
+    defaultExecutionFee: 100000000000000n, // 0.0001 ETH
   };
   
   const context = {

@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "./config/addresses";
+import { ARBITRUM_MAINNET } from "../src/config/addresses";
 import {
   createPool,
   createPositionManager,

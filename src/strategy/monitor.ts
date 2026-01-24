@@ -8,13 +8,13 @@ import {
   tickToPriceWithDecimals,
 } from "../modules/math/ticks";
 import {
-  MonitorConfig,
   Recommendation,
   StrategyAction,
   StrategyMonitor,
   StrategyStatus,
   RebalanceData,
 } from "./types";
+import { StrategyConfig } from "../config/strategy";
 import { GMXPosition } from "../modules/gmx/types";
 import { UniswapPosition } from "../modules/uniswap/types";
 
@@ -26,7 +26,7 @@ const ERC20_ABI = [
 export class DeltaNeutralMonitor implements StrategyMonitor {
   constructor(
     private provider: ethers.Provider,
-    private config: MonitorConfig,
+    private config: StrategyConfig,
     private context: {
       uniswap: {
         positionManager: string;

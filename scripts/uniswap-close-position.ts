@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { ARBITRUM_MAINNET } from "./config/addresses";
+import { ARBITRUM_MAINNET } from "../src/config/addresses";
 import { createPositionManager, getPosition } from "../src/modules/uniswap/reader";
 import { collectFees, decreaseLiquidity } from "../src/modules/uniswap/fees";
 import { createPositionManager as createPositionManagerWriter } from "../src/modules/uniswap/liquidity";

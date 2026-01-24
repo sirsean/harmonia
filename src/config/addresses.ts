@@ -76,30 +76,3 @@ export function getNetworkAddresses(chainId: number): NetworkAddresses {
       return ARBITRUM_MAINNET;
   }
 }
-
-/**
- * Strategy parameters
- */
-export const STRATEGY_PARAMS = {
-  // Precision values
-  PRECISION: BigInt(10 ** 18),
-  GMX_USD_PRECISION: BigInt(10 ** 30),
-  Q96: BigInt(2) ** BigInt(96),
-
-  // Strategy thresholds
-  DELTA_THRESHOLD: BigInt(5) * BigInt(10 ** 16), // 5%
-  EMERGENCY_THRESHOLD: BigInt(20) * BigInt(10 ** 16), // 20%
-  MAX_LEVERAGE: BigInt(3) * BigInt(10 ** 18), // 3x
-  MAX_SLIPPAGE: BigInt(1) * BigInt(10 ** 16), // 1%
-
-  // Timing parameters
-  MIN_REBALANCE_INTERVAL: 3600, // 1 hour
-  MAX_REBALANCE_INTERVAL: 86400, // 24 hours
-  MIN_COMPOUND_INTERVAL: 86400, // 24 hours
-
-  // Token decimals
-  USDC_DECIMALS: 6,
-  WETH_DECIMALS: 18,
-  CHAINLINK_DECIMALS: 8,
-  GMX_PRICE_DECIMALS: 12,
-};
