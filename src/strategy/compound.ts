@@ -73,7 +73,7 @@ export async function compoundFees(
 
   // 1. Get current position state and unclaimed fees
   const position = await uniswapReader.getPositionWithFees(positionManager, tokenId, owner);
-  
+
   // Get fees before collecting (to know how much we'll collect)
   const feesBefore = await uniswapFees.getUnclaimedFees(positionManager, tokenId, owner);
   const amount0Collected = feesBefore.amount0;
@@ -104,7 +104,7 @@ export async function compoundFees(
   };
 
   const collectTx = await uniswapFees.collectFees(positionManager, collectParams, config.overrides);
-  
+
   let collectTxHash: string | undefined;
   if (config.waitForReceipt !== false) {
     const receipt = await collectTx.wait();
