@@ -34,13 +34,18 @@ export interface UniswapOpenPositionOptions {
   amount0Desired?: string;
   amount1Desired?: string;
   usdcAmount?: string;
+  execute?: boolean;
 }
 
 export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = {}): Promise<void> {
   const { signer, account } = await getSignerAndAccount(options.account);
+  const executeFlag = options.execute ?? false;
 
   console.log("\n" + "=".repeat(60));
   console.log("UNISWAP V3 OPEN POSITION");
+  if (!executeFlag) {
+    console.log("[DRY RUN MODE]");
+  }
   console.log("=".repeat(60) + "\n");
 
   const poolAddress = options.pool || ARBITRUM_MAINNET.uniswapV3EthUsdcPool;
@@ -143,6 +148,20 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
       `  Amount1 Min: ${ethers.formatUnits(amount1Min, token1Decimals)} ${token1Symbol} (${ethers.formatUnits(amount1Desired, token1Decimals)} desired)`
     );
 
+    if (!executeFlag) {
+      console.log("\n[DRY RUN] Would mint position with:");
+      console.log(
+        `  Token0: ${ethers.formatUnits(amount0Desired, token0Decimals)} ${token0Symbol}`
+      );
+      console.log(
+        `  Token1: ${ethers.formatUnits(amount1Desired, token1Decimals)} ${token1Symbol}`
+      );
+      console.log(`  Tick Lower: ${tickLower}`);
+      console.log(`  Tick Upper: ${tickUpper}`);
+      console.log("\nTo execute, run with --execute flag");
+      return;
+    }
+
     const mintResult = await mintPosition(
       manager,
       token0Contract as unknown as IERC20,
@@ -199,6 +218,15 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
   const amountOutMin = (quoteOut * (10_000n - slippageBps)) / 10_000n;
 
   console.log(`Swapping ${ethers.formatUnits(amountIn, 6)} USDC for WETH...`);
+
+  if (!executeFlag) {
+    const wethDecimals = isToken0Weth ? token0Decimals : token1Decimals;
+    console.log("\n[DRY RUN] Would swap tokens:");
+    console.log(`  Amount In: ${ethers.formatUnits(amountIn, 6)} USDC`);
+    console.log(`  Expected Out (min): ${ethers.formatUnits(amountOutMin, wethDecimals)} WETH`);
+    console.log("\nTo execute, run with --execute flag");
+    return;
+  }
 
   let nonce = await signer.getNonce("pending");
 
@@ -267,6 +295,16 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
     token0Contract.allowance(account, positionManager),
     token1Contract.allowance(account, positionManager),
   ]);
+
+  if (!executeFlag) {
+    console.log("\n[DRY RUN] Would mint position with:");
+    console.log(`  Token0: ${ethers.formatUnits(amount0Desired, token0Decimals)} ${token0Symbol}`);
+    console.log(`  Token1: ${ethers.formatUnits(amount1Desired, token1Decimals)} ${token1Symbol}`);
+    console.log(`  Tick Lower: ${tickLower}`);
+    console.log(`  Tick Upper: ${tickUpper}`);
+    console.log("\nTo execute, run with --execute flag");
+    return;
+  }
 
   if (allowance0 < amount0Desired) {
     const approval = await token0Contract.approve(positionManager, amount0Desired, { nonce });

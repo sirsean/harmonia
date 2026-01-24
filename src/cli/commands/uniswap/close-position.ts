@@ -10,24 +10,41 @@ const MAX_UINT128 = (1n << 128n) - 1n;
 export interface UniswapClosePositionOptions {
   account?: string;
   tokenId: string;
+  execute?: boolean;
 }
 
 export async function uniswapClosePosition(options: UniswapClosePositionOptions): Promise<void> {
   const { signer, account } = await getSignerAndAccount(options.account);
+  const executeFlag = options.execute ?? false;
 
   console.log("\n" + "=".repeat(60));
   console.log("UNISWAP V3 CLOSE POSITION");
+  if (!executeFlag) {
+    console.log("[DRY RUN MODE]");
+  }
   console.log("=".repeat(60) + "\n");
 
   const tokenId = BigInt(options.tokenId);
 
   const reader = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, ethers.provider);
-  const manager = createPositionManagerWriter(ARBITRUM_MAINNET.uniswapV3PositionManager, signer);
   const position = await getPosition(reader, tokenId);
 
   if (position.liquidity === 0n) {
-    console.log("Position has no liquidity; collecting fees only.");
+    console.log("Position has no liquidity; would collect fees only.");
   } else {
+    console.log(`Position liquidity: ${position.liquidity.toString()}`);
+    console.log(`Would remove liquidity and collect fees.`);
+  }
+
+  if (!executeFlag) {
+    console.log("\n[DRY RUN] Would close position and collect fees");
+    console.log("\nTo execute, run with --execute flag");
+    return;
+  }
+
+  const manager = createPositionManagerWriter(ARBITRUM_MAINNET.uniswapV3PositionManager, signer);
+
+  if (position.liquidity > 0n) {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
     await decreaseLiquidity(manager, {
       tokenId,

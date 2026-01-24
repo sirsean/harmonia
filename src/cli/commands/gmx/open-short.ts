@@ -12,13 +12,18 @@ export interface GmxOpenShortOptions {
   sizeDeltaUsd: string;
   executionFee?: string;
   slippageBps?: number;
+  execute?: boolean;
 }
 
 export async function gmxOpenShort(options: GmxOpenShortOptions): Promise<void> {
   const { signer, account } = await getSignerAndAccount(options.account);
+  const executeFlag = options.execute ?? false;
 
   console.log("\n" + "=".repeat(60));
   console.log("GMX V2 CREATE SHORT POSITION");
+  if (!executeFlag) {
+    console.log("[DRY RUN MODE]");
+  }
   console.log("=".repeat(60) + "\n");
 
   const routerAddress = ARBITRUM_MAINNET.gmxExchangeRouter;
@@ -51,6 +56,16 @@ export async function gmxOpenShort(options: GmxOpenShortOptions): Promise<void> 
   console.log("Fee:", ethers.formatEther(executionFee), "ETH");
   console.log("Acceptable Price:", ethers.formatUnits(acceptablePrice, 12), "USD");
   console.log("Slippage:", slippageBps / 100, "%");
+
+  if (!executeFlag) {
+    console.log("\n[DRY RUN] Would create short order with:");
+    console.log(`  Collateral: ${ethers.formatUnits(collateralAmount, 6)} USDC`);
+    console.log(`  Size: ${ethers.formatUnits(sizeDeltaUsd, 30)} USD`);
+    console.log(`  Execution Fee: ${ethers.formatEther(executionFee)} ETH`);
+    console.log(`  Acceptable Price: ${ethers.formatUnits(acceptablePrice, 12)} USD`);
+    console.log("\nTo execute, run with --execute flag");
+    return;
+  }
 
   const router = createRouter(routerAddress, signer);
   const usdc = new ethers.Contract(usdcAddress, ERC20_ABI, signer) as unknown as IERC20;

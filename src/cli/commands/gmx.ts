@@ -37,11 +37,12 @@ export function registerGmxCommands(program: Command): void {
   addCommonOptions(
     gmx
       .command("open-short")
-      .description("Open a GMX short position")
+      .description("Open a GMX short position (dry-run by default)")
       .requiredOption("--collateral <amount>", "Collateral amount in USDC (e.g., 20)")
       .requiredOption("--size <amount>", "Position size in USD (e.g., 100)")
       .option("--execution-fee <amount>", "Execution fee in ETH", "0.01")
       .option("--slippage-bps <number>", "Slippage tolerance in basis points", "100")
+      .option("--execute", "Actually execute the transaction (default: dry-run)", false)
       .action(async (options) => {
         await gmxOpenShort({
           account: options.account,
@@ -49,6 +50,7 @@ export function registerGmxCommands(program: Command): void {
           sizeDeltaUsd: options.size,
           executionFee: options.executionFee,
           slippageBps: parseInt(options.slippageBps || "100", 10),
+          execute: options.execute ?? false,
         });
       })
   );
@@ -57,11 +59,12 @@ export function registerGmxCommands(program: Command): void {
   addCommonOptions(
     gmx
       .command("close-short")
-      .description("Close a GMX short position")
+      .description("Close a GMX short position (dry-run by default)")
       .requiredOption("--market <address>", "Market address")
       .option("--size <amount>", "Size to close in USD (defaults to full position)")
       .option("--execution-fee <amount>", "Execution fee in ETH", "0.01")
       .option("--slippage-bps <number>", "Slippage tolerance in basis points", "100")
+      .option("--execute", "Actually execute the transaction (default: dry-run)", false)
       .action(async (options) => {
         await gmxCloseShort({
           account: options.account,
@@ -69,6 +72,7 @@ export function registerGmxCommands(program: Command): void {
           sizeDeltaUsd: options.size,
           executionFee: options.executionFee,
           slippageBps: parseInt(options.slippageBps || "100", 10),
+          execute: options.execute ?? false,
         });
       })
   );

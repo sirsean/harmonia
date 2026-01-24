@@ -32,7 +32,7 @@ export function registerUniswapCommands(program: Command): void {
   addCommonOptions(
     uniswap
       .command("open-position")
-      .description("Open a new Uniswap v3 LP position")
+      .description("Open a new Uniswap v3 LP position (dry-run by default)")
       .option("--pool <address>", "Pool address")
       .option("--fee <number>", "Fee tier (500, 3000, 10000)", "500")
       .option("--tick-spacing <number>", "Tick spacing", "10")
@@ -45,6 +45,7 @@ export function registerUniswapCommands(program: Command): void {
       .option("--amount0 <amount>", "Amount of token0 desired")
       .option("--amount1 <amount>", "Amount of token1 desired")
       .option("--usdc-amount <amount>", "USDC amount (auto-balances if not using amount0/amount1)")
+      .option("--execute", "Actually execute the transaction (default: dry-run)", false)
       .action(async (options) => {
         await uniswapOpenPosition({
           account: options.account,
@@ -60,6 +61,7 @@ export function registerUniswapCommands(program: Command): void {
           amount0Desired: options.amount0,
           amount1Desired: options.amount1,
           usdcAmount: options.usdcAmount,
+          execute: options.execute ?? false,
         });
       })
   );
@@ -68,12 +70,14 @@ export function registerUniswapCommands(program: Command): void {
   addCommonOptions(
     uniswap
       .command("close-position")
-      .description("Close a Uniswap v3 LP position")
+      .description("Close a Uniswap v3 LP position (dry-run by default)")
       .requiredOption("--token-id <id>", "Token ID of position to close")
+      .option("--execute", "Actually execute the transaction (default: dry-run)", false)
       .action(async (options) => {
         await uniswapClosePosition({
           account: options.account,
           tokenId: options.tokenId,
+          execute: options.execute ?? false,
         });
       })
   );

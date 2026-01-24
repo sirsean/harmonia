@@ -28,14 +28,14 @@ export function registerStrategyCommands(program: Command): void {
   addCommonOptions(
     strategy
       .command("rebalance")
-      .description("Execute rebalance operation")
+      .description("Execute rebalance operation (dry-run by default)")
       .option("--token-id <id>", "Uniswap token ID")
-      .option("--dry-run", "Perform dry run without executing", false)
+      .option("--execute", "Actually execute the transaction (default: dry-run)", false)
       .action(async (options) => {
         await executeRebalance({
           account: options.account,
           tokenId: options.tokenId,
-          dryRun: options.dryRun ?? false,
+          execute: options.execute ?? false,
         });
       })
   );
@@ -44,13 +44,13 @@ export function registerStrategyCommands(program: Command): void {
   addCommonOptions(
     strategy
       .command("adjust-range")
-      .description("Execute range adjustment")
+      .description("Execute range adjustment (dry-run by default)")
       .option("--token-id <id>", "Uniswap token ID")
       .option("--range-width <number>", "Range width (e.g., 0.2 for 20%)")
       .option("--price-lower <number>", "Lower price bound")
       .option("--price-upper <number>", "Upper price bound")
       .option("--slippage-bps <number>", "Slippage tolerance in basis points", "50")
-      .option("--dry-run", "Perform dry run without executing", false)
+      .option("--execute", "Actually execute the transaction (default: dry-run)", false)
       .action(async (options) => {
         await executeAdjustRange({
           account: options.account,
@@ -59,7 +59,7 @@ export function registerStrategyCommands(program: Command): void {
           priceLower: options.priceLower ? Number(options.priceLower) : undefined,
           priceUpper: options.priceUpper ? Number(options.priceUpper) : undefined,
           slippageBps: options.slippageBps ? BigInt(options.slippageBps) : undefined,
-          dryRun: options.dryRun ?? false,
+          execute: options.execute ?? false,
         });
       })
   );

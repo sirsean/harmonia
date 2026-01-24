@@ -17,7 +17,7 @@ import { ERC20_ABI } from "../../../utils/abis";
 export interface ExecuteRebalanceOptions {
   account?: string;
   tokenId?: string;
-  dryRun?: boolean;
+  execute?: boolean;
 }
 
 export async function executeRebalance(options: ExecuteRebalanceOptions = {}): Promise<void> {
@@ -101,10 +101,10 @@ export async function executeRebalance(options: ExecuteRebalanceOptions = {}): P
   console.log(`Prices: USDC=$${usdcPriceNum}, ETH=$${ethers.formatUnits(wethPrice30, 30)}`);
 
   // 4. Execute
-  const executeFlag = !options.dryRun;
+  const executeFlag = options.execute ?? false;
 
   if (!executeFlag) {
-    console.log("\n[Dry Run] Rebalance would be executed with:");
+    console.log("\n[DRY RUN] Rebalance would be executed with:");
 
     console.log(`  Adjustment: ${ethers.formatUnits(adjustmentNeededUsd, 30)} USD`);
 
@@ -127,7 +127,7 @@ export async function executeRebalance(options: ExecuteRebalanceOptions = {}): P
       );
     }
 
-    console.log("\nTo execute, run without --dry-run flag");
+    console.log("\nTo execute, run with --execute flag");
 
     return;
   }

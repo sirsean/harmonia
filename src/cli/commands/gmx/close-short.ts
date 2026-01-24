@@ -11,13 +11,18 @@ export interface GmxCloseShortOptions {
   sizeDeltaUsd?: string;
   executionFee?: string;
   slippageBps?: number;
+  execute?: boolean;
 }
 
 export async function gmxCloseShort(options: GmxCloseShortOptions): Promise<void> {
   const { signer, account } = await getSignerAndAccount(options.account);
+  const executeFlag = options.execute ?? false;
 
   console.log("\n" + "=".repeat(60));
   console.log("GMX V2 CLOSE SHORT POSITION");
+  if (!executeFlag) {
+    console.log("[DRY RUN MODE]");
+  }
   console.log("=".repeat(60) + "\n");
 
   const routerAddress = ARBITRUM_MAINNET.gmxExchangeRouter;
@@ -63,6 +68,15 @@ export async function gmxCloseShort(options: GmxCloseShortOptions): Promise<void
   const acceptablePrice = (priceResult.outputPrice * BigInt(10000 + slippageBps)) / 10000n;
   console.log("Acceptable Price:", ethers.formatUnits(acceptablePrice, 12), "USD");
   console.log("Slippage:", slippageBps / 100, "%");
+
+  if (!executeFlag) {
+    console.log("\n[DRY RUN] Would create close order with:");
+    console.log(`  Size: ${ethers.formatUnits(sizeDeltaUsd, 30)} USD`);
+    console.log(`  Execution Fee: ${ethers.formatEther(executionFee)} ETH`);
+    console.log(`  Acceptable Price: ${ethers.formatUnits(acceptablePrice, 12)} USD`);
+    console.log("\nTo execute, run with --execute flag");
+    return;
+  }
 
   const router = createRouter(routerAddress, signer);
 

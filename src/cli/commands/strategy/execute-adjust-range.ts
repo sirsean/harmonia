@@ -48,7 +48,7 @@ export interface ExecuteAdjustRangeOptions {
   priceLower?: number;
   priceUpper?: number;
   slippageBps?: bigint;
-  dryRun?: boolean;
+  execute?: boolean;
 }
 
 export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}): Promise<void> {
@@ -189,8 +189,8 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
   console.log(`  Tick Lower: ${tickLower}`);
   console.log(`  Tick Upper: ${tickUpper}`);
 
-  // 4. Check for dry run
-  const executeFlag = !options.dryRun;
+  // 4. Check for execution flag (default: dry-run)
+  const executeFlag = options.execute ?? false;
 
   // 5. Execute: Close old positions and open new one
   if (!executeFlag) {
@@ -749,6 +749,6 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
     console.log(`   - Short size: $${ethers.formatUnits(allocation.gmxShortSizeUsd, 30)}`);
     console.log(`   - Collateral: $${ethers.formatUnits(allocation.gmxCollateralUsd, 30)}`);
     console.log(`   - Total capital used: $${ethers.formatUnits(allocation.totalCapitalUsd, 30)}`);
-    console.log("\nTo execute, run without --dry-run flag");
+    console.log("\nTo execute, run with --execute flag");
   }
 }

@@ -121,17 +121,3 @@ export const CHAINLINK_FEED_ABI = [
   "function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)",
   "function decimals() view returns (uint8)",
 ] as const;
-
-// ============================================================================
-// Legacy exports for backward compatibility
-// ============================================================================
-
-/**
- * @deprecated Use UNISWAP_ROUTER_ABI instead
- */
-export const ROUTER_ABI = UNISWAP_ROUTER_ABI;
-
-/**
- * @deprecated Use UNISWAP_QUOTER_ABI instead
- */
-export const QUOTER_ABI = UNISWAP_QUOTER_ABI;
