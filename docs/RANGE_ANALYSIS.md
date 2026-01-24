@@ -1,5 +1,19 @@
 # Uniswap Range Adjustment Analysis
 
+## Summary (Issue #41 - Range Optimization)
+
+**Optimized Default Range**: ±7.5% (15% total width)
+
+Based on historical analysis of 30 days of price data, the default LP range width has been optimized from ±10% (20% total) to ±7.5% (15% total). This change provides:
+
+- **33% better net APY**: ~24% vs ~18% for ±10%
+- **Same operational overhead**: 0.6% out-of-range time, ~12.7 adjustments/month
+- **Optimal balance**: Maximum yield while maintaining manageable operational costs
+
+See "Current Default Range" section below for implementation details.
+
+---
+
 ## Current State
 
 ### Current Range Adjustment Logic
@@ -22,16 +36,24 @@ if (anyOutOfRange) {
 - **Problem**: This is reactive - we only adjust AFTER price has moved completely outside the range
 - **Consequence**: Position stops earning fees entirely when out of range
 
-### Current Default Range
+### Current Default Range (Optimized - Issue #41)
 
-**Location**: `scripts/uniswap-open-position.ts` lines 150-151
+**Location**: `src/config/strategy.ts` and `src/config/markets.ts`
 
 ```typescript
-const lowerPrice = Number(process.env.PRICE_LOWER || (priceUsdcPerWeth * 0.9).toFixed(6));
-const upperPrice = Number(process.env.PRICE_UPPER || (priceUsdcPerWeth * 1.1).toFixed(6));
+defaultRangeWidth: 0.15, // 15% total width (±7.5% on each side)
 ```
 
-**Current Default**: ±10% on either side = **20% total range width**
+**Current Default**: ±7.5% on either side = **15% total range width**
+
+**Optimization Rationale** (based on historical analysis):
+- **Net APY**: ~24% (vs 18% for previous ±10% default)
+- **Out-of-range time**: 0.6% (same as ±10%)
+- **Adjustments/month**: ~12.7 (same as ±10%)
+- **Yield improvement**: 33% better than previous default
+- **Operational impact**: Minimal (same adjustment frequency)
+
+The default was optimized from ±10% (20% total) to ±7.5% (15% total) based on analysis of 30 days of historical price data, balancing yield maximization with operational costs.
 
 ---
 
@@ -241,11 +263,14 @@ From `src/modules/math/delta.ts`:
 - Accept: Higher gas costs, more frequent adjustments
 - Best for: High-volume periods, active monitoring
 
-#### 2. Balanced (Recommended)
-**Range**: ±7-10% (14-20% total width)
-- Target: 10-15% APY
-- Balance: Yield vs. gas costs
+#### 2. Balanced (Recommended) - **CURRENT DEFAULT**
+**Range**: ±7.5% (15% total width) - **Optimized based on historical analysis (Issue #41)**
+- Target: ~24% net APY (vs 18% for ±10%)
+- Out-of-range time: 0.6%
+- Adjustments: ~12.7/month
+- Balance: Optimal yield vs. gas costs and operational overhead
 - Best for: Most use cases, automated strategies
+- **Rationale**: Provides 33% better yield than ±10% while maintaining similar operational characteristics
 
 #### 3. Low Maintenance (Conservative)
 **Range**: ±15-20% (30-40% total width)

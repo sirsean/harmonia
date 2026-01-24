@@ -340,8 +340,21 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
 
       const priceCenter = (priceLower + priceUpper) / 2;
       const rangeWidth = priceUpper - priceLower;
+      const currentRangeWidthPercent = rangeWidth / priceCenter;
 
-      // Priority 2: Price near range boundary (within threshold % of edge)
+      // Priority 2: Range width is wider than configured default (optimize for better yield)
+      // Only check if current range is significantly wider than default (e.g., >10% wider)
+      const widthTolerance = 0.1; // 10% tolerance to avoid unnecessary adjustments
+      if (currentRangeWidthPercent > this.config.defaultRangeWidth * (1 + widthTolerance)) {
+        const currentWidthPercent = (currentRangeWidthPercent * 100).toFixed(1);
+        const targetWidthPercent = (this.config.defaultRangeWidth * 100).toFixed(1);
+        return {
+          shouldAdjust: true,
+          reason: `Position ${position.tokenId} range width (${currentWidthPercent}%) exceeds configured default (${targetWidthPercent}%) - tightening for better yield`,
+        };
+      }
+
+      // Priority 3: Price near range boundary (within threshold % of edge)
       const distanceToLower = (price - priceLower) / rangeWidth;
       const distanceToUpper = (priceUpper - price) / rangeWidth;
       const minDistanceToEdge = Math.min(distanceToLower, distanceToUpper);
@@ -355,7 +368,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
         };
       }
 
-      // Priority 3: Price drifted significantly from center
+      // Priority 4: Price drifted significantly from center
       const distanceFromCenter = Math.abs(price - priceCenter) / priceCenter;
       if (distanceFromCenter > this.config.rangeCenterDriftThreshold) {
         const driftPercent = (distanceFromCenter * 100).toFixed(2);

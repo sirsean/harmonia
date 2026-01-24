@@ -52,6 +52,8 @@ export interface StrategyConfig {
   maxLeverage: number;
   /** Minimum position size in USD (30 decimals) */
   minPositionSizeUsd: bigint;
+  /** Maximum total position size in USD (30 decimals) - includes LP + GMX collateral */
+  maxPositionSizeUsd: bigint;
 
   // Slippage and fees
   /** Maximum acceptable slippage (as decimal, e.g., 0.01 = 1%) */
@@ -70,7 +72,7 @@ export interface StrategyConfig {
   rangeCenterDriftThreshold: number;
 
   // Range size parameters
-  /** Default range width (as decimal, e.g., 0.2 = 20% total width = ±10% on each side) */
+  /** Default range width (as decimal, e.g., 0.15 = 15% total width = ±7.5% on each side) */
   defaultRangeWidth: number;
   /** Minimum range width (as decimal, e.g., 0.1 = 10% minimum = ±5%) */
   minRangeWidth: number;
@@ -98,7 +100,8 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
 
   // Position limits
   maxLeverage: 3.0, // 3x
-  minPositionSizeUsd: (BigInt(1000) * PRECISION.GMX_USD) / BigInt(10 ** 6), // $1000 in 30 decimals
+  minPositionSizeUsd: BigInt(100) * PRECISION.GMX_USD, // $100 in 30 decimals
+  maxPositionSizeUsd: BigInt(500) * PRECISION.GMX_USD, // $500 default max (30 decimals)
 
   // Slippage and fees
   maxSlippage: 0.01, // 1%
@@ -111,7 +114,7 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   rangeCenterDriftThreshold: 0.05, // 5%
 
   // Range size parameters
-  defaultRangeWidth: 0.2, // 20% total width (±10% on each side)
+  defaultRangeWidth: 0.15, // 15% total width (±7.5% on each side) - optimized for balanced yield vs operational costs
   minRangeWidth: 0.1, // 10% minimum (±5%)
   maxRangeWidth: 0.4, // 40% maximum (±20%)
 
@@ -149,8 +152,11 @@ export function loadStrategyConfig(overrides?: Partial<StrategyConfig>): Strateg
   }
   if (process.env.MIN_POSITION_SIZE_USD) {
     const minSize = parseFloat(process.env.MIN_POSITION_SIZE_USD);
-    config.minPositionSizeUsd =
-      (BigInt(Math.floor(minSize * 1e6)) * PRECISION.GMX_USD) / BigInt(10 ** 6);
+    config.minPositionSizeUsd = BigInt(Math.floor(minSize)) * PRECISION.GMX_USD;
+  }
+  if (process.env.MAX_POSITION_SIZE_USD) {
+    const maxSize = parseFloat(process.env.MAX_POSITION_SIZE_USD);
+    config.maxPositionSizeUsd = BigInt(Math.floor(maxSize)) * PRECISION.GMX_USD;
   }
   if (process.env.MAX_SLIPPAGE) {
     config.maxSlippage = parseFloat(process.env.MAX_SLIPPAGE);
@@ -275,6 +281,14 @@ export function validateStrategyConfig(config: StrategyConfig): void {
   // Validate bigint values
   if (config.minPositionSizeUsd <= 0n) {
     throw new Error(`minPositionSizeUsd must be positive, got ${config.minPositionSizeUsd}`);
+  }
+  if (config.maxPositionSizeUsd <= 0n) {
+    throw new Error(`maxPositionSizeUsd must be positive, got ${config.maxPositionSizeUsd}`);
+  }
+  if (config.maxPositionSizeUsd < config.minPositionSizeUsd) {
+    throw new Error(
+      `maxPositionSizeUsd (${config.maxPositionSizeUsd}) must be >= minPositionSizeUsd (${config.minPositionSizeUsd})`
+    );
   }
   if (config.minFeeThresholdUsd <= 0n) {
     throw new Error(`minFeeThresholdUsd must be positive, got ${config.minFeeThresholdUsd}`);
