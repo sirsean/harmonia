@@ -83,9 +83,17 @@ export async function fetchHistoricalPricesFromSwapEvents(
   const pricePoints: HistoricalPricePoint[] = [];
   const seenTimestamps = new Set<number>();
 
-  // Sample every N blocks to reduce data volume (e.g., sample every hour = ~3600 blocks)
-  // This reduces the number of queries significantly
-  const sampleInterval = 3600; // Sample approximately every hour
+  // Sample every N blocks to reduce data volume
+  // For longer periods, use less frequent sampling to reduce query time
+  // - Short periods (< 30 days): sample every hour (~3600 blocks)
+  // - Medium periods (30-90 days): sample every 6 hours (~21600 blocks)
+  // - Long periods (> 90 days): sample every 12 hours (~43200 blocks)
+  let sampleInterval = 3600; // Default: hourly
+  if (days > 90) {
+    sampleInterval = 43200; // Every 12 hours for long periods
+  } else if (days > 30) {
+    sampleInterval = 21600; // Every 6 hours for medium periods
+  }
   const windowsPerSample = Math.ceil(sampleInterval / blockWindowSize); // How many windows to skip
 
   // Get token decimals

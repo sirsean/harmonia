@@ -150,18 +150,20 @@ describe("Range Analysis", () => {
     const dailyVolumeUsd = 10_000_000;
     const positionSizeUsd = 100_000;
 
-    it("identifies out-of-range prices correctly", () => {
+    it("identifies out-of-range prices correctly with proactive adjustments", () => {
       // Create price points: some in range, some out
+      // With proactive adjustments, the range center moves, so points that were
+      // in range relative to the original center may become out of range after adjustments
       const pricePoints: PricePoint[] = [
-        { timestamp: baseTime, price: 3000 }, // In range (center)
-        { timestamp: baseTime + 3600, price: 3100 }, // In range
-        { timestamp: baseTime + 7200, price: 2000 }, // Out of range (below)
-        { timestamp: baseTime + 10800, price: 4000 }, // Out of range (above)
-        { timestamp: baseTime + 14400, price: 3050 }, // In range
+        { timestamp: baseTime, price: 3000 }, // In range (center = 3000, range = 2400-3600)
+        { timestamp: baseTime + 3600, price: 3100 }, // In range (center still 3000)
+        { timestamp: baseTime + 7200, price: 2000 }, // Out of range, adjust center to 2000 (range = 1600-2400)
+        { timestamp: baseTime + 10800, price: 4000 }, // Out of range relative to center 2000, adjust to 4000 (range = 3200-4800)
+        { timestamp: baseTime + 14400, price: 3050 }, // Out of range relative to center 4000 (3050 < 3200)
       ];
 
       const analysis = analyzeRangeWidth(
-        0.2, // 20% range
+        0.2, // 20% range (±10%)
         pricePoints,
         initialPrice,
         poolFeeBps,
@@ -169,16 +171,23 @@ describe("Range Analysis", () => {
         positionSizeUsd
       );
 
-      expect(analysis.outOfRangeCount).toBe(2);
-      expect(analysis.outOfRangePercent).toBeCloseTo(40, 1); // 2 out of 5 = 40%
+      // With proactive adjustments:
+      // - Point 1 (3000): In range
+      // - Point 2 (3100): In range  
+      // - Point 3 (2000): Out of range, then adjusted (now in range after adjustment)
+      // - Point 4 (4000): Out of range relative to center 2000, then adjusted (now in range after adjustment)
+      // - Point 5 (3050): Out of range relative to center 4000 (3050 < 3200)
+      // So we expect 3 out-of-range moments (before adjustments happen)
+      expect(analysis.outOfRangeCount).toBe(3);
+      expect(analysis.outOfRangePercent).toBeCloseTo(60, 1); // 3 out of 5 = 60%
     });
 
     it("counts adjustments respecting minimum interval", () => {
       const pricePoints: PricePoint[] = [
-        { timestamp: baseTime, price: 2000 }, // Out of range
-        { timestamp: baseTime + 1800, price: 2000 }, // Out of range, but too soon
-        { timestamp: baseTime + 3600, price: 2000 }, // Out of range, enough time passed
-        { timestamp: baseTime + 7200, price: 2000 }, // Out of range, enough time passed
+        { timestamp: baseTime, price: 2000 }, // Out of range, adjust (center = 2000)
+        { timestamp: baseTime + 1800, price: 2000 }, // In range (center = 2000), no adjustment needed
+        { timestamp: baseTime + 3600, price: 2000 }, // In range, no adjustment needed
+        { timestamp: baseTime + 7200, price: 2000 }, // In range, no adjustment needed
       ];
 
       const analysis = analyzeRangeWidth(
@@ -191,8 +200,9 @@ describe("Range Analysis", () => {
         3600 // 1 hour minimum
       );
 
-      // Should count 3 adjustments (first, third, fourth)
-      // First at baseTime, second skipped (too soon), third at baseTime+3600, fourth at baseTime+7200
+      // First point triggers adjustment (out of range)
+      // Subsequent points are in range after adjustment, so no more adjustments needed
+      expect(analysis.adjustmentCount).toBe(1);
       expect(analysis.expectedAdjustmentsPerMonth).toBeGreaterThan(0);
     });
 

@@ -22,6 +22,7 @@ export interface RangeAnalysis {
   netAPY: number;
   actualFeeIncomeUsd: number; // Actual fee income in USD for the analyzed period
   daysAnalyzed: number; // Number of days analyzed
+  adjustmentCount?: number; // Number of adjustments made (for testing)
 }
 
 /**
@@ -112,11 +113,17 @@ export function calculateActualFeeYield(
   const capitalEfficiencyFactor = 1 / rangeWidth;
 
   // Base fee share = liquidity share * capital efficiency
-  // But we need to scale this appropriately - tighter ranges should get proportionally more
-  // Cap the fee share at a reasonable maximum (e.g., 5% of total fees for very tight ranges)
-  const baseFeeShare = liquidityShare * capitalEfficiencyFactor;
-  const maxFeeShare = 0.05; // Cap at 5% of total fees
-  const feeShare = Math.min(baseFeeShare / 100, maxFeeShare); // Divide by 100 to scale down
+  // Scale appropriately: tighter ranges capture more fees per dollar
+  // Normalize by a reference range width (e.g., 0.2 = ±10%) to get reasonable scaling
+  const referenceRangeWidth = 0.2; // ±10% as baseline
+  const normalizedEfficiency = (referenceRangeWidth / rangeWidth) * liquidityShare;
+
+  // Fee share should be proportional to capital efficiency
+  // For a $100k position in a pool with $1M liquidity, expect ~10% share
+  // Scale down based on actual liquidity estimate
+  const baseFeeShare = normalizedEfficiency * 0.1; // Scale factor
+  const maxFeeShare = 0.1; // Cap at 10% of total fees (reasonable for tight ranges)
+  const feeShare = Math.min(baseFeeShare, maxFeeShare);
 
   // Calculate annual fee yield
   const annualFeeYield = totalFeesUsd * feeShare;
@@ -171,7 +178,7 @@ export function estimateGasCosts(
 }
 
 /**
- * Analyze a specific range width
+ * Analyze a specific range width with simulated proactive adjustments
  */
 export function analyzeRangeWidth(
   rangeWidth: number,
@@ -180,19 +187,58 @@ export function analyzeRangeWidth(
   poolFeeBps: number,
   dailyVolumeUsd: number,
   positionSizeUsd: number,
-  minAdjustmentInterval: number = 3600 // 1 hour minimum
+  minAdjustmentInterval: number = 3600, // 1 hour minimum
+  rangeAdjustmentThreshold: number = 0.02, // Adjust if within 2% of edge
+  rangeCenterDriftThreshold: number = 0.05 // Adjust if >5% from center
 ): RangeAnalysis {
   let outOfRangeCount = 0;
   let adjustmentCount = 0;
   let lastAdjustmentTime = 0;
 
+  // Simulate range adjustments - track current range center
+  let currentRangeCenter = initialPrice;
+
   for (const point of pricePoints) {
-    if (isOutOfRange(point.price, initialPrice, rangeWidth)) {
+    const price = point.price;
+    const halfWidth = rangeWidth / 2;
+    const lowerBound = currentRangeCenter * (1 - halfWidth);
+    const upperBound = currentRangeCenter * (1 + halfWidth);
+
+    // Check if currently out of range
+    const isCurrentlyOutOfRange = price < lowerBound || price > upperBound;
+    if (isCurrentlyOutOfRange) {
       outOfRangeCount++;
-      // Count as adjustment if enough time has passed
-      if (point.timestamp - lastAdjustmentTime >= minAdjustmentInterval) {
-        adjustmentCount++;
-        lastAdjustmentTime = point.timestamp;
+    }
+
+    // Check if we should adjust range (proactive triggers)
+    const rangeSize = upperBound - lowerBound;
+    const distanceToLower = (price - lowerBound) / rangeSize;
+    const distanceToUpper = (upperBound - price) / rangeSize;
+    const minDistanceToEdge = Math.min(distanceToLower, distanceToUpper);
+
+    const priceCenter = (lowerBound + upperBound) / 2;
+    const distanceFromCenter = Math.abs(price - priceCenter) / priceCenter;
+
+    // Should we adjust?
+    const shouldAdjust =
+      isCurrentlyOutOfRange || // Must adjust if out of range
+      minDistanceToEdge < rangeAdjustmentThreshold || // Near edge
+      distanceFromCenter > rangeCenterDriftThreshold; // Drifted from center
+
+    if (shouldAdjust && point.timestamp - lastAdjustmentTime >= minAdjustmentInterval) {
+      // Adjust range center to current price
+      currentRangeCenter = price;
+      adjustmentCount++;
+      lastAdjustmentTime = point.timestamp;
+
+      // Recalculate bounds after adjustment
+      const newLowerBound = currentRangeCenter * (1 - halfWidth);
+      const newUpperBound = currentRangeCenter * (1 + halfWidth);
+
+      // Check if still out of range after adjustment
+      if (price < newLowerBound || price > newUpperBound) {
+        // Still out of range even after adjustment (shouldn't happen, but handle edge case)
+        outOfRangeCount++;
       }
     }
   }
@@ -212,24 +258,28 @@ export function analyzeRangeWidth(
     : estimateFeeYield(rangeWidth, poolFeeBps, dailyVolumeUsd, positionSizeUsd);
 
   // Calculate actual fee income for the analyzed period (not annualized)
+  // Use the same calculation as calculateActualFeeYield for consistency
   let actualFeeIncomeUsd = 0;
   if (hasVolumeData && daysAnalyzed > 0) {
-    // Calculate total volume and fees for the period
+    // Reuse the same fee yield calculation logic
     const totalVolumeUsd = pricePoints.reduce((sum, point) => sum + (point.volumeUsd || 0), 0);
+    const annualVolumeUsd = (totalVolumeUsd / daysAnalyzed) * 365;
     const feeRate = poolFeeBps / 10000;
-    const totalFeesUsd = totalVolumeUsd * feeRate;
+    const totalFeesUsd = annualVolumeUsd * feeRate;
 
-    // Estimate position's share (same logic as calculateActualFeeYield)
-    const dailyVolumeUsd = totalVolumeUsd / daysAnalyzed;
+    // Same calculation as calculateActualFeeYield
+    const dailyVolumeUsd = annualVolumeUsd / 365;
     const estimatedTotalLiquidityUsd = dailyVolumeUsd * 10;
     const liquidityShare = Math.min(positionSizeUsd / estimatedTotalLiquidityUsd, 1.0);
-    const capitalEfficiencyFactor = 1 / rangeWidth;
-    const baseFeeShare = liquidityShare * capitalEfficiencyFactor;
-    const maxFeeShare = 0.05;
-    const feeShare = Math.min(baseFeeShare / 100, maxFeeShare);
+    const referenceRangeWidth = 0.2;
+    const normalizedEfficiency = (referenceRangeWidth / rangeWidth) * liquidityShare;
+    const baseFeeShare = normalizedEfficiency * 0.1;
+    const maxFeeShare = 0.1;
+    const feeShare = Math.min(baseFeeShare, maxFeeShare);
 
-    // Actual fee income for this period
-    actualFeeIncomeUsd = totalFeesUsd * feeShare;
+    // Calculate fee income for the actual period (not annualized)
+    const periodFeesUsd = totalVolumeUsd * feeRate;
+    actualFeeIncomeUsd = periodFeesUsd * feeShare;
   }
 
   const gasCostUsd = estimateGasCosts(adjustmentsPerMonth);
@@ -247,6 +297,7 @@ export function analyzeRangeWidth(
     netAPY,
     actualFeeIncomeUsd,
     daysAnalyzed,
+    adjustmentCount, // Expose for testing
   };
 }
 

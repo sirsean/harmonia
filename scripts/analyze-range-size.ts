@@ -161,6 +161,10 @@ async function main() {
 
   console.log(`\nAnalyzing ${rangeWidths.length} range sizes...\n`);
 
+  // Use range adjustment thresholds from config
+  const rangeAdjustmentThreshold = 0.02; // 2% - adjust if within this % of edge
+  const rangeCenterDriftThreshold = 0.05; // 5% - adjust if drifted from center
+
   for (const width of rangeWidths) {
     const analysis = analyzeRangeWidth(
       width,
@@ -168,7 +172,10 @@ async function main() {
       currentPrice,
       poolFeeBps,
       dailyVolumeUsd,
-      positionSizeUsd
+      positionSizeUsd,
+      3600, // 1 hour minimum between adjustments
+      rangeAdjustmentThreshold,
+      rangeCenterDriftThreshold
     );
     analyses.push(analysis);
   }
