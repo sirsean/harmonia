@@ -54,9 +54,9 @@ describe("Markets Configuration", () => {
       const price = 3000;
       const bounds = getDefaultRangeBounds(price);
 
-      // Default width is 0.2 (20%), so ±10% on each side
-      expect(bounds.lower).toBeCloseTo(2700, 0); // 3000 * 0.9
-      expect(bounds.upper).toBeCloseTo(3300, 0); // 3000 * 1.1
+      // Default width is 0.15 (15%), so ±7.5% on each side
+      expect(bounds.lower).toBeCloseTo(2775, 0); // 3000 * 0.925
+      expect(bounds.upper).toBeCloseTo(3225, 0); // 3000 * 1.075
     });
 
     it("should calculate correct range bounds for custom width", () => {

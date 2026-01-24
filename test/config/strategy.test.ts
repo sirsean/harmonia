@@ -54,7 +54,7 @@ describe("Strategy Configuration", () => {
       expect(DEFAULT_STRATEGY_CONFIG.maxLeverage).toBe(3.0);
       expect(DEFAULT_STRATEGY_CONFIG.targetLeverage).toBe(3.0);
       expect(DEFAULT_STRATEGY_CONFIG.minRebalanceInterval).toBe(3600);
-      expect(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth).toBe(0.2);
+      expect(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth).toBe(0.15);
     });
 
     it("should have bigint values for USD amounts", () => {

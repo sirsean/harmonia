@@ -50,12 +50,12 @@ export function getMarketConfig(addresses: NetworkAddresses): MarketConfig {
 /**
  * Helper function to get default range bounds for a given price
  * @param currentPrice Current price of the base token
- * @param rangeWidth Range width (as decimal, e.g., 0.2 = 20% total width)
+ * @param rangeWidth Range width (as decimal, e.g., 0.15 = 15% total width = ±7.5%)
  * @returns Object with lower and upper price bounds
  */
 export function getDefaultRangeBounds(
   currentPrice: number,
-  rangeWidth: number = 0.2
+  rangeWidth: number = 0.15
 ): { lower: number; upper: number } {
   const halfWidth = rangeWidth / 2;
   return {

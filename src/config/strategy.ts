@@ -70,7 +70,7 @@ export interface StrategyConfig {
   rangeCenterDriftThreshold: number;
 
   // Range size parameters
-  /** Default range width (as decimal, e.g., 0.2 = 20% total width = ±10% on each side) */
+  /** Default range width (as decimal, e.g., 0.15 = 15% total width = ±7.5% on each side) */
   defaultRangeWidth: number;
   /** Minimum range width (as decimal, e.g., 0.1 = 10% minimum = ±5%) */
   minRangeWidth: number;
@@ -111,7 +111,7 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   rangeCenterDriftThreshold: 0.05, // 5%
 
   // Range size parameters
-  defaultRangeWidth: 0.2, // 20% total width (±10% on each side)
+  defaultRangeWidth: 0.15, // 15% total width (±7.5% on each side) - optimized for balanced yield vs operational costs
   minRangeWidth: 0.1, // 10% minimum (±5%)
   maxRangeWidth: 0.4, // 40% maximum (±20%)
 

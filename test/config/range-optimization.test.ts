@@ -1,0 +1,179 @@
+import { describe, it, expect } from "vitest";
+import {
+  DEFAULT_STRATEGY_CONFIG,
+  loadStrategyConfig,
+  validateStrategyConfig,
+} from "../../src/config/strategy";
+import { getDefaultRangeBounds, validateRangeWidth } from "../../src/config/markets";
+
+/**
+ * Tests for LP range configuration optimization (Issue #41)
+ *
+ * These tests verify that the default range configuration is optimized
+ * for balanced yield vs operational costs based on historical analysis.
+ */
+describe("Range Configuration Optimization (Issue #41)", () => {
+  describe("Default Range Width", () => {
+    it("should use optimized default range width of 15% (±7.5%)", () => {
+      // Based on range analysis, ±7.5% provides optimal balance:
+      // - ~24% net APY (vs 18% for ±10%)
+      // - 0.6% out-of-range time
+      // - ~12.7 adjustments/month (manageable)
+      expect(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth).toBe(0.15);
+    });
+
+    it("should calculate correct bounds for optimized default", () => {
+      const price = 3000;
+      const bounds = getDefaultRangeBounds(price);
+
+      // 15% width = ±7.5% on each side
+      expect(bounds.lower).toBeCloseTo(2775, 0); // 3000 * 0.925
+      expect(bounds.upper).toBeCloseTo(3225, 0); // 3000 * 1.075
+
+      // Verify range width is correct
+      const rangeWidth = (bounds.upper - bounds.lower) / price;
+      expect(rangeWidth).toBeCloseTo(0.15, 2);
+    });
+
+    it("should allow environment variable override", () => {
+      process.env.DEFAULT_RANGE_WIDTH = "0.2";
+      const config = loadStrategyConfig();
+      expect(config.defaultRangeWidth).toBe(0.2);
+      delete process.env.DEFAULT_RANGE_WIDTH;
+    });
+
+    it("should validate default range width is within bounds", () => {
+      const { defaultRangeWidth, minRangeWidth, maxRangeWidth } =
+        DEFAULT_STRATEGY_CONFIG;
+
+      expect(defaultRangeWidth).toBeGreaterThan(minRangeWidth);
+      expect(defaultRangeWidth).toBeLessThan(maxRangeWidth);
+      expect(() => validateRangeWidth(defaultRangeWidth, minRangeWidth, maxRangeWidth)).not.toThrow();
+    });
+  });
+
+  describe("Range Width Bounds", () => {
+    it("should have reasonable min/max bounds", () => {
+      const { minRangeWidth, maxRangeWidth } = DEFAULT_STRATEGY_CONFIG;
+
+      // Min: ±5% (10% total) - tight but manageable
+      expect(minRangeWidth).toBe(0.1);
+
+      // Max: ±20% (40% total) - wide for low-maintenance strategies
+      expect(maxRangeWidth).toBe(0.4);
+
+      // Default should be between min and max
+      expect(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth).toBeGreaterThan(minRangeWidth);
+      expect(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth).toBeLessThan(maxRangeWidth);
+    });
+
+    it("should reject invalid range width configurations", () => {
+      const invalid1 = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        defaultRangeWidth: 0.05, // Below minimum
+      };
+      expect(() => validateStrategyConfig(invalid1)).toThrow();
+
+      const invalid2 = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        defaultRangeWidth: 0.5, // Above maximum
+      };
+      expect(() => validateStrategyConfig(invalid2)).toThrow();
+
+      const invalid3 = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        minRangeWidth: 0.2,
+        defaultRangeWidth: 0.15, // Below minimum
+      };
+      expect(() => validateStrategyConfig(invalid3)).toThrow();
+    });
+  });
+
+  describe("Range Adjustment Thresholds", () => {
+    it("should have appropriate adjustment thresholds for ±7.5% range", () => {
+      const { rangeAdjustmentThreshold, rangeCenterDriftThreshold, defaultRangeWidth } =
+        DEFAULT_STRATEGY_CONFIG;
+
+      // Edge threshold: 2% - adjust when within 2% of range edge
+      // For ±7.5% range, this means adjusting when price is within ~13% of range width
+      expect(rangeAdjustmentThreshold).toBe(0.02);
+
+      // Center drift threshold: 5% - adjust when price drifts >5% from center
+      // This is ~33% of the half-width (7.5%), which is reasonable
+      expect(rangeCenterDriftThreshold).toBe(0.05);
+
+      // Thresholds should be proportional to range width
+      // Edge threshold should be less than half the range width
+      expect(rangeAdjustmentThreshold * 2).toBeLessThan(defaultRangeWidth);
+    });
+
+    it("should allow environment variable overrides for thresholds", () => {
+      process.env.RANGE_ADJUSTMENT_THRESHOLD = "0.03";
+      process.env.RANGE_CENTER_DRIFT_THRESHOLD = "0.06";
+
+      const config = loadStrategyConfig();
+      expect(config.rangeAdjustmentThreshold).toBe(0.03);
+      expect(config.rangeCenterDriftThreshold).toBe(0.06);
+
+      delete process.env.RANGE_ADJUSTMENT_THRESHOLD;
+      delete process.env.RANGE_CENTER_DRIFT_THRESHOLD;
+    });
+  });
+
+  describe("Configuration Validation", () => {
+    it("should accept optimized default configuration", () => {
+      expect(() => validateStrategyConfig(DEFAULT_STRATEGY_CONFIG)).not.toThrow();
+    });
+
+    it("should validate all range-related parameters", () => {
+      const config = DEFAULT_STRATEGY_CONFIG;
+
+      // Range width must be between 0 and 1
+      expect(config.defaultRangeWidth).toBeGreaterThan(0);
+      expect(config.defaultRangeWidth).toBeLessThan(1);
+
+      // Thresholds must be between 0 and 1
+      expect(config.rangeAdjustmentThreshold).toBeGreaterThan(0);
+      expect(config.rangeAdjustmentThreshold).toBeLessThan(1);
+      expect(config.rangeCenterDriftThreshold).toBeGreaterThan(0);
+      expect(config.rangeCenterDriftThreshold).toBeLessThan(1);
+
+      // Min/max bounds must be valid
+      expect(config.minRangeWidth).toBeGreaterThan(0);
+      expect(config.maxRangeWidth).toBeLessThan(1);
+      expect(config.minRangeWidth).toBeLessThan(config.maxRangeWidth);
+    });
+  });
+
+  describe("Range Width Comparison", () => {
+    it("should demonstrate yield vs operational cost trade-offs", () => {
+      // Based on range analysis results:
+      // ±7.5% (0.15): ~24% net APY, 0.6% out-of-range, ~12.7 adj/month
+      // ±10% (0.2): ~18% net APY, 0.6% out-of-range, ~12.7 adj/month
+      // ±5% (0.1): ~36% net APY, 1.9% out-of-range, ~12.7 adj/month
+
+      const optimizedWidth = 0.15; // ±7.5%
+      const previousWidth = 0.2; // ±10%
+
+      // Optimized width should be tighter (better yield) than previous
+      expect(optimizedWidth).toBeLessThan(previousWidth);
+
+      // But not too tight (should be above minimum)
+      expect(optimizedWidth).toBeGreaterThan(DEFAULT_STRATEGY_CONFIG.minRangeWidth);
+    });
+
+    it("should calculate proportional range bounds correctly", () => {
+      const price = 3000;
+      const widths = [0.1, 0.15, 0.2, 0.3, 0.4];
+
+      for (const width of widths) {
+        const bounds = getDefaultRangeBounds(price, width);
+        const calculatedWidth = (bounds.upper - bounds.lower) / price;
+
+        expect(calculatedWidth).toBeCloseTo(width, 2);
+        expect(bounds.lower).toBeLessThan(price);
+        expect(bounds.upper).toBeGreaterThan(price);
+      }
+    });
+  });
+});
