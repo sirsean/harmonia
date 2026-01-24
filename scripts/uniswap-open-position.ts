@@ -109,6 +109,18 @@ async function main() {
     const amount0Desired = ethers.parseUnits(amount0DesiredRaw, token0Decimals);
     const amount1Desired = ethers.parseUnits(amount1DesiredRaw, token1Decimals);
 
+    // Calculate minimum amounts based on slippage tolerance
+    const amount0Min = (amount0Desired * (10_000n - slippageBps)) / 10_000n;
+    const amount1Min = (amount1Desired * (10_000n - slippageBps)) / 10_000n;
+
+    console.log("Slippage Protection:");
+    console.log(
+      `  Amount0 Min: ${ethers.formatUnits(amount0Min, token0Decimals)} ${token0Symbol} (${ethers.formatUnits(amount0Desired, token0Decimals)} desired)`
+    );
+    console.log(
+      `  Amount1 Min: ${ethers.formatUnits(amount1Min, token1Decimals)} ${token1Symbol} (${ethers.formatUnits(amount1Desired, token1Decimals)} desired)`
+    );
+
     const mintResult = await mintPosition(
       manager,
       token0Contract,
@@ -121,8 +133,8 @@ async function main() {
         tickUpper,
         amount0Desired,
         amount1Desired,
-        amount0Min: 0n,
-        amount1Min: 0n,
+        amount0Min,
+        amount1Min,
         recipient: account,
         deadline,
       },
@@ -205,12 +217,23 @@ async function main() {
   const amount0Desired = isToken0Weth ? wethDelta : usdcRemaining;
   const amount1Desired = isToken1Weth ? wethDelta : usdcRemaining;
 
+  // Calculate minimum amounts based on slippage tolerance
+  const amount0Min = (amount0Desired * (10_000n - slippageBps)) / 10_000n;
+  const amount1Min = (amount1Desired * (10_000n - slippageBps)) / 10_000n;
+
   console.log("Minting with auto-balanced amounts...");
   console.log(
     `Amount0 Desired: ${ethers.formatUnits(amount0Desired, token0Decimals)} ${token0Symbol}`
   );
   console.log(
     `Amount1 Desired: ${ethers.formatUnits(amount1Desired, token1Decimals)} ${token1Symbol}`
+  );
+  console.log("Slippage Protection:");
+  console.log(
+    `  Amount0 Min: ${ethers.formatUnits(amount0Min, token0Decimals)} ${token0Symbol} (${((Number(amount0Min) / Number(amount0Desired)) * 100).toFixed(2)}% of desired)`
+  );
+  console.log(
+    `  Amount1 Min: ${ethers.formatUnits(amount1Min, token1Decimals)} ${token1Symbol} (${((Number(amount1Min) / Number(amount1Desired)) * 100).toFixed(2)}% of desired)`
   );
 
   const positionManager = ARBITRUM_MAINNET.uniswapV3PositionManager;
@@ -242,8 +265,8 @@ async function main() {
       tickUpper,
       amount0Desired,
       amount1Desired,
-      amount0Min: 0n,
-      amount1Min: 0n,
+      amount0Min,
+      amount1Min,
       recipient: account,
       deadline,
     },
