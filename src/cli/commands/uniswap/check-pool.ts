@@ -1,11 +1,7 @@
 import { ethers } from "hardhat";
 import { createPool, getPoolState } from "../../../modules/uniswap/reader";
 import { tickToPriceWithDecimals } from "../../../modules/math/ticks";
-
-const ERC20_ABI = [
-  "function decimals() view returns (uint8)",
-  "function symbol() view returns (string)",
-];
+import { ERC20_ABI } from "../../../utils/abis";
 
 export interface UniswapCheckPoolOptions {
   pool: string;

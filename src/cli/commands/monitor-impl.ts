@@ -6,6 +6,7 @@ import { loadStrategyConfig } from "../../config/strategy";
 import { getAmountsForLiquidity, getSqrtRatioAtTick } from "../../modules/math/ticks";
 import * as uniswapReader from "../../modules/uniswap/reader";
 import { getSignerAndAccount } from "./base";
+import { ERC20_ABI } from "../../utils/abis";
 
 export interface MonitorOptions {
   account?: string;
@@ -54,10 +55,6 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
     const poolToken0 = await poolContract.token0();
     const poolToken1 = await poolContract.token1();
 
-    const ERC20_ABI = [
-      "function decimals() view returns (uint8)",
-      "function symbol() view returns (string)",
-    ];
     const token0Contract = new ethers.Contract(poolToken0, ERC20_ABI, ethers.provider);
     const token1Contract = new ethers.Contract(poolToken1, ERC20_ABI, ethers.provider);
     const [decimals0, decimals1, symbol0, symbol1] = await Promise.all([

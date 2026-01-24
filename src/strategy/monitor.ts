@@ -17,11 +17,7 @@ import {
 import { StrategyConfig } from "../config/strategy";
 import { GMXPosition } from "../modules/gmx/types";
 import { UniswapPosition } from "../modules/uniswap/types";
-
-const ERC20_ABI = [
-  "function decimals() view returns (uint8)",
-  "function symbol() view returns (string)",
-];
+import { ERC20_ABI } from "../utils/abis";
 
 export class DeltaNeutralMonitor implements StrategyMonitor {
   constructor(

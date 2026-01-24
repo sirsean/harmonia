@@ -1,20 +1,7 @@
 import { ethers } from "ethers";
 import { UniswapPoolState, UniswapPosition, UniswapPositionManager, UniswapV3Pool } from "./types";
 import { getUnclaimedFees } from "./fees";
-
-export const UNISWAP_POOL_ABI = [
-  "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
-  "function liquidity() view returns (uint128)",
-  "function token0() view returns (address)",
-  "function token1() view returns (address)",
-];
-
-export const UNISWAP_POSITION_MANAGER_ABI = [
-  "function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
-  "function balanceOf(address owner) view returns (uint256)",
-  "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
-  "function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max) params) payable returns (uint256 amount0, uint256 amount1)",
-];
+import { UNISWAP_POOL_ABI, UNISWAP_POSITION_MANAGER_ABI } from "../../utils/abis";
 
 export function createPool(address: string, provider: ethers.Provider): UniswapV3Pool {
   return new ethers.Contract(address, UNISWAP_POOL_ABI, provider) as unknown as UniswapV3Pool;

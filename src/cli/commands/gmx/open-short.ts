@@ -4,11 +4,7 @@ import { getLatestPrice } from "../../../modules/chainlink/price";
 import { createIncreaseOrder, createRouter } from "../../../modules/gmx/orders";
 import { IERC20 } from "../../../modules/gmx/types";
 import { getSignerAndAccount } from "../base";
-
-const ERC20_ABI = [
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)",
-];
+import { ERC20_ABI } from "../../../utils/abis";
 
 export interface GmxOpenShortOptions {
   account?: string;

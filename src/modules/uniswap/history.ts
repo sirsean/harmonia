@@ -97,7 +97,7 @@ export async function fetchHistoricalPricesFromSwapEvents(
   const windowsPerSample = Math.ceil(sampleInterval / blockWindowSize); // How many windows to skip
 
   // Get token decimals
-  const ERC20_ABI = ["function decimals() view returns (uint8)"];
+  const { ERC20_ABI } = await import("../../utils/abis");
   const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
   const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
   const [token0Decimals, token1Decimals] = await Promise.all([
@@ -298,11 +298,8 @@ export async function fetchHistoricalPrices(
     );
 
     // Get token addresses from pool
-    const POOL_ABI = [
-      "function token0() view returns (address)",
-      "function token1() view returns (address)",
-    ];
-    const poolContract = new ethers.Contract(poolAddress, POOL_ABI, provider);
+    const { UNISWAP_POOL_ABI } = await import("../../utils/abis");
+    const poolContract = new ethers.Contract(poolAddress, UNISWAP_POOL_ABI, provider);
     const [token0Address, token1Address] = await Promise.all([
       poolContract.token0(),
       poolContract.token1(),

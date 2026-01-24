@@ -14,14 +14,7 @@ import {
   tickToPriceWithDecimals,
 } from "../../../modules/math/ticks";
 import { getSignerAndAccount } from "../base";
-
-const ERC20_ABI = [
-  "function decimals() view returns (uint8)",
-  "function symbol() view returns (string)",
-];
-const FACTORY_ABI = [
-  "function getPool(address tokenA, address tokenB, uint24 fee) view returns (address)",
-];
+import { ERC20_ABI, UNISWAP_FACTORY_ABI } from "../../../utils/abis";
 
 async function printPosition(tokenId: bigint, owner: string) {
   const manager = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, ethers.provider);
@@ -38,7 +31,7 @@ async function printPosition(tokenId: bigint, owner: string) {
 
   const factory = new ethers.Contract(
     ARBITRUM_MAINNET.uniswapV3Factory,
-    FACTORY_ABI,
+    UNISWAP_FACTORY_ABI,
     ethers.provider
   );
   const poolAddress = await factory.getPool(position.token0, position.token1, position.fee);

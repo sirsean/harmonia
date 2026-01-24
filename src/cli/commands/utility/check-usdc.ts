@@ -1,8 +1,7 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../../config/addresses";
 import { getSignerAndAccount } from "../base";
-
-const ERC20_ABI = ["function balanceOf(address) view returns (uint256)"];
+import { ERC20_ABI } from "../../../utils/abis";
 
 export interface CheckUsdcOptions {
   account?: string;

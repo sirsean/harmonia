@@ -15,8 +15,7 @@ import {
   computeLiquidationPrice12,
 } from "../../../modules/gmx/position";
 import { getSignerAndAccount } from "../base";
-
-const ERC20_ABI = ["function decimals() view returns (uint8)"];
+import { ERC20_ABI } from "../../../utils/abis";
 
 async function getTokenDecimals(tokenAddress: string) {
   const token = new ethers.Contract(tokenAddress, ERC20_ABI, ethers.provider);

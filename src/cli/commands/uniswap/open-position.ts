@@ -12,24 +12,12 @@ import {
   tickToPriceWithDecimals,
 } from "../../../modules/math/ticks";
 import { getSignerAndAccount } from "../base";
-
-const ERC20_ABI = [
-  "function decimals() view returns (uint8)",
-  "function symbol() view returns (string)",
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function balanceOf(address account) view returns (uint256)",
-];
-const POOL_TOKEN_ABI = [
-  "function token0() view returns (address)",
-  "function token1() view returns (address)",
-];
-const ROUTER_ABI = [
-  "function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 deadline,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)",
-];
-const QUOTER_ABI = [
-  "function quoteExactInputSingle(address tokenIn,address tokenOut,uint24 fee,uint256 amountIn,uint160 sqrtPriceLimitX96) returns (uint256 amountOut)",
-];
+import {
+  ERC20_ABI,
+  UNISWAP_POOL_ABI,
+  UNISWAP_ROUTER_ABI,
+  UNISWAP_QUOTER_ABI,
+} from "../../../utils/abis";
 
 function toBigInt(value: unknown): bigint {
   try {
@@ -87,7 +75,7 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
   const amount1DesiredRaw = options.amount1Desired;
 
   const pool = createPool(poolAddress, ethers.provider);
-  const poolTokens = new ethers.Contract(poolAddress, POOL_TOKEN_ABI, ethers.provider);
+  const poolTokens = new ethers.Contract(poolAddress, UNISWAP_POOL_ABI, ethers.provider);
   const manager = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, signer);
 
   const [poolState, token0, token1] = await Promise.all([
@@ -213,8 +201,12 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
   const usdcToken = isToken0Usdc ? token0 : token1;
   const wethToken = isToken0Weth ? token0 : token1;
 
-  const router = new ethers.Contract(ARBITRUM_MAINNET.uniswapV3SwapRouter, ROUTER_ABI, signer);
-  const quoter = new ethers.Contract(ARBITRUM_MAINNET.uniswapV3Quoter, QUOTER_ABI, signer);
+  const router = new ethers.Contract(
+    ARBITRUM_MAINNET.uniswapV3SwapRouter,
+    UNISWAP_ROUTER_ABI,
+    signer
+  );
+  const quoter = new ethers.Contract(ARBITRUM_MAINNET.uniswapV3Quoter, UNISWAP_QUOTER_ABI, signer);
   const usdcContract = isToken0Usdc ? token0Contract : token1Contract;
   const wethContract = isToken0Weth ? token0Contract : token1Contract;
 
