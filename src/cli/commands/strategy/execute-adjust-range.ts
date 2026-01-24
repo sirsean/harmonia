@@ -37,30 +37,9 @@ import {
   UNISWAP_QUOTER_ABI,
 } from "../../../utils/abis";
 
+import { toBigInt } from "../../../utils/helpers";
+
 const MAX_UINT128 = (1n << 128n) - 1n;
-
-function toBigInt(value: unknown): bigint {
-  try {
-    const { ethers } = require("hardhat");
-    if (ethers && typeof ethers.getBigInt === "function") {
-      return ethers.getBigInt(value as unknown);
-    }
-  } catch {
-    // ethers not available, continue
-  }
-
-  if (typeof value === "bigint") return value;
-  if (typeof value === "number") return BigInt(value);
-  if (typeof value === "string") return BigInt(value);
-  if (Array.isArray(value) && value.length > 0) return toBigInt(value[0]);
-  if (value && typeof value === "object") {
-    const maybeValue = (value as { value?: unknown }).value;
-    if (maybeValue !== undefined) return toBigInt(maybeValue);
-    const maybeResult = (value as { result?: unknown }).result;
-    if (Array.isArray(maybeResult) && maybeResult.length > 0) return toBigInt(maybeResult[0]);
-  }
-  return BigInt(String(value));
-}
 
 export interface ExecuteAdjustRangeOptions {
   account?: string;
