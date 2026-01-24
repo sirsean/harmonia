@@ -1,7 +1,8 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "./config/addresses";
 import { DeltaNeutralMonitor } from "../src/strategy/monitor";
-import { MonitorConfig, StrategyAction } from "../src/strategy/types";
+import { StrategyAction } from "../src/strategy/types";
+import { loadStrategyConfig } from "../src/config/strategy";
 
 async function main() {
   const [signer] = await ethers.getSigners();
@@ -11,15 +12,9 @@ async function main() {
   const tokenIdEnv = process.env.UNISWAP_TOKEN_ID;
   const tokenIds = tokenIdEnv ? [BigInt(tokenIdEnv)] : undefined;
 
-  const config: MonitorConfig = {
-    deltaThreshold: 0.05, // 5% drift allowed
+  const config = loadStrategyConfig({
     minFeeThresholdUsd: ethers.parseUnits("10", 30), // $10 worth of fees (USD 30 decimals)
-    minRebalanceInterval: 3600,
-    // Range adjustment configuration
-    rangeAdjustmentThreshold: 0.02, // Adjust if within 2% of range edge
-    rangeCenterDriftThreshold: 0.05, // Adjust if >5% from center
-    minRangeAdjustmentInterval: 3600, // 1 hour minimum between adjustments
-  };
+  });
 
   const context = {
     uniswap: {
