@@ -7,6 +7,9 @@ describe("uniswap reader", () => {
     const pool: UniswapV3Pool = {
       slot0: async () => [123n, 42, 1, 2, 3, 4, true],
       liquidity: async () => 999n,
+      token0: async () => "0xToken0",
+      token1: async () => "0xToken1",
+      fee: async () => 500,
     };
 
     const state = await getPoolState(pool);
@@ -31,10 +34,12 @@ describe("uniswap reader", () => {
         4n,
         5n,
       ],
-      mint: async () => ({ wait: async () => {} }),
-      increaseLiquidity: async () => ({ wait: async () => {} }),
-      decreaseLiquidity: async () => ({ wait: async () => {} }),
-      collect: async () => ({ wait: async () => {} }),
+      balanceOf: async () => 1n,
+      tokenOfOwnerByIndex: async () => 1n,
+      mint: async () => ({ hash: "0x1", wait: async () => ({} as any) }),
+      increaseLiquidity: async () => ({ hash: "0x2", wait: async () => ({} as any) }),
+      decreaseLiquidity: async () => ({ hash: "0x3", wait: async () => ({} as any) }),
+      collect: async () => ({ hash: "0x4", wait: async () => ({} as any) }),
     };
 
     const position = await getPosition(manager, 1n);

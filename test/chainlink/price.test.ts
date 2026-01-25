@@ -20,7 +20,7 @@ interface RoundOverrides {
 const makeFeed = (overrides?: RoundOverrides): ChainlinkFeed => {
   const roundData = buildRoundData(overrides);
   return {
-    latestRoundData: async () => roundData,
+    latestRoundData: async () => [...roundData] as [bigint, bigint, bigint, bigint, bigint],
     decimals: async () => 8n,
   };
 };

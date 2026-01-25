@@ -9,6 +9,7 @@ import {
   PricePoint,
 } from "../src/modules/strategy/range-analysis";
 import { fetchHistoricalPrices } from "../src/modules/uniswap/history";
+import { ERC20_ABI } from "../src/utils/abis";
 
 /**
  * Range Size Analysis Script
@@ -103,12 +104,20 @@ async function main() {
         }
       };
 
+      // Get token decimals for fetchHistoricalPrices
+      const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, ethers.provider);
+      const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, ethers.provider);
+      const [token0Decimals, token1Decimals] = await Promise.all([
+        token0Contract.decimals(),
+        token1Contract.decimals(),
+      ]);
+
       const historicalPrices = await fetchHistoricalPrices(
         poolAddress,
         ethers.provider,
         days,
-        token0Address,
-        token1Address,
+        Number(token0Decimals),
+        Number(token1Decimals),
         "ethereum", // CoinGecko token ID for fallback
         progressCallback
       );

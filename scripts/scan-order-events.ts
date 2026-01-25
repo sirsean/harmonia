@@ -36,7 +36,13 @@ async function main() {
       fromBlock: start,
       toBlock: end,
     });
-    logs.push(...chunk);
+    // Convert readonly topics to mutable array
+    logs.push(
+      ...chunk.map((log) => ({
+        ...log,
+        topics: [...log.topics],
+      }))
+    );
   }
 
   const iface = new ethers.Interface(eventEmitterDeployment.abi);
@@ -45,6 +51,10 @@ async function main() {
     market: string;
     isLong: boolean;
     acceptablePrice: string;
+    acceptableRaw: string;
+    acceptable18: string;
+    acceptable12: string;
+    acceptable6: string;
     sizeUsd: string;
     blockNumber: number;
   }> = [];
@@ -56,6 +66,8 @@ async function main() {
     } catch {
       continue;
     }
+
+    if (!parsed) continue;
 
     const eventName = parsed.args.eventName as string;
     if (eventName !== "OrderCreated") continue;

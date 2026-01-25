@@ -27,6 +27,8 @@ describe("uniswap fees", () => {
   it("decreases liquidity", async () => {
     const manager: UniswapPositionManager = {
       positions: vi.fn(),
+      balanceOf: vi.fn(),
+      tokenOfOwnerByIndex: vi.fn(),
       mint: vi.fn().mockResolvedValue({ hash: "0x1", wait: vi.fn() }),
       increaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x2", wait: vi.fn() }),
       decreaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x3", wait: vi.fn() }),
@@ -48,6 +50,8 @@ describe("uniswap fees", () => {
   it("collects fees", async () => {
     const manager: UniswapPositionManager = {
       positions: vi.fn(),
+      balanceOf: vi.fn(),
+      tokenOfOwnerByIndex: vi.fn(),
       mint: vi.fn().mockResolvedValue({ hash: "0x1", wait: vi.fn() }),
       increaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x2", wait: vi.fn() }),
       decreaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x3", wait: vi.fn() }),
@@ -68,6 +72,8 @@ describe("uniswap fees", () => {
   it("passes overrides when provided", async () => {
     const manager: UniswapPositionManager = {
       positions: vi.fn(),
+      balanceOf: vi.fn(),
+      tokenOfOwnerByIndex: vi.fn(),
       mint: vi.fn().mockResolvedValue({ hash: "0x1", wait: vi.fn() }),
       increaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x2", wait: vi.fn() }),
       decreaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x3", wait: vi.fn() }),

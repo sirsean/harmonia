@@ -10,6 +10,7 @@
     "format": "prettier --write 'scripts/**/*.ts' 'src/**/*.ts'",
     "format:check": "prettier --check 'scripts/**/*.ts' 'src/**/*.ts'",
     "lint": "npm run format:check",
+    "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "cli": "ts-node src/cli/index.ts"

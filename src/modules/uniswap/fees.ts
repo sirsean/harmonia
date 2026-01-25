@@ -26,11 +26,17 @@ export async function collectFees(
   manager: UniswapPositionManager,
   params: CollectParams,
   overrides?: { nonce?: number }
-): Promise<{ wait: () => Promise<unknown> }> {
+): Promise<{ hash: string; wait: () => Promise<ethers.TransactionReceipt> }> {
   if (overrides) {
-    return manager.collect(params, overrides);
+    return manager.collect(params, overrides) as Promise<{
+      hash: string;
+      wait: () => Promise<ethers.TransactionReceipt>;
+    }>;
   }
-  return manager.collect(params);
+  return manager.collect(params) as Promise<{
+    hash: string;
+    wait: () => Promise<ethers.TransactionReceipt>;
+  }>;
 }
 
 export async function getUnclaimedFees(

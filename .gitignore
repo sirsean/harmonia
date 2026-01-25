@@ -32,3 +32,8 @@ gas-report.txt
 # Deployment records
 deployments/localhost
 deployments/hardhat
+
+# Logs and reports (not committed to git)
+logs/
+reports/
+*.log

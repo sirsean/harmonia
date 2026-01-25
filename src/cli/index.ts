@@ -21,6 +21,7 @@ import { registerUniswapCommands } from "./commands/uniswap";
 import { registerUtilityCommands } from "./commands/utility";
 import { registerStrategyCommands } from "./commands/strategy";
 import { registerMonitorCommand } from "./commands/monitor";
+import { registerDashboardCommand } from "./commands/dashboard";
 
 const program = new Command();
 
@@ -35,6 +36,7 @@ registerUniswapCommands(program);
 registerUtilityCommands(program);
 registerStrategyCommands(program);
 registerMonitorCommand(program);
+registerDashboardCommand(program);
 
 // Parse command line arguments only if this file is being run directly
 // This allows the CLI to be imported for testing without executing

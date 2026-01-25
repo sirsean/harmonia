@@ -7,7 +7,7 @@ const makePosition = (overrides?: Partial<GMXPosition>): GMXPosition => ({
     account: "0xAccount",
     market: "0xMarket",
     collateralToken: "0xCollateral",
-    ...overrides?.addresses,
+    ...(overrides?.addresses || {}),
   },
   numbers: {
     sizeInUsd: 100n,
@@ -30,8 +30,14 @@ const makePosition = (overrides?: Partial<GMXPosition>): GMXPosition => ({
 describe("gmx reader", () => {
   it("filters positions by market, collateral, and side", () => {
     const positions = [
-      makePosition({ addresses: { market: "0xAAA" }, flags: { isLong: false } }),
-      makePosition({ addresses: { market: "0xBBB" }, flags: { isLong: true } }),
+      makePosition({
+        addresses: { account: "0xAccount", market: "0xAAA", collateralToken: "0xCollateral" },
+        flags: { isLong: false },
+      }),
+      makePosition({
+        addresses: { account: "0xAccount", market: "0xBBB", collateralToken: "0xCollateral" },
+        flags: { isLong: true },
+      }),
     ];
 
     const match = findPosition(positions, {
@@ -44,7 +50,11 @@ describe("gmx reader", () => {
   });
 
   it("returns undefined when no match", () => {
-    const positions = [makePosition({ addresses: { market: "0xAAA" } })];
+    const positions = [
+      makePosition({
+        addresses: { account: "0xAccount", market: "0xAAA", collateralToken: "0xCollateral" },
+      }),
+    ];
     const match = findPosition(positions, { market: "0xNOPE" });
     expect(match).toBeUndefined();
   });
@@ -52,6 +62,12 @@ describe("gmx reader", () => {
   it("wraps reader getAccountPositions", async () => {
     const reader: GMXReader = {
       getAccountPositions: async () => [makePosition()],
+      getMarket: async () => ({
+        marketToken: "0x",
+        indexToken: "0x",
+        longToken: "0x",
+        shortToken: "0x",
+      }),
     };
 
     const positions = await getAccountPositions(reader, "0xDataStore", "0xAccount", 0, 10);
@@ -60,7 +76,17 @@ describe("gmx reader", () => {
 
   it("getPosition applies defaults", async () => {
     const reader: GMXReader = {
-      getAccountPositions: async () => [makePosition({ addresses: { market: "0xAAA" } })],
+      getAccountPositions: async () => [
+        makePosition({
+          addresses: { account: "0xAccount", market: "0xAAA", collateralToken: "0xCollateral" },
+        }),
+      ],
+      getMarket: async () => ({
+        marketToken: "0x",
+        indexToken: "0x",
+        longToken: "0x",
+        shortToken: "0x",
+      }),
     };
 
     const position = await getPosition(reader, "0xDataStore", "0xAccount", {

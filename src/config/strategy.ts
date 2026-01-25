@@ -106,7 +106,7 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   // Slippage and fees
   maxSlippage: 0.01, // 1%
   slippageBuffer: 0.005, // 0.5%
-  minFeeThresholdUsd: (BigInt(10) * PRECISION.GMX_USD) / BigInt(10 ** 6), // $10 in 30 decimals
+  minFeeThresholdUsd: BigInt(10) * PRECISION.GMX_USD, // $10 in 30 decimals
   defaultExecutionFee: BigInt("1000000000000000"), // 0.001 ETH
 
   // Range adjustment parameters
