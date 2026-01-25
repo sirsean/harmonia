@@ -1,6 +1,10 @@
 import { StrategyConfig, PRECISION } from "../config/strategy";
 import { calculateDelta, DeltaResult } from "../modules/math/delta";
-import { getSqrtRatioAtTick } from "../modules/math/ticks";
+import {
+  getSqrtRatioAtTick,
+  priceToTickWithDecimals,
+  priceToSqrtPriceX96,
+} from "../modules/math/ticks";
 import { UniswapPosition } from "../modules/uniswap/types";
 
 /**
@@ -31,54 +35,139 @@ export interface AllocationResult {
 }
 
 /**
- * Estimate LP delta for a given position size
+ * Estimate LP delta for a given position size using Uniswap V3 formula
  *
- * This is a simplified calculation assuming:
- * - Position is centered (current price at range center)
- * - Delta ≈ 0.5 at center (50% token0, 50% token1)
- * - Delta varies linearly within range
+ * This calculates delta in WETH tokens (matching monitor calculation), then converts to USD.
+ * Uses the actual Uniswap V3 delta formula for accuracy.
  *
- * For a more accurate calculation, we'd need to:
- * - Calculate actual liquidity distribution
- * - Use actual current price vs range bounds
- * - Account for price impact
+ * @param lpSizeUsd LP size in USD (30 decimals)
+ * @param currentPrice Current price (USDC per WETH)
+ * @param priceLower Lower bound of LP range
+ * @param priceUpper Upper bound of LP range
+ * @param wethDecimals WETH decimals (usually 18)
+ * @param usdcDecimals USDC decimals (usually 6)
+ * @returns Delta in USD (30 decimals) - this is the GMX short size needed
  */
 export function estimateLpDelta(
   lpSizeUsd: bigint,
   currentPrice: number, // USDC per WETH
   priceLower: number,
-  priceUpper: number
+  priceUpper: number,
+  wethDecimals: number = 18,
+  usdcDecimals: number = 6
 ): bigint {
-  // For a centered LP position, delta ≈ 0.5 at center
-  // Delta = 0 at upper bound, 1 at lower bound
-  // At center: delta = 0.5
-
-  const centerPrice = Math.sqrt(priceLower * priceUpper); // Geometric mean
+  // Calculate token amounts for this LP size (same logic as calculateLpTokenAmounts)
   const rangeSize = priceUpper - priceLower;
-
-  // Calculate how far current price is from center
-  const priceOffset = currentPrice - centerPrice;
-  const normalizedOffset = priceOffset / rangeSize;
-
-  // Delta at center is 0.5, varies by ±0.5 across range
-  // Simplified: delta = 0.5 - normalizedOffset
-  // But we need to account for the actual range bounds
-  let deltaRatio = 0.5;
+  let deltaRatio: number;
 
   if (currentPrice <= priceLower) {
     deltaRatio = 1.0; // All token0 (WETH)
   } else if (currentPrice >= priceUpper) {
     deltaRatio = 0.0; // All token1 (USDC)
   } else {
-    // Linear interpolation within range
+    // Linear interpolation within range (for token amounts)
     const positionInRange = (currentPrice - priceLower) / rangeSize;
     deltaRatio = 1.0 - positionInRange; // 1.0 at lower, 0.0 at upper
   }
 
-  // LP delta in tokens = LP size * delta ratio
-  // For delta-neutral, we need to short delta * LP size worth of WETH
-  // Convert to USD: delta * LP size (already in USD)
-  const deltaUsd = (lpSizeUsd * BigInt(Math.floor(deltaRatio * 1e18))) / PRECISION.STANDARD;
+  // Calculate WETH and USDC amounts
+  const wethValueUsd = (lpSizeUsd * BigInt(Math.floor(deltaRatio * 1e18))) / PRECISION.STANDARD;
+  const wethAmount =
+    (wethValueUsd * BigInt(10 ** wethDecimals)) / BigInt(Math.floor(currentPrice * 1e30));
+  const usdcValueUsd = lpSizeUsd - wethValueUsd;
+  const usdcAmount = (usdcValueUsd * BigInt(10 ** usdcDecimals)) / PRECISION.GMX_USD;
+
+  // Convert prices to sqrtPriceX96 format for Uniswap V3 calculations
+  // Note: In WETH/USDC pool, token0=WETH (18 decimals), token1=USDC (6 decimals)
+  // currentPrice = USDC/WETH = token1/token0
+  // For Uniswap V3, we need sqrtPriceX96 representing sqrt(token1/token0) in Q96 format
+  // priceToSqrtPriceX96 expects price in token1/token0 format with (token1Decimals, token0Decimals)
+  const sqrtPriceX96 = priceToSqrtPriceX96(currentPrice, usdcDecimals, wethDecimals);
+
+  // For ticks, priceToTickWithDecimals expects price in token1/token0 format
+  // But we need to be careful - ticks represent the price, and we need to match the pool's token order
+  // Since currentPrice is already USDC/WETH (token1/token0), we use it directly
+  const tickLower = priceToTickWithDecimals(priceLower, usdcDecimals, wethDecimals);
+  const tickUpper = priceToTickWithDecimals(priceUpper, usdcDecimals, wethDecimals);
+  const sqrtPaX96 = getSqrtRatioAtTick(tickLower);
+  const sqrtPbX96 = getSqrtRatioAtTick(tickUpper);
+
+  // Normalize bounds (ensure sqrtPaX96 <= sqrtPbX96)
+  const [sqrtLower, sqrtUpper] =
+    sqrtPaX96 <= sqrtPbX96 ? [sqrtPaX96, sqrtPbX96] : [sqrtPbX96, sqrtPaX96];
+
+  // Estimate liquidity from token amounts using Uniswap V3 formulas
+  // This is the reverse of getAmountsForLiquidity
+  let estimatedLiquidity: bigint;
+
+  if (currentPrice <= priceLower || sqrtPriceX96 <= sqrtLower) {
+    // Price below or at lower bound: all WETH (token0)
+    // When price is at lower bound: amount0 = L * (sqrtUpper - sqrtLower) * Q96 / (sqrtLower * sqrtUpper)
+    // So: L = amount0 * sqrtLower * sqrtUpper / ((sqrtUpper - sqrtLower) * Q96)
+    const sqrtDiff = sqrtUpper - sqrtLower;
+    if (sqrtDiff === 0n) {
+      estimatedLiquidity = wethAmount;
+    } else {
+      // Use floating point for precision
+      const sqrtLowerNum = Number(sqrtLower) / Number(PRECISION.Q96);
+      const sqrtUpperNum = Number(sqrtUpper) / Number(PRECISION.Q96);
+      const sqrtDiffNum = sqrtUpperNum - sqrtLowerNum;
+      const wethAmountNum = Number(wethAmount);
+      const liquidityNum = (wethAmountNum * sqrtLowerNum * sqrtUpperNum) / sqrtDiffNum;
+      estimatedLiquidity = BigInt(Math.floor(liquidityNum));
+    }
+  } else if (currentPrice >= priceUpper || sqrtPriceX96 >= sqrtUpper) {
+    // Price above range: all USDC (token1), delta is 0
+    return 0n;
+  } else {
+    // Price in range: calculate liquidity from both sides and use the minimum
+    // Convert to numbers for intermediate calculations to avoid bigint overflow
+    const sqrtCurrentNum = Number(sqrtPriceX96) / Number(PRECISION.Q96);
+    const sqrtLowerNum = Number(sqrtLower) / Number(PRECISION.Q96);
+    const sqrtUpperNum = Number(sqrtUpper) / Number(PRECISION.Q96);
+
+    const sqrtDiffUpper = sqrtUpperNum - sqrtCurrentNum;
+    const sqrtDiffLower = sqrtCurrentNum - sqrtLowerNum;
+
+    if (sqrtDiffUpper <= 0) {
+      // Edge case: price at or above upper bound
+      return 0n;
+    }
+
+    if (sqrtDiffLower <= 0) {
+      // Edge case: price at or below lower bound
+      estimatedLiquidity = wethAmount;
+    } else {
+      // From amount0 (WETH): amount0 = L * (sqrtUpper - sqrtCurrent) * Q96 / (sqrtCurrent * sqrtUpper)
+      // So: L = amount0 * sqrtCurrent * sqrtUpper / ((sqrtUpper - sqrtCurrent) * Q96)
+      const wethAmountNum = Number(wethAmount);
+      const liquidityFromWethNum = (wethAmountNum * sqrtCurrentNum * sqrtUpperNum) / sqrtDiffUpper;
+
+      // From amount1 (USDC): amount1 = L * (sqrtCurrent - sqrtLower) / Q96
+      // So: L = amount1 * Q96 / (sqrtCurrent - sqrtLower)
+      const usdcAmountNum = Number(usdcAmount);
+      const liquidityFromUsdcNum = (usdcAmountNum * Number(PRECISION.Q96)) / sqrtDiffLower;
+
+      // Use the minimum (the limiting factor)
+      const minLiquidityNum = Math.min(liquidityFromWethNum, liquidityFromUsdcNum);
+
+      // Convert back to bigint (scale by Q96 to maintain precision)
+      estimatedLiquidity = BigInt(Math.floor(minLiquidityNum));
+    }
+  }
+
+  if (estimatedLiquidity === 0n) {
+    return 0n;
+  }
+
+  // Calculate delta using the exact Uniswap V3 formula
+  const deltaResult = calculateDelta(sqrtPriceX96, sqrtLower, sqrtUpper, estimatedLiquidity);
+
+  // Delta is in WETH tokens (18 decimals) - convert to USD
+  // delta_usd = delta_tokens * price_usdc_per_weth
+  const deltaTokens = deltaResult.delta;
+  const deltaUsd =
+    (deltaTokens * BigInt(Math.floor(currentPrice * 1e30))) / BigInt(10 ** wethDecimals);
 
   return deltaUsd;
 }
@@ -108,22 +197,6 @@ export function calculateOptimalAllocation(
   const availableCapital =
     totalCapitalUsd > maxPositionSizeUsd ? maxPositionSizeUsd : totalCapitalUsd;
 
-  // We need to solve for LP size such that:
-  // LP size + GMX collateral <= available capital
-  // GMX collateral = GMX short size / targetLeverage
-  // GMX short size = LP delta
-  // LP delta = estimateLpDelta(LP size, ...)
-
-  // This is iterative - we need to find LP size where:
-  // LP + (LP_delta / leverage) <= available
-  //
-  // For a centered position, delta ≈ 0.5, so:
-  // LP + (0.5 * LP / leverage) <= available
-  // LP * (1 + 0.5/leverage) <= available
-  // LP <= available / (1 + 0.5/leverage)
-  //
-  // For leverage = 3: LP <= available / (1 + 0.5/3) = available / 1.1667 ≈ available * 0.857
-
   // Use binary search to find optimal LP size
   let lpMin = 0n;
   let lpMax = availableCapital;
@@ -134,8 +207,9 @@ export function calculateOptimalAllocation(
   for (let i = 0; i < 50; i++) {
     const lpSizeUsd = (lpMin + lpMax) / 2n;
 
-    // Estimate LP delta for this LP size
-    const lpDelta = estimateLpDelta(lpSizeUsd, currentPrice, priceLower, priceUpper);
+    // Estimate LP delta for this LP size (need decimals for proper calculation)
+    // We'll use standard decimals (18 for WETH, 6 for USDC)
+    const lpDelta = estimateLpDelta(lpSizeUsd, currentPrice, priceLower, priceUpper, 18, 6);
 
     // Calculate required GMX collateral
     const leverageScaled = BigInt(Math.floor(targetLeverage * 10000));
@@ -173,7 +247,7 @@ export function calculateOptimalAllocation(
 
   // Fallback: use conservative allocation
   const conservativeLpSize = availableCapital / 2n;
-  const lpDelta = estimateLpDelta(conservativeLpSize, currentPrice, priceLower, priceUpper);
+  const lpDelta = estimateLpDelta(conservativeLpSize, currentPrice, priceLower, priceUpper, 18, 6);
   const leverageScaled = BigInt(Math.floor(targetLeverage * 10000));
   const gmxCollateralUsd = (lpDelta * 10000n) / leverageScaled;
 
