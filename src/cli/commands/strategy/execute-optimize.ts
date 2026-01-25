@@ -1,7 +1,6 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../../config/addresses";
 import { DeltaNeutralMonitor } from "../../../strategy/monitor";
-import { StrategyAction } from "../../../strategy/types";
 import { loadStrategyConfig, DEFAULT_STRATEGY_CONFIG, PRECISION } from "../../../config/strategy";
 import { getDefaultRangeBounds } from "../../../config/markets";
 import { createPositionManager, getPosition } from "../../../modules/uniswap/reader";
@@ -43,7 +42,7 @@ import { toBigInt } from "../../../utils/helpers";
 
 const MAX_UINT128 = (1n << 128n) - 1n;
 
-export interface ExecuteAdjustRangeOptions {
+export interface ExecuteOptimizeOptions {
   account?: string;
   tokenId?: string;
   rangeWidth?: number;
@@ -53,16 +52,25 @@ export interface ExecuteAdjustRangeOptions {
   execute?: boolean;
 }
 
-export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}): Promise<void> {
+/**
+ * Optimize strategy position by:
+ * 1. Collecting fees from LP positions
+ * 2. Recentering LP position (even if still in range)
+ * 3. Optimizing GMX hedge using funds from LP
+ *
+ * Unlike `adjust-range`, this command always executes regardless of monitor recommendations.
+ * This is useful when delta has drifted but LP is still technically "in range".
+ */
+export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Promise<void> {
   const { signer, account } = await getSignerAndAccount(options.account);
 
   console.log("\n" + "=".repeat(60));
-  console.log("EXECUTE RANGE ADJUSTMENT");
+  console.log("OPTIMIZE STRATEGY POSITION");
   console.log("=".repeat(60) + "\n");
 
   console.log("Executing account:", account);
 
-  // 1. Check Strategy Status
+  // 1. Check Strategy Status (for information, but don't gate execution)
   const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
 
   const monitorConfig = loadStrategyConfig({
@@ -89,37 +97,30 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
   console.log("Checking position status...");
   const { status, recommendation } = await monitor.check();
 
-  if (recommendation.action !== StrategyAction.ADJUST_RANGE) {
-    console.log(`No range adjustment needed. Status: ${recommendation.action}`);
-    console.log(`Reason: ${recommendation.reason}`);
-    return;
-  }
-
-  console.log("RANGE ADJUSTMENT RECOMMENDED");
+  console.log(`Current status: ${recommendation.action}`);
   console.log(`Reason: ${recommendation.reason}`);
+  console.log(`Net delta: ${status.netDelta.toString()}`);
+  console.log(`Delta drift: ${(status.deltaDrift * 100).toFixed(2)}%`);
 
-  if (status.uniswap.length === 0) {
-    console.error("No Uniswap positions found.");
-    return;
+  // Always proceed with optimization regardless of recommendation
+  console.log("\n⚠️  OPTIMIZE mode: Will reset position regardless of current status");
+
+  // 2. Get positions to optimize (may be empty)
+  const positionsToOptimize = status.uniswap.filter((pos) => pos.liquidity > 0n);
+
+  if (positionsToOptimize.length > 0) {
+    console.log(`\nFound ${positionsToOptimize.length} position(s) to optimize:`);
+    for (const pos of positionsToOptimize) {
+      const currentRangeWidth = ((pos.priceUpper - pos.priceLower) / pos.currentPrice) * 100;
+      console.log(
+        `  Position ${pos.tokenId}: Range ${pos.priceLower.toFixed(2)} - ${pos.priceUpper.toFixed(2)} (${currentRangeWidth.toFixed(1)}% width)`
+      );
+    }
+  } else {
+    console.log("\nNo existing positions to close. Will open new optimized positions.");
   }
 
-  // 2. Get positions to adjust
-  const positionsToAdjust = status.uniswap.filter((pos) => pos.liquidity > 0n);
-
-  if (positionsToAdjust.length === 0) {
-    console.log("No positions with liquidity to adjust.");
-    return;
-  }
-
-  console.log(`\nFound ${positionsToAdjust.length} position(s) to adjust:`);
-  for (const pos of positionsToAdjust) {
-    const currentRangeWidth = ((pos.priceUpper - pos.priceLower) / pos.currentPrice) * 100;
-    console.log(
-      `  Position ${pos.tokenId}: Range ${pos.priceLower.toFixed(2)} - ${pos.priceUpper.toFixed(2)} (${currentRangeWidth.toFixed(1)}% width)`
-    );
-  }
-
-  // 3. Get current pool state for new position
+  // 3. Get current pool state for new position (always needed)
   const poolAddress = ARBITRUM_MAINNET.uniswapV3EthUsdcPool;
   const pool = createPool(poolAddress, ethers.provider);
   const poolTokens = new ethers.Contract(poolAddress, UNISWAP_POOL_ABI, ethers.provider);
@@ -158,7 +159,7 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
 
   const priceUsdcPerWeth = isToken0Weth ? priceToken1PerToken0 : 1 / priceToken1PerToken0;
 
-  // Calculate new range bounds using configured default
+  // Calculate new range bounds using configured default (centered on current price)
   const rangeWidth = options.rangeWidth ?? Number(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth);
   const defaultBounds = getDefaultRangeBounds(priceUsdcPerWeth, rangeWidth);
   const lowerPrice = options.priceLower ?? Number(defaultBounds.lower.toFixed(6));
@@ -196,14 +197,14 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
 
   // 5. Execute: Close old positions and open new one
   if (!executeFlag) {
-    console.log("\n[DRY RUN] Range adjustment would be executed:");
-    console.log(`\n1. Close ${positionsToAdjust.length} LP position(s):`);
-    for (const pos of positionsToAdjust) {
+    console.log("\n[DRY RUN] Optimization would be executed:");
+    console.log(`\n1. Collect fees and close ${positionsToOptimize.length} LP position(s):`);
+    for (const pos of positionsToOptimize) {
       console.log(`   - Position ${pos.tokenId}: Collect fees and remove liquidity`);
     }
     console.log(`\n2. Close GMX short position (if exists)`);
   } else {
-    console.log("\nExecuting range adjustment...");
+    console.log("\nExecuting optimization...");
   }
 
   const reader = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, ethers.provider);
@@ -294,64 +295,68 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
   let totalTokens0FromPositions = 0n;
   let totalTokens1FromPositions = 0n;
 
-  console.log(`\nCalculating tokens to be returned from closing positions...`);
-  for (const pos of positionsToAdjust) {
-    const tokenId = BigInt(pos.tokenId);
-    const position = await getPosition(reader, tokenId);
+  if (positionsToOptimize.length > 0) {
+    console.log(`\nCalculating tokens to be returned from closing positions...`);
+    for (const pos of positionsToOptimize) {
+      const tokenId = BigInt(pos.tokenId);
+      const position = await getPosition(reader, tokenId);
 
-    // Determine token mapping between position and pool
-    const posToken0 = position.token0.toLowerCase();
-    const posToken1 = position.token1.toLowerCase();
-    const isPosToken0SameAsPoolToken0 = posToken0 === token0.toLowerCase();
+      // Determine token mapping between position and pool
+      const posToken0 = position.token0.toLowerCase();
+      const posToken1 = position.token1.toLowerCase();
+      const isPosToken0SameAsPoolToken0 = posToken0 === token0.toLowerCase();
 
-    if (position.liquidity > 0n) {
-      // Calculate what tokens we'll get back from removing liquidity
-      // getAmountsForLiquidity returns amounts in pool token order (token0, token1)
-      const sqrtLower = getSqrtRatioAtTick(position.tickLower);
-      const sqrtUpper = getSqrtRatioAtTick(position.tickUpper);
-      const { amount0, amount1 } = getAmountsForLiquidity(
-        poolState.sqrtPriceX96,
-        sqrtLower,
-        sqrtUpper,
-        position.liquidity
-      );
+      if (position.liquidity > 0n) {
+        // Calculate what tokens we'll get back from removing liquidity
+        // getAmountsForLiquidity returns amounts in pool token order (token0, token1)
+        const sqrtLower = getSqrtRatioAtTick(position.tickLower);
+        const sqrtUpper = getSqrtRatioAtTick(position.tickUpper);
+        const { amount0, amount1 } = getAmountsForLiquidity(
+          poolState.sqrtPriceX96,
+          sqrtLower,
+          sqrtUpper,
+          position.liquidity
+        );
 
-      // amount0 and amount1 are already in pool token order (token0, token1)
-      totalTokens0FromPositions += amount0;
-      totalTokens1FromPositions += amount1;
+        // amount0 and amount1 are already in pool token order (token0, token1)
+        totalTokens0FromPositions += amount0;
+        totalTokens1FromPositions += amount1;
 
-      console.log(
-        `  Position ${pos.tokenId}: Will return ${ethers.formatUnits(amount0, token0Decimals)} ${token0Symbol}, ${ethers.formatUnits(amount1, token1Decimals)} ${token1Symbol}`
-      );
+        console.log(
+          `  Position ${pos.tokenId}: Will return ${ethers.formatUnits(amount0, token0Decimals)} ${token0Symbol}, ${ethers.formatUnits(amount1, token1Decimals)} ${token1Symbol}`
+        );
+      }
+
+      // Map unclaimed fees from position token order to pool token order
+      // position.tokensOwed0/1 are in position token order
+      if (isPosToken0SameAsPoolToken0) {
+        totalTokens0FromPositions += position.tokensOwed0;
+        totalTokens1FromPositions += position.tokensOwed1;
+      } else {
+        // Position tokens are swapped relative to pool
+        totalTokens0FromPositions += position.tokensOwed1;
+        totalTokens1FromPositions += position.tokensOwed0;
+      }
+
+      if (position.tokensOwed0 > 0n || position.tokensOwed1 > 0n) {
+        // Get position token decimals for display
+        const posToken0Contract = new ethers.Contract(position.token0, ERC20_ABI, ethers.provider);
+        const posToken1Contract = new ethers.Contract(position.token1, ERC20_ABI, ethers.provider);
+        const [posToken0Decimals, posToken1Decimals, posToken0Symbol, posToken1Symbol] =
+          await Promise.all([
+            posToken0Contract.decimals(),
+            posToken1Contract.decimals(),
+            posToken0Contract.symbol(),
+            posToken1Contract.symbol(),
+          ]);
+
+        console.log(
+          `  Position ${pos.tokenId}: Unclaimed fees ${ethers.formatUnits(position.tokensOwed0, Number(posToken0Decimals))} ${posToken0Symbol}, ${ethers.formatUnits(position.tokensOwed1, Number(posToken1Decimals))} ${posToken1Symbol}`
+        );
+      }
     }
-
-    // Map unclaimed fees from position token order to pool token order
-    // position.tokensOwed0/1 are in position token order
-    if (isPosToken0SameAsPoolToken0) {
-      totalTokens0FromPositions += position.tokensOwed0;
-      totalTokens1FromPositions += position.tokensOwed1;
-    } else {
-      // Position tokens are swapped relative to pool
-      totalTokens0FromPositions += position.tokensOwed1;
-      totalTokens1FromPositions += position.tokensOwed0;
-    }
-
-    if (position.tokensOwed0 > 0n || position.tokensOwed1 > 0n) {
-      // Get position token decimals for display
-      const posToken0Contract = new ethers.Contract(position.token0, ERC20_ABI, ethers.provider);
-      const posToken1Contract = new ethers.Contract(position.token1, ERC20_ABI, ethers.provider);
-      const [posToken0Decimals, posToken1Decimals, posToken0Symbol, posToken1Symbol] =
-        await Promise.all([
-          posToken0Contract.decimals(),
-          posToken1Contract.decimals(),
-          posToken0Contract.symbol(),
-          posToken1Contract.symbol(),
-        ]);
-
-      console.log(
-        `  Position ${pos.tokenId}: Unclaimed fees ${ethers.formatUnits(position.tokensOwed0, Number(posToken0Decimals))} ${posToken0Symbol}, ${ethers.formatUnits(position.tokensOwed1, Number(posToken1Decimals))} ${posToken1Symbol}`
-      );
-    }
+  } else {
+    console.log(`\nNo positions to close - using current wallet balances.`);
   }
 
   // Get current wallet balances
@@ -380,13 +385,11 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
   console.log(`  ${token0Symbol}: ${ethers.formatUnits(totalAvailable0, token0Decimals)}`);
   console.log(`  ${token1Symbol}: ${ethers.formatUnits(totalAvailable1, token1Decimals)}`);
 
-  if (totalAvailable0 === 0n && totalAvailable1 === 0n) {
-    console.error("No tokens available to create new position.");
-    return;
-  }
+  // Note: We'll check total capital later - don't return early here
+  // Even if no tokens from positions, we might have wallet balance or GMX collateral
 
   // Close each LP position and collect tokens (if executing)
-  for (const pos of positionsToAdjust) {
+  for (const pos of positionsToOptimize) {
     const tokenId = BigInt(pos.tokenId);
     if (executeFlag) {
       console.log(`\nClosing position ${pos.tokenId}...`);
@@ -467,6 +470,17 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
   }
 
   // Calculate total capital value in USD
+  // Include GMX collateral that will be returned (if GMX position exists and we're in dry-run)
+  let gmxCollateralToAdd = 0n;
+  if (!executeFlag && gmxPosition && gmxPosition.numbers.collateralAmount > 0n) {
+    // In dry-run, add GMX collateral to total capital since it will be returned
+    gmxCollateralToAdd =
+      (gmxPosition.numbers.collateralAmount * PRECISION.GMX_USD) / BigInt(10 ** 6);
+    console.log(
+      `\nGMX collateral to be returned: $${ethers.formatUnits(gmxCollateralToAdd, 30)} (included in total capital)`
+    );
+  }
+
   const wethBalance = isToken0Weth ? balance0 : balance1;
   const usdcBalance = isToken0Usdc ? balance0 : balance1;
   const wethDecimals = isToken0Weth ? token0Decimals : token1Decimals;
@@ -476,10 +490,17 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
   const usdcValueUsd = Number(ethers.formatUnits(usdcBalance, usdcDecimals));
   const totalCapitalUsd =
     (BigInt(Math.floor(wethValueUsd * 1e6)) * PRECISION.GMX_USD) / BigInt(10 ** 6) +
-    (BigInt(Math.floor(usdcValueUsd * 1e6)) * PRECISION.GMX_USD) / BigInt(10 ** 6);
+    (BigInt(Math.floor(usdcValueUsd * 1e6)) * PRECISION.GMX_USD) / BigInt(10 ** 6) +
+    gmxCollateralToAdd;
 
   console.log(`\nTotal capital: $${ethers.formatUnits(totalCapitalUsd, 30)}`);
   console.log(`Max position size: $${ethers.formatUnits(monitorConfig.maxPositionSizeUsd, 30)}`);
+
+  // Check if we have sufficient capital
+  if (totalCapitalUsd === 0n) {
+    console.error("No capital available to create positions.");
+    return;
+  }
 
   // Calculate optimal allocation between LP and GMX hedge
   console.log(`\nCalculating optimal allocation...`);
@@ -861,7 +882,7 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
       console.log(`  GMX short order created. Tx: ${gmxResult.txHash}`);
     }
 
-    console.log(`\n✅ Range adjustment complete!`);
+    console.log(`\n✅ Optimization complete!`);
     console.log(`  LP position: ${mintResult.txHash || "minted"}`);
     if (allocation.gmxShortSizeUsd > 0n) {
       console.log(`  GMX hedge: ${allocation.gmxShortSizeUsd > 0n ? "order created" : "skipped"}`);

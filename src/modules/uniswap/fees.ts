@@ -15,11 +15,17 @@ export async function decreaseLiquidity(
   manager: UniswapPositionManager,
   params: DecreaseLiquidityParams,
   overrides?: { nonce?: number }
-): Promise<{ wait: () => Promise<unknown> }> {
+): Promise<{ hash: string; wait: () => Promise<unknown> }> {
   if (overrides) {
-    return manager.decreaseLiquidity(params, overrides);
+    return manager.decreaseLiquidity(params, overrides) as Promise<{
+      hash: string;
+      wait: () => Promise<unknown>;
+    }>;
   }
-  return manager.decreaseLiquidity(params);
+  return manager.decreaseLiquidity(params) as Promise<{
+    hash: string;
+    wait: () => Promise<unknown>;
+  }>;
 }
 
 export async function collectFees(

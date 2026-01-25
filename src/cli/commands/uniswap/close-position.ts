@@ -46,21 +46,33 @@ export async function uniswapClosePosition(options: UniswapClosePositionOptions)
 
   if (position.liquidity > 0n) {
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
-    await decreaseLiquidity(manager, {
+    console.log("Removing liquidity...");
+    const decreaseTx = await decreaseLiquidity(manager, {
       tokenId,
       liquidity: position.liquidity,
       amount0Min: 0n,
       amount1Min: 0n,
       deadline,
     });
+    console.log(`  Transaction submitted: ${decreaseTx.hash}`);
+    console.log(`  Waiting for confirmation...`);
+    await decreaseTx.wait();
+    console.log(`  ✅ Confirmed`);
+    console.log(`  Explorer: https://arbiscan.io/tx/${decreaseTx.hash}`);
   }
 
-  await collectFees(manager, {
+  console.log("\nCollecting fees and tokens...");
+  const collectTx = await collectFees(manager, {
     tokenId,
     recipient: account,
     amount0Max: MAX_UINT128,
     amount1Max: MAX_UINT128,
   });
+  console.log(`  Transaction submitted: ${collectTx.hash}`);
+  console.log(`  Waiting for confirmation...`);
+  const collectReceipt = await collectTx.wait();
+  console.log(`  ✅ Confirmed in block ${collectReceipt.blockNumber}`);
+  console.log(`  Explorer: https://arbiscan.io/tx/${collectTx.hash}`);
 
-  console.log("\nClose + collect submitted.");
+  console.log("\n✅ Position closed and tokens collected successfully!");
 }
