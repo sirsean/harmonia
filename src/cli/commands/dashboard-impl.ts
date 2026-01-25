@@ -100,106 +100,102 @@ function renderDashboard(
   const deltaDriftColor = getDeltaDriftColor(status.deltaDrift);
   const actionColor = getActionColor(recommendation.action);
 
-  const WIDTH = 78;
   const headerText = "HARMONIA STRATEGY DASHBOARD";
-  const headerPadding = Math.floor((WIDTH - headerText.length) / 2);
-  const headerPaddingRight = WIDTH - headerText.length - headerPadding;
+  const LINE_LENGTH = 50;
 
-  console.log("╔" + "═".repeat(WIDTH) + "╗");
-  console.log("║" + " ".repeat(headerPadding) + headerText + " ".repeat(headerPaddingRight) + "║");
-  console.log("╠" + "═".repeat(WIDTH) + "╣");
-  console.log(`║ Account: ${account.padEnd(WIDTH - 10)} ║`);
-  console.log(`║ Last Update: ${refreshTime.toLocaleTimeString().padEnd(WIDTH - 13)} ║`);
-  console.log("╚" + "═".repeat(WIDTH) + "╝");
+  console.log("╔" + "═".repeat(LINE_LENGTH) + "╗");
+  console.log(
+    "║" +
+      " ".repeat(Math.floor((LINE_LENGTH - headerText.length) / 2)) +
+      headerText +
+      " ".repeat(Math.ceil((LINE_LENGTH - headerText.length) / 2)) +
+      "║"
+  );
+  console.log("╠" + "═".repeat(LINE_LENGTH) + "╣");
+  console.log(`║ Account: ${account}`);
+  console.log(`║ Last Update: ${refreshTime.toLocaleTimeString()}`);
+  console.log("╚" + "═".repeat(LINE_LENGTH) + "╝");
   console.log("");
 
   // Summary Section
-  console.log("┌─ SUMMARY ─" + "─".repeat(WIDTH - 12) + "┐");
+  console.log("┌─ SUMMARY ─" + "-".repeat(5));
   const totalValueStr = `$${formatBigInt(totalNetValueUsd, 30, 2, "green")}`;
-  console.log(`│ Total Portfolio Value: ${totalValueStr.padEnd(WIDTH - 24)} │`);
+  console.log(`│ Total Portfolio Value: ${totalValueStr}`);
   const lpValueStr = `$${formatBigInt(totalLpValueUsd, 30, 2)}`;
-  console.log(`│   ├─ LP Positions:     ${lpValueStr.padEnd(WIDTH - 24)} │`);
+  console.log(`│   ├─ LP Positions:     ${lpValueStr}`);
   const gmxValueStr = `$${formatBigInt(status.gmx.netValueUsd, 30, 2)}`;
-  console.log(`│   └─ GMX Position:     ${gmxValueStr.padEnd(WIDTH - 24)} │`);
-  console.log("│" + " ".repeat(WIDTH) + "│");
+  console.log(`│   └─ GMX Position:     ${gmxValueStr}`);
+  console.log("│");
   const netDeltaStr = `${formatBigInt(status.netDelta, 18, 4)} ETH`;
-  console.log(`│ Net Delta:            ${netDeltaStr.padEnd(WIDTH - 24)} │`);
+  console.log(`│ Net Delta:            ${netDeltaStr}`);
   const deltaDriftStr = `${formatValue(status.deltaDrift * 100, 2, deltaDriftColor)}%`;
-  console.log(`│ Delta Drift:          ${deltaDriftStr.padEnd(WIDTH - 24)} │`);
-  console.log("│" + " ".repeat(WIDTH) + "│");
+  console.log(`│ Delta Drift:          ${deltaDriftStr}`);
+  console.log("│");
   const recommendationStr = recommendation.action;
-  console.log(`│ Recommendation:       ${recommendationStr.padEnd(WIDTH - 24)} │`);
+  console.log(`│ Recommendation:       ${recommendationStr}`);
   const reasonLines = recommendation.reason.match(/.{1,73}/g) || [recommendation.reason];
-  reasonLines.forEach((line: string, idx: number) => {
-    const prefix = idx === 0 ? "│   " : "│   ";
-    console.log(`${prefix}${line.padEnd(WIDTH - 4)} │`);
+  reasonLines.forEach((line: string) => {
+    console.log(`│   ${line}`);
   });
-  console.log("└" + "─".repeat(WIDTH) + "┘");
   console.log("");
 
   // Uniswap Positions
-  console.log("┌─ UNISWAP POSITIONS ─" + "─".repeat(WIDTH - 22) + "┐");
+  console.log("┌─ UNISWAP POSITIONS ─" + "-".repeat(5));
   if (status.uniswap.length === 0) {
-    console.log(`│ No active positions${" ".repeat(WIDTH - 21)} │`);
+    console.log("│ No active positions");
   } else {
     status.uniswap.forEach((pos: any, idx: number) => {
       const isLast = idx === status.uniswap.length - 1;
       const prefix = isLast ? "└" : "├";
       const positionHeader = `Position ${idx + 1} (Token ID: ${pos.tokenId})`;
-      console.log(`${prefix}─ ${positionHeader.padEnd(WIDTH - 3)} │`);
+      console.log(`${prefix}─ ${positionHeader}`);
       const priceRange = `[${pos.priceLower.toFixed(6)}, ${pos.priceUpper.toFixed(6)}] ${pos.priceLabel}`;
-      console.log(`│   Price Range: ${priceRange.padEnd(WIDTH - 18)} │`);
+      console.log(`│   Price Range: ${priceRange}`);
       const currentPrice = `${pos.currentPrice.toFixed(6)} ${pos.priceLabel}`;
-      console.log(`│   Current Price: ${currentPrice.padEnd(WIDTH - 19)} │`);
+      console.log(`│   Current Price: ${currentPrice}`);
       const zoneDelta = `${pos.delta.zone.padEnd(10)} Delta: ${ethers.formatEther(pos.delta.delta)} ETH`;
-      console.log(`│   Zone: ${zoneDelta.padEnd(WIDTH - 11)} │`);
+      console.log(`│   Zone: ${zoneDelta}`);
       const fees = `${ethers.formatEther(pos.unclaimedFees.amount0)} ${riskSymbol}, ${ethers.formatUnits(pos.unclaimedFees.amount1, 6)} ${stableSymbol}`;
-      console.log(`│   Unclaimed Fees: ${fees.padEnd(WIDTH - 19)} │`);
-      if (!isLast) console.log("│" + " ".repeat(WIDTH) + "│");
+      console.log(`│   Unclaimed Fees: ${fees}`);
+      if (!isLast) console.log("│");
     });
   }
-  console.log("└" + "─".repeat(WIDTH) + "┘");
   console.log("");
 
   // GMX Position
-  console.log("┌─ GMX HEDGE POSITION ─" + "─".repeat(WIDTH - 23) + "┐");
+  console.log("┌─ GMX HEDGE POSITION ─" + "-".repeat(5));
   const positionSize = `${ethers.formatEther(status.gmx.positionSizeTokens)} ETH (Short)`;
-  console.log(`│ Position Size:      ${positionSize.padEnd(WIDTH - 24)} │`);
+  console.log(`│ Position Size:      ${positionSize}`);
   const collateral = `${ethers.formatUnits(status.gmx.collateralAmount, 6)} USDC`;
-  console.log(`│ Collateral:          ${collateral.padEnd(WIDTH - 24)} │`);
+  console.log(`│ Collateral:          ${collateral}`);
   const gmxNetValue = `$${formatBigInt(status.gmx.netValueUsd, 30, 2)}`;
-  console.log(`│ Net Value:          ${gmxNetValue.padEnd(WIDTH - 24)} │`);
+  console.log(`│ Net Value:          ${gmxNetValue}`);
   const gmxDelta = `${ethers.formatEther(status.gmx.delta)} ETH`;
-  console.log(`│ Delta:              ${gmxDelta.padEnd(WIDTH - 24)} │`);
-  console.log("└" + "─".repeat(WIDTH) + "┘");
+  console.log(`│ Delta:              ${gmxDelta}`);
   console.log("");
 
   // Metrics
-  console.log("┌─ METRICS ─" + "─".repeat(WIDTH - 12) + "┐");
+  console.log("┌─ METRICS ─" + "-".repeat(5));
   const totalLpDelta = `${ethers.formatEther(status.totalLpDelta)} ETH`;
-  console.log(`│ Total LP Delta:     ${totalLpDelta.padEnd(WIDTH - 24)} │`);
+  console.log(`│ Total LP Delta:     ${totalLpDelta}`);
   const totalFees = `$${formatBigInt(totalFeesUsd, 30, 2)}`;
-  console.log(`│ Total Fees USD:     ${totalFees.padEnd(WIDTH - 24)} │`);
+  console.log(`│ Total Fees USD:     ${totalFees}`);
   const currentPrice = `$${formatValue(riskTokenPrice, 2)}`;
-  const priceLabel = `Current ${riskSymbol} Price: `;
-  const priceLabelLength = priceLabel.length;
-  console.log(`│ ${priceLabel}${currentPrice.padEnd(WIDTH - priceLabelLength - 3)} │`);
-  console.log("└" + "─".repeat(WIDTH) + "┘");
+  console.log(`│ Current ${riskSymbol} Price: ${currentPrice}`);
   console.log("");
 
   if (recommendation.data && recommendation.action === StrategyAction.REBALANCE) {
-    console.log("┌─ REBALANCE DETAILS ─" + "─".repeat(WIDTH - 22) + "┐");
+    console.log("┌─ REBALANCE DETAILS ─" + "-".repeat(5));
     const targetDelta = `${ethers.formatEther(recommendation.data.targetDelta)} ETH`;
-    console.log(`│ Target Delta:        ${targetDelta.padEnd(WIDTH - 24)} │`);
+    console.log(`│ Target Delta:        ${targetDelta}`);
     const currentHedge = `${ethers.formatEther(recommendation.data.currentHedge)} ETH`;
-    console.log(`│ Current Hedge:       ${currentHedge.padEnd(WIDTH - 24)} │`);
+    console.log(`│ Current Hedge:       ${currentHedge}`);
     const adjustmentNeeded = `${ethers.formatEther(recommendation.data.adjustmentNeeded)} ETH`;
-    console.log(`│ Adjustment Needed:   ${adjustmentNeeded.padEnd(WIDTH - 24)} │`);
+    console.log(`│ Adjustment Needed:   ${adjustmentNeeded}`);
     if (recommendation.data.adjustmentNeededUsd) {
       const adjustmentUsd = `$${formatBigInt(recommendation.data.adjustmentNeededUsd, 30, 2)}`;
-      console.log(`│ Adjustment USD:      ${adjustmentUsd.padEnd(WIDTH - 24)} │`);
+      console.log(`│ Adjustment USD:      ${adjustmentUsd}`);
     }
-    console.log("└" + "─".repeat(WIDTH) + "┘");
     console.log("");
   }
 
