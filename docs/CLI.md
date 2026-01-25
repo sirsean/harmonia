@@ -23,6 +23,8 @@ harmonia <command> [options]
 The CLI is organized into command groups:
 
 - `monitor` - Monitor delta-neutral position status and health
+- `dashboard` - Display real-time terminal dashboard
+- `daemon` - Run automated monitoring daemon with database storage
 - `gmx` - GMX v2 perpetual operations
 - `uniswap` - Uniswap v3 LP operations
 - `util` / `utility` - Utility commands
@@ -241,6 +243,246 @@ npm run cli -- uniswap check-pool --network arbitrum --pool 0xabcd...
 # Or using environment variable:
 NETWORK=arbitrum npm run cli -- uniswap check-pool --pool 0xabcd...
 ```
+
+## Monitoring Commands
+
+### Monitor
+
+Monitor delta-neutral position status and health:
+
+```bash
+npm run cli -- monitor [options]
+```
+
+Options:
+- `--token-id <id>` - Uniswap token ID to monitor (monitors all if not specified)
+- `--min-fee-threshold <amount>` - Minimum fee threshold in USD (default: 10)
+
+Example:
+```bash
+npm run cli -- monitor --network arbitrum
+npm run cli -- monitor --network arbitrum --token-id 12345
+```
+
+### Dashboard
+
+Display a real-time terminal dashboard that refreshes automatically:
+
+```bash
+npm run cli -- dashboard [options]
+```
+
+Options:
+- `--refresh-interval <seconds>` - Refresh interval in seconds (default: 30)
+- `--no-refresh` - Run once and exit (no auto-refresh)
+
+Example:
+```bash
+npm run cli -- dashboard --network arbitrum
+npm run cli -- dashboard --network arbitrum --refresh-interval 60
+```
+
+The dashboard displays:
+- Total portfolio value (LP + GMX)
+- Net delta and delta drift
+- Current recommendations
+- Uniswap position details
+- GMX hedge position details
+- Metrics and rebalance details
+
+### Daemon
+
+Run an automated monitoring daemon that continuously tracks strategy metrics and stores them in a SQLite database. The daemon is designed for long-running monitoring and historical data collection.
+
+```bash
+npm run cli -- daemon [options]
+```
+
+#### Options
+
+- `--interval <seconds>` - Monitoring interval in seconds (default: 60)
+  - Lower intervals provide more granular data but increase RPC usage
+  - Recommended: 60-300 seconds depending on your needs
+- `--db-path <path>` - Custom database path (default: ./data/monitoring.db)
+  - Use this to store data in a specific location or run multiple daemons for different accounts
+
+#### Basic Usage
+
+```bash
+# Run daemon with default settings (60s interval)
+npm run cli -- daemon --network arbitrum
+
+# Custom interval (check every 30 seconds)
+npm run cli -- daemon --network arbitrum --interval 30
+
+# Custom database path
+npm run cli -- daemon --network arbitrum --db-path ./custom/monitoring.db
+
+# Using environment variable for network
+NETWORK=arbitrum npm run cli -- daemon --interval 120
+```
+
+#### What the Daemon Does
+
+The daemon continuously:
+
+1. **Monitors Strategy Status**: Checks your Uniswap LP positions and GMX hedge positions
+2. **Calculates Metrics**: Computes NAV, delta values, fees, and drift
+3. **Stores Snapshots**: Saves complete strategy state to SQLite database
+4. **Tracks History**: Maintains time series data for NAV and position values
+5. **Handles Errors**: Implements exponential backoff on errors (max 5 consecutive errors before shutdown)
+
+#### Data Stored
+
+Each monitoring cycle stores:
+
+- **Strategy Snapshot**: Complete status including NAV, deltas, fees, recommendations
+- **Position Snapshots**: Detailed Uniswap LP positions (token IDs, ranges, deltas, fees)
+- **GMX Position**: Hedge position details (size, collateral, delta, net value)
+- **NAV History**: Time series entry for portfolio value tracking
+
+See [DATABASE.md](./DATABASE.md) for complete schema documentation.
+
+#### When to Use Daemon vs Other Commands
+
+| Command | Use Case | Duration |
+|---------|----------|----------|
+| `monitor` | One-time status check | Single run |
+| `dashboard` | Real-time visual monitoring | Interactive session |
+| `daemon` | Historical data collection, automated monitoring | Long-running |
+
+**Use the daemon when:**
+- You want historical NAV tracking
+- You need data for analysis and reporting
+- You're building automated systems (future: auto-rebalance, auto-compound)
+- You want to track strategy performance over time
+
+**Use `monitor` or `dashboard` when:**
+- You need a quick status check
+- You want interactive real-time monitoring
+- You don't need historical data
+
+#### Running as a Service
+
+To run the daemon as a background service:
+
+```bash
+# Using nohup
+nohup npm run cli -- daemon --network arbitrum > daemon.log 2>&1 &
+
+# Using systemd (create /etc/systemd/system/harmonia-daemon.service)
+[Unit]
+Description=Harmonia Monitoring Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=your-user
+WorkingDirectory=/path/to/harmonia
+ExecStart=/usr/bin/npm run cli -- daemon --network arbitrum
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+# Enable and start
+sudo systemctl enable harmonia-daemon
+sudo systemctl start harmonia-daemon
+```
+
+#### Error Handling
+
+The daemon includes robust error handling:
+
+- **Network Errors**: Exponential backoff (1s, 2s, 4s, 8s, 16s)
+- **RPC Failures**: Automatic retry with increasing delays
+- **Max Errors**: Shuts down gracefully after 5 consecutive errors
+- **Graceful Shutdown**: SIGINT/SIGTERM handlers ensure database is closed properly
+
+#### Querying Stored Data
+
+After running the daemon, you can query the database:
+
+```typescript
+import { MonitoringDatabase } from "./src/utils/database";
+
+const db = new MonitoringDatabase("./data/monitoring.db");
+
+// Get latest snapshot
+const snapshot = db.getLatestSnapshot("0x...");
+
+// Get NAV history for last 24 hours
+const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+const history = db.getNavHistory("0x...", oneDayAgo);
+
+// Get statistics
+const stats = db.getStatistics("0x...");
+console.log(`Total snapshots: ${stats.snapshotCount}`);
+console.log(`Average NAV: $${stats.avgNav}`);
+
+db.close();
+```
+
+See [DATABASE.md](./DATABASE.md) for more query examples.
+
+#### Stopping the Daemon
+
+The daemon runs indefinitely until stopped:
+
+```bash
+# Graceful shutdown (recommended)
+# Press Ctrl+C in the terminal where daemon is running
+
+# Or send SIGTERM signal
+kill <pid>
+
+# For systemd service
+sudo systemctl stop harmonia-daemon
+```
+
+The daemon will:
+1. Finish current monitoring cycle (if in progress)
+2. Close database connections properly
+3. Exit cleanly
+
+**Note**: Always use graceful shutdown to ensure database integrity.
+
+#### Performance Considerations
+
+- **Database Size**: Grows ~1-5KB per snapshot. For 60s interval: ~1.4MB/day, ~500MB/year
+- **RPC Usage**: Each cycle makes ~5-10 RPC calls. 60s interval = ~8,640 calls/day
+- **Disk I/O**: WAL mode ensures writes are efficient
+- **Memory**: Minimal memory footprint (~50-100MB)
+
+#### Future Integration
+
+The daemon is designed to integrate with future automation features:
+
+- **Auto-rebalance**: Automatically rebalance when delta drift exceeds threshold
+- **Auto-compound**: Compound fees when they reach threshold
+- **Auto-range-adjustment**: Adjust LP ranges proactively
+- **Auto-optimize**: Optimize position ranges for better yield
+
+These features will be added to the daemon loop in future updates.
+
+#### Troubleshooting
+
+**Daemon won't start:**
+- Check network connectivity and RPC endpoint
+- Verify account has sufficient balance for gas
+- Check database file permissions
+
+**Database locked errors:**
+- Ensure only one daemon instance per database file
+- Check for stale WAL files
+- Restart daemon if needed
+
+**High RPC usage:**
+- Increase `--interval` to reduce call frequency
+- Consider using a dedicated RPC endpoint with higher rate limits
+
+For more troubleshooting, see [DATABASE.md](./DATABASE.md#troubleshooting).
 
 ## Utility Commands
 

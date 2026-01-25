@@ -1,0 +1,413 @@
+import Database from "better-sqlite3";
+import { StrategyStatus, Recommendation } from "../strategy/types";
+import path from "path";
+import fs from "fs";
+import { migrate } from "./migrations";
+
+export interface MonitoringSnapshot {
+  id: number;
+  timestamp: number;
+  account: string;
+  totalNavUsd: string; // Stored as string to preserve precision
+  totalLpValueUsd: string;
+  gmxNetValueUsd: string;
+  totalLpDelta: string;
+  gmxDelta: string;
+  netDelta: string;
+  deltaDrift: number;
+  totalFeesUsd: string;
+  recommendationAction: string;
+  recommendationReason: string;
+}
+
+export interface PositionSnapshot {
+  id: number;
+  snapshotId: number;
+  tokenId: string;
+  positionType: "uniswap" | "gmx";
+  liquidity?: string;
+  tickLower?: number;
+  tickUpper?: number;
+  currentPrice: number;
+  priceLower?: number;
+  priceUpper?: number;
+  delta: string;
+  deltaZone?: string;
+  unclaimedFees0?: string;
+  unclaimedFees1?: string;
+  positionSizeTokens?: string;
+  collateralAmount?: string;
+}
+
+export interface NavHistory {
+  timestamp: number;
+  navUsd: string;
+}
+
+/**
+ * Database service for storing monitoring data
+ */
+export class MonitoringDatabase {
+  private db: Database.Database;
+
+  constructor(dbPath?: string) {
+    const defaultPath = path.join(process.cwd(), "data", "monitoring.db");
+    const finalPath = dbPath || defaultPath;
+
+    // Ensure directory exists
+    const dir = path.dirname(finalPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    this.db = new Database(finalPath);
+    this.db.pragma("journal_mode = WAL"); // Better concurrency
+    this.db.pragma("foreign_keys = ON"); // Enforce foreign key constraints
+
+    // Run migrations to ensure schema is up to date
+    migrate(this.db);
+  }
+
+  /**
+   * Store a monitoring snapshot
+   */
+  storeSnapshot(
+    account: string,
+    status: StrategyStatus,
+    recommendation: Recommendation,
+    totalLpValueUsd: bigint,
+    totalFeesUsd: bigint
+  ): number {
+    const timestamp = status.timestamp || Date.now();
+    const totalNavUsd = totalLpValueUsd + status.gmx.netValueUsd;
+
+    const insertSnapshot = this.db.prepare(`
+      INSERT INTO monitoring_snapshots (
+        timestamp, account, total_nav_usd, total_lp_value_usd, gmx_net_value_usd,
+        total_lp_delta, gmx_delta, net_delta, delta_drift, total_fees_usd,
+        recommendation_action, recommendation_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = insertSnapshot.run(
+      timestamp,
+      account,
+      totalNavUsd.toString(),
+      totalLpValueUsd.toString(),
+      status.gmx.netValueUsd.toString(),
+      status.totalLpDelta.toString(),
+      status.gmx.delta.toString(),
+      status.netDelta.toString(),
+      status.deltaDrift,
+      totalFeesUsd.toString(),
+      recommendation.action,
+      recommendation.reason
+    );
+
+    const snapshotId = Number(result.lastInsertRowid);
+
+    // Store Uniswap positions
+    for (const pos of status.uniswap) {
+      const insertPosition = this.db.prepare(`
+        INSERT INTO position_snapshots (
+          snapshot_id, token_id, position_type, liquidity, tick_lower, tick_upper,
+          current_price, price_lower, price_upper, delta, delta_zone,
+          unclaimed_fees0, unclaimed_fees1
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      insertPosition.run(
+        snapshotId,
+        pos.tokenId,
+        "uniswap",
+        pos.liquidity.toString(),
+        pos.tickLower,
+        pos.tickUpper,
+        pos.currentPrice,
+        pos.priceLower,
+        pos.priceUpper,
+        pos.delta.delta.toString(),
+        pos.delta.zone,
+        pos.unclaimedFees.amount0.toString(),
+        pos.unclaimedFees.amount1.toString()
+      );
+    }
+
+    // Store GMX position
+    const insertGmxPosition = this.db.prepare(`
+      INSERT INTO position_snapshots (
+        snapshot_id, token_id, position_type, current_price, delta,
+        position_size_tokens, collateral_amount
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertGmxPosition.run(
+      snapshotId,
+      "gmx-hedge",
+      "gmx",
+      0, // GMX doesn't have a price in the same sense
+      status.gmx.delta.toString(),
+      status.gmx.positionSizeTokens.toString(),
+      status.gmx.collateralAmount.toString()
+    );
+
+    // Store NAV history entry
+    const insertNav = this.db.prepare(`
+      INSERT OR REPLACE INTO nav_history (timestamp, account, nav_usd)
+      VALUES (?, ?, ?)
+    `);
+
+    insertNav.run(timestamp, account, totalNavUsd.toString());
+
+    return snapshotId;
+  }
+
+  /**
+   * Get latest snapshot for an account
+   */
+  getLatestSnapshot(account: string): MonitoringSnapshot | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM monitoring_snapshots
+      WHERE account = ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(account) as any;
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      timestamp: row.timestamp,
+      account: row.account,
+      totalNavUsd: row.total_nav_usd,
+      totalLpValueUsd: row.total_lp_value_usd,
+      gmxNetValueUsd: row.gmx_net_value_usd,
+      totalLpDelta: row.total_lp_delta,
+      gmxDelta: row.gmx_delta,
+      netDelta: row.net_delta,
+      deltaDrift: row.delta_drift,
+      totalFeesUsd: row.total_fees_usd,
+      recommendationAction: row.recommendation_action,
+      recommendationReason: row.recommendation_reason,
+    };
+  }
+
+  /**
+   * Get NAV history for an account within a time range
+   */
+  getNavHistory(account: string, startTime?: number, endTime?: number): NavHistory[] {
+    let query = `
+      SELECT timestamp, nav_usd FROM nav_history
+      WHERE account = ?
+    `;
+    const params: any[] = [account];
+
+    if (startTime !== undefined) {
+      query += " AND timestamp >= ?";
+      params.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      query += " AND timestamp <= ?";
+      params.push(endTime);
+    }
+
+    query += " ORDER BY timestamp ASC";
+
+    const stmt = this.db.prepare(query);
+    const rows = stmt.all(...params) as any[];
+
+    return rows.map((row) => ({
+      timestamp: row.timestamp,
+      navUsd: row.nav_usd,
+    }));
+  }
+
+  /**
+   * Get position snapshots for a given snapshot ID
+   */
+  getPositionSnapshots(snapshotId: number): PositionSnapshot[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM position_snapshots
+      WHERE snapshot_id = ?
+      ORDER BY position_type, token_id
+    `);
+
+    const rows = stmt.all(snapshotId) as any[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      snapshotId: row.snapshot_id,
+      tokenId: row.token_id,
+      positionType: row.position_type,
+      liquidity: row.liquidity,
+      tickLower: row.tick_lower,
+      tickUpper: row.tick_upper,
+      currentPrice: row.current_price,
+      priceLower: row.price_lower,
+      priceUpper: row.price_upper,
+      delta: row.delta,
+      deltaZone: row.delta_zone,
+      unclaimedFees0: row.unclaimed_fees0,
+      unclaimedFees1: row.unclaimed_fees1,
+      positionSizeTokens: row.position_size_tokens,
+      collateralAmount: row.collateral_amount,
+    }));
+  }
+
+  /**
+   * Get snapshots within a time range
+   */
+  getSnapshots(
+    account: string,
+    startTime?: number,
+    endTime?: number,
+    limit?: number
+  ): MonitoringSnapshot[] {
+    let query = `
+      SELECT * FROM monitoring_snapshots
+      WHERE account = ?
+    `;
+    const params: any[] = [account];
+
+    if (startTime !== undefined) {
+      query += " AND timestamp >= ?";
+      params.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      query += " AND timestamp <= ?";
+      params.push(endTime);
+    }
+
+    query += " ORDER BY timestamp DESC";
+
+    if (limit !== undefined) {
+      query += " LIMIT ?";
+      params.push(limit);
+    }
+
+    const stmt = this.db.prepare(query);
+    const rows = stmt.all(...params) as any[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      timestamp: row.timestamp,
+      account: row.account,
+      totalNavUsd: row.total_nav_usd,
+      totalLpValueUsd: row.total_lp_value_usd,
+      gmxNetValueUsd: row.gmx_net_value_usd,
+      totalLpDelta: row.total_lp_delta,
+      gmxDelta: row.gmx_delta,
+      netDelta: row.net_delta,
+      deltaDrift: row.delta_drift,
+      totalFeesUsd: row.total_fees_usd,
+      recommendationAction: row.recommendation_action,
+      recommendationReason: row.recommendation_reason,
+    }));
+  }
+
+  /**
+   * Get statistics for an account
+   */
+  getStatistics(
+    account: string,
+    startTime?: number,
+    endTime?: number
+  ): {
+    snapshotCount: number;
+    firstSnapshot: number | null;
+    lastSnapshot: number | null;
+    minNav: string | null;
+    maxNav: string | null;
+    avgNav: string | null;
+  } {
+    let query = `
+      SELECT 
+        COUNT(*) as count,
+        MIN(timestamp) as first_timestamp,
+        MAX(timestamp) as last_timestamp
+      FROM monitoring_snapshots
+      WHERE account = ?
+    `;
+    const params: any[] = [account];
+
+    if (startTime !== undefined) {
+      query += " AND timestamp >= ?";
+      params.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      query += " AND timestamp <= ?";
+      params.push(endTime);
+    }
+
+    const stmt = this.db.prepare(query);
+    const row = stmt.get(...params) as any;
+
+    // Get min/max/avg NAV by querying all snapshots and calculating in JavaScript
+    // This preserves precision for bigint values
+    let navQuery = `
+      SELECT total_nav_usd
+      FROM monitoring_snapshots
+      WHERE account = ?
+    `;
+    const navParams: any[] = [account];
+
+    if (startTime !== undefined) {
+      navQuery += " AND timestamp >= ?";
+      navParams.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      navQuery += " AND timestamp <= ?";
+      navParams.push(endTime);
+    }
+
+    const navStmt = this.db.prepare(navQuery);
+    const navRows = navStmt.all(...navParams) as Array<{ total_nav_usd: string }>;
+
+    let minNav: string | null = null;
+    let maxNav: string | null = null;
+    let sumNav = 0n;
+    let countNav = 0;
+
+    for (const navRow of navRows) {
+      const navValue = BigInt(navRow.total_nav_usd);
+      if (minNav === null || navValue < BigInt(minNav)) {
+        minNav = navRow.total_nav_usd;
+      }
+      if (maxNav === null || navValue > BigInt(maxNav)) {
+        maxNav = navRow.total_nav_usd;
+      }
+      sumNav += navValue;
+      countNav++;
+    }
+
+    const avgNav = countNav > 0 ? (sumNav / BigInt(countNav)).toString() : null;
+
+    return {
+      snapshotCount: row.count || 0,
+      firstSnapshot: row.first_timestamp || null,
+      lastSnapshot: row.last_timestamp || null,
+      minNav,
+      maxNav,
+      avgNav,
+    };
+  }
+
+  /**
+   * Close database connection
+   */
+  close(): void {
+    this.db.close();
+  }
+
+  /**
+   * Get database instance (for testing)
+   */
+  getDb(): Database.Database {
+    return this.db;
+  }
+}

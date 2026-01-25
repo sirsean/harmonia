@@ -37,3 +37,7 @@ deployments/hardhat
 logs/
 reports/
 *.log
+
+# Monitoring database
+data/
+test-data/

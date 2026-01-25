@@ -62,7 +62,8 @@ harmonia/
 │   │   └── math/                 # Delta/yield calculations
 │   └── strategy/                 # Strategy orchestration
 ├── docs/
-│   └── CLI.md                    # CLI documentation
+│   ├── CLI.md                    # CLI documentation
+│   └── DATABASE.md               # Database setup and migrations
 ├── PLAN.md                       # Technical specification
 └── AGENTS.md                     # Development guidelines
 ```
@@ -105,8 +106,11 @@ npm run cli -- gmx read-position --network arbitrum
 # Uniswap positions
 npm run cli -- uniswap read-position --network arbitrum
 
-# Monitor all positions
+# Monitor all positions (one-time check)
 npm run cli -- monitor --network arbitrum
+
+# Run monitoring daemon (continuous, stores to database)
+npm run cli -- daemon --network arbitrum
 ```
 
 **GMX Operations:**
