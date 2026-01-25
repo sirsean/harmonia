@@ -36,11 +36,11 @@ describe("Configuration System Integration", () => {
     });
 
     it("should apply strategy overrides", () => {
-      const overrides = { deltaThreshold: 0.1 };
+      const overrides = { optimizationDeltaThreshold: 0.15 };
       const config = loadConfigSync(42161, overrides);
 
-      expect(config.strategy.deltaThreshold).toBe(0.1);
-      expect(config.strategy.emergencyThreshold).toBe(DEFAULT_STRATEGY_CONFIG.emergencyThreshold);
+      expect(config.strategy.optimizationDeltaThreshold).toBe(0.15);
+      expect(config.strategy.emergencyDeltaThreshold).toBe(DEFAULT_STRATEGY_CONFIG.emergencyDeltaThreshold);
     });
 
     it("should return valid AppConfig structure", () => {
@@ -103,7 +103,7 @@ describe("Configuration System Integration", () => {
 
     it("should validate configuration on load", async () => {
       const invalidOverrides = {
-        deltaThreshold: 1.5, // Invalid: > 1
+        optimizationDeltaThreshold: 1.5, // Invalid: > 1
       };
 
       await expect(
@@ -112,23 +112,23 @@ describe("Configuration System Integration", () => {
     });
 
     it("should respect environment variable overrides", async () => {
-      process.env.DELTA_THRESHOLD = "0.08";
+      process.env.OPTIMIZATION_DELTA_THRESHOLD = "0.08";
       process.env.MAX_LEVERAGE = "4.0";
 
       const config = await loadConfig();
 
-      expect(config.strategy.deltaThreshold).toBe(0.08);
+      expect(config.strategy.optimizationDeltaThreshold).toBe(0.08);
       expect(config.strategy.maxLeverage).toBe(4.0);
     });
 
     it("should prioritize programmatic overrides over environment", async () => {
-      process.env.DELTA_THRESHOLD = "0.08";
+      process.env.OPTIMIZATION_DELTA_THRESHOLD = "0.08";
 
       const config = await loadConfig({
-        strategyOverrides: { deltaThreshold: 0.1 },
+        strategyOverrides: { optimizationDeltaThreshold: 0.1 },
       });
 
-      expect(config.strategy.deltaThreshold).toBe(0.1);
+      expect(config.strategy.optimizationDeltaThreshold).toBe(0.1);
     });
   });
 
@@ -147,22 +147,20 @@ describe("Configuration System Integration", () => {
     it("should have valid strategy thresholds", async () => {
       const config = await loadConfig();
 
-      expect(config.strategy.deltaThreshold).toBeGreaterThan(0);
-      expect(config.strategy.deltaThreshold).toBeLessThan(1);
-      expect(config.strategy.emergencyThreshold).toBeGreaterThan(
-        config.strategy.deltaThreshold
+      expect(config.strategy.optimizationDeltaThreshold).toBeGreaterThan(0);
+      expect(config.strategy.optimizationDeltaThreshold).toBeLessThan(1);
+      expect(config.strategy.emergencyDeltaThreshold).toBeGreaterThan(
+        config.strategy.optimizationDeltaThreshold
       );
     });
 
     it("should have valid timing intervals", async () => {
       const config = await loadConfig();
 
-      expect(config.strategy.minRebalanceInterval).toBeGreaterThan(0);
-      expect(config.strategy.maxRebalanceInterval).toBeGreaterThan(
-        config.strategy.minRebalanceInterval
+      expect(config.strategy.minOptimizationInterval).toBeGreaterThan(0);
+      expect(config.strategy.maxOptimizationInterval).toBeGreaterThan(
+        config.strategy.minOptimizationInterval
       );
-      expect(config.strategy.minCompoundInterval).toBeGreaterThan(0);
-      expect(config.strategy.minRangeAdjustmentInterval).toBeGreaterThan(0);
     });
 
     it("should have valid leverage settings", async () => {

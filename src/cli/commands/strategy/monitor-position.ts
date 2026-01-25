@@ -15,7 +15,7 @@ export async function monitorPosition(options: MonitorPositionOptions = {}): Pro
   const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
 
   const config = loadStrategyConfig({
-    minFeeThresholdUsd: ethers.parseUnits("10", 30),
+    minOptimizationFeeThresholdUsd: ethers.parseUnits("10", 30),
   });
 
   const context = {

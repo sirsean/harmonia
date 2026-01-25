@@ -398,6 +398,51 @@ export class MonitoringDatabase {
   }
 
   /**
+   * Record an optimization execution
+   */
+  recordOptimization(
+    account: string,
+    deltaDrift: number,
+    totalFeesUsd: bigint,
+    gasCostUsd?: bigint,
+    benefitUsd?: bigint
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO optimization_history (
+        timestamp, account, delta_drift, total_fees_usd, gas_cost_usd, benefit_usd
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = insert.run(
+      timestamp,
+      account,
+      deltaDrift,
+      totalFeesUsd.toString(),
+      gasCostUsd?.toString() || null,
+      benefitUsd?.toString() || null
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Get the timestamp of the last optimization for an account
+   * @returns Timestamp in milliseconds, or undefined if never optimized
+   */
+  getLastOptimizationTime(account: string): number | undefined {
+    const stmt = this.db.prepare(`
+      SELECT timestamp FROM optimization_history
+      WHERE account = ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(account) as { timestamp: number } | undefined;
+    return row?.timestamp;
+  }
+
+  /**
    * Close database connection
    */
   close(): void {

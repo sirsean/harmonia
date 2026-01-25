@@ -251,14 +251,14 @@ describe("MonitoringDatabase", () => {
       const account = "0x1234567890123456789012345678901234567890";
       const status = createMockStatus();
       const recommendation: Recommendation = {
-        action: StrategyAction.REBALANCE,
+        action: StrategyAction.OPTIMIZE,
         reason: "Delta drift exceeds threshold",
         data: {
-          targetDelta: ethers.parseEther("0.75"),
-          currentHedge: ethers.parseEther("0.7"),
-          adjustmentNeeded: ethers.parseEther("0.05"),
-          targetSizeUsd: ethers.parseUnits("1500", 30),
-          adjustmentNeededUsd: ethers.parseUnits("100", 30),
+          deltaDrift: 0.12,
+          anyOutOfRange: false,
+          totalFeesUsd: ethers.parseUnits("15", 30),
+          estimatedGasCostUsd: ethers.parseUnits("2", 30),
+          estimatedBenefitUsd: ethers.parseUnits("15", 30),
         },
       };
       const totalLpValueUsd = ethers.parseUnits("2000", 30);
@@ -267,7 +267,7 @@ describe("MonitoringDatabase", () => {
       db.storeSnapshot(account, status, recommendation, totalLpValueUsd, totalFeesUsd);
 
       const snapshot = db.getLatestSnapshot(account);
-      expect(snapshot!.recommendationAction).toBe(StrategyAction.REBALANCE);
+      expect(snapshot!.recommendationAction).toBe(StrategyAction.OPTIMIZE);
       expect(snapshot!.recommendationReason).toBe("Delta drift exceeds threshold");
     });
   });

@@ -66,7 +66,7 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
   const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
 
   const monitorConfig = loadStrategyConfig({
-    minFeeThresholdUsd: ethers.parseUnits("10", 30),
+    minOptimizationFeeThresholdUsd: ethers.parseUnits("10", 30),
   });
 
   const monitorContext = {
@@ -89,8 +89,8 @@ export async function executeAdjustRange(options: ExecuteAdjustRangeOptions = {}
   console.log("Checking position status...");
   const { status, recommendation } = await monitor.check();
 
-  if (recommendation.action !== StrategyAction.ADJUST_RANGE) {
-    console.log(`No range adjustment needed. Status: ${recommendation.action}`);
+  if (recommendation.action !== StrategyAction.OPTIMIZE) {
+    console.log(`No optimization needed. Status: ${recommendation.action}`);
     console.log(`Reason: ${recommendation.reason}`);
     return;
   }

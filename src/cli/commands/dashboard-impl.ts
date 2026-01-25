@@ -70,10 +70,7 @@ function getActionColor(action: StrategyAction): "green" | "yellow" | "red" {
   switch (action) {
     case StrategyAction.NONE:
       return "green";
-    case StrategyAction.COMPOUND:
-      return "yellow";
-    case StrategyAction.REBALANCE:
-    case StrategyAction.ADJUST_RANGE:
+    case StrategyAction.OPTIMIZE:
       return "yellow";
     default:
       return "yellow";
@@ -184,17 +181,33 @@ function renderDashboard(
   console.log(`│ Current ${riskSymbol} Price: ${currentPrice}`);
   console.log("");
 
-  if (recommendation.data && recommendation.action === StrategyAction.REBALANCE) {
-    console.log("┌─ REBALANCE DETAILS ─" + "-".repeat(5));
-    const targetDelta = `${ethers.formatEther(recommendation.data.targetDelta)} ETH`;
-    console.log(`│ Target Delta:        ${targetDelta}`);
-    const currentHedge = `${ethers.formatEther(recommendation.data.currentHedge)} ETH`;
-    console.log(`│ Current Hedge:       ${currentHedge}`);
-    const adjustmentNeeded = `${ethers.formatEther(recommendation.data.adjustmentNeeded)} ETH`;
-    console.log(`│ Adjustment Needed:   ${adjustmentNeeded}`);
-    if (recommendation.data.adjustmentNeededUsd) {
-      const adjustmentUsd = `$${formatBigInt(recommendation.data.adjustmentNeededUsd, 30, 2)}`;
-      console.log(`│ Adjustment USD:      ${adjustmentUsd}`);
+  if (recommendation.data && recommendation.action === StrategyAction.OPTIMIZE) {
+    console.log("┌─ OPTIMIZATION DETAILS ─" + "-".repeat(5));
+    const deltaDrift = `${formatValue(recommendation.data.deltaDrift * 100, 2)}%`;
+    console.log(`│ Delta Drift:          ${deltaDrift}`);
+    const outOfRange = recommendation.data.anyOutOfRange ? "Yes" : "No";
+    console.log(`│ Out of Range:         ${outOfRange}`);
+    if (recommendation.data.totalFeesUsd) {
+      const fees = `$${formatBigInt(recommendation.data.totalFeesUsd, 30, 2)}`;
+      console.log(`│ Unclaimed Fees:        ${fees}`);
+    }
+    if (recommendation.data.timeSinceLastOptimization !== undefined) {
+      const hoursSince = (recommendation.data.timeSinceLastOptimization / 3600).toFixed(1);
+      console.log(`│ Time Since Last:      ${hoursSince}h`);
+    }
+    if (recommendation.data.estimatedGasCostUsd) {
+      const gasCost = `$${formatBigInt(recommendation.data.estimatedGasCostUsd, 30, 2)}`;
+      console.log(`│ Est. Gas Cost:         ${gasCost}`);
+    }
+    if (recommendation.data.estimatedBenefitUsd) {
+      const benefit = `$${formatBigInt(recommendation.data.estimatedBenefitUsd, 30, 2)}`;
+      console.log(`│ Est. Benefit:          ${benefit}`);
+      if (recommendation.data.estimatedGasCostUsd && recommendation.data.estimatedGasCostUsd > 0n) {
+        const ratio =
+          Number(recommendation.data.estimatedBenefitUsd) /
+          Number(recommendation.data.estimatedGasCostUsd);
+        console.log(`│ Benefit/Cost Ratio:    ${ratio.toFixed(2)}x`);
+      }
     }
     console.log("");
   }

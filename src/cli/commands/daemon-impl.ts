@@ -50,7 +50,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
     },
   };
 
-  const monitorInstance = new DeltaNeutralMonitor(ethers.provider, config, context);
+  const monitorInstance = new DeltaNeutralMonitor(ethers.provider, config, context, db);
 
   // Get pool contract to determine token order and decimals
   const poolContract = uniswapReader.createPool(context.uniswap.pool, ethers.provider);

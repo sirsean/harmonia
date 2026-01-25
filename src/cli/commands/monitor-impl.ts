@@ -21,12 +21,12 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
   // Configuration from environment or defaults
   const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
 
-  const minFeeThresholdUsd = options.minFeeThreshold
+  const minOptimizationFeeThresholdUsd = options.minFeeThreshold
     ? ethers.parseUnits(options.minFeeThreshold, 30)
     : ethers.parseUnits("10", 30); // $10 worth of fees (USD 30 decimals)
 
   const config = loadStrategyConfig({
-    minFeeThresholdUsd,
+    minOptimizationFeeThresholdUsd,
   });
 
   const context = {
@@ -170,22 +170,37 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
     console.log(`  Reason: ${recommendation.reason}`);
 
     if (recommendation.data) {
-      if (recommendation.action === StrategyAction.REBALANCE) {
+      if (recommendation.action === StrategyAction.OPTIMIZE) {
         console.log(`  Data:`);
-        console.log(`    Target Delta: ${ethers.formatEther(recommendation.data.targetDelta)} ETH`);
-        console.log(
-          `    Current Hedge: ${ethers.formatEther(recommendation.data.currentHedge)} ETH`
-        );
-        console.log(
-          `    Adjustment Needed: ${ethers.formatEther(recommendation.data.adjustmentNeeded)} ETH`
-        );
-        if (recommendation.data.targetSizeUsd !== undefined) {
+        console.log(`    Delta Drift: ${(recommendation.data.deltaDrift * 100).toFixed(2)}%`);
+        console.log(`    Out of Range: ${recommendation.data.anyOutOfRange ? "Yes" : "No"}`);
+        if (recommendation.data.totalFeesUsd !== undefined) {
           console.log(
-            `    Target Size USD: $${ethers.formatUnits(recommendation.data.targetSizeUsd, 30)}`
+            `    Unclaimed Fees: $${ethers.formatUnits(recommendation.data.totalFeesUsd, 30)}`
           );
+        }
+        if (recommendation.data.timeSinceLastOptimization !== undefined) {
+          const hoursSince = (recommendation.data.timeSinceLastOptimization / 3600).toFixed(1);
+          console.log(`    Time Since Last: ${hoursSince}h`);
+        }
+        if (recommendation.data.estimatedGasCostUsd !== undefined) {
           console.log(
-            `    Adjustment Needed USD: $${ethers.formatUnits(recommendation.data.adjustmentNeededUsd, 30)}`
+            `    Est. Gas Cost: $${ethers.formatUnits(recommendation.data.estimatedGasCostUsd, 30)}`
           );
+        }
+        if (recommendation.data.estimatedBenefitUsd !== undefined) {
+          console.log(
+            `    Est. Benefit: $${ethers.formatUnits(recommendation.data.estimatedBenefitUsd, 30)}`
+          );
+          if (
+            recommendation.data.estimatedGasCostUsd !== undefined &&
+            recommendation.data.estimatedGasCostUsd > 0n
+          ) {
+            const ratio =
+              Number(recommendation.data.estimatedBenefitUsd) /
+              Number(recommendation.data.estimatedGasCostUsd);
+            console.log(`    Benefit/Cost Ratio: ${ratio.toFixed(2)}x`);
+          }
         }
       } else {
         console.log(

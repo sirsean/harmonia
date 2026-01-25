@@ -1,9 +1,7 @@
 import { DeltaResult } from "../modules/math/delta";
 
 export enum StrategyAction {
-  REBALANCE = "REBALANCE",
-  COMPOUND = "COMPOUND",
-  ADJUST_RANGE = "ADJUST_RANGE",
+  OPTIMIZE = "OPTIMIZE",
   NONE = "NONE",
 }
 
@@ -38,6 +36,21 @@ export interface StrategyStatus {
   timestamp: number;
 }
 
+export interface OptimizationData {
+  /** Current delta drift percentage */
+  deltaDrift: number;
+  /** Whether any position is out of range */
+  anyOutOfRange: boolean;
+  /** Total unclaimed fees in USD (30 decimals) */
+  totalFeesUsd: bigint;
+  /** Time since last optimization in seconds (undefined if never optimized) */
+  timeSinceLastOptimization?: number;
+  /** Estimated gas cost in USD (30 decimals) */
+  estimatedGasCostUsd?: bigint;
+  /** Net benefit of optimizing (fees + delta correction value) in USD (30 decimals) */
+  estimatedBenefitUsd?: bigint;
+}
+
 export interface RebalanceData {
   targetDelta: bigint;
   currentHedge: bigint;
@@ -49,7 +62,7 @@ export interface RebalanceData {
 export interface Recommendation {
   action: StrategyAction;
   reason: string;
-  data?: RebalanceData | any;
+  data?: OptimizationData;
 }
 
 export interface StrategyMonitor {

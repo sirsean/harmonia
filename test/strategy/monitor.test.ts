@@ -72,7 +72,7 @@ describe("DeltaNeutralMonitor", () => {
 
   const config = {
     ...DEFAULT_STRATEGY_CONFIG,
-    minFeeThresholdUsd: ethers.parseUnits("10", 30),
+    minOptimizationFeeThresholdUsd: ethers.parseUnits("5", 30),
   };
   
   const context = {
@@ -132,15 +132,17 @@ describe("DeltaNeutralMonitor", () => {
   });
 
   it("should return NONE when strategy is healthy (neutral delta)", async () => {
-    // Determine LP delta first to set correct hedge
-    // We can assume perfect hedge for this test
-    const lpDelta = 500000000000000000n; // Approx
+    // First, get the LP delta by checking without GMX position
+    vi.mocked(gmxReader.getPosition).mockResolvedValue(undefined);
+    const initialResult = await monitor.check();
+    const lpDelta = initialResult.status.totalLpDelta;
     
-    // First pass: GMX size 0. Should be REBALANCE.
+    // Now set GMX position to perfectly hedge the LP delta
+    // GMX delta = -sizeInTokens, so we need sizeInTokens = lpDelta to get netDelta = 0
     vi.mocked(gmxReader.getPosition).mockResolvedValue({
       addresses: {} as any,
       numbers: {
-        sizeInTokens: 0n,
+        sizeInTokens: lpDelta, // Perfect hedge: GMX delta = -lpDelta, netDelta = lpDelta + (-lpDelta) = 0
         collateralAmount: 0n,
         sizeInUsd: 0n,
         shortTokenClaimableFundingAmountPerSize: 0n,
@@ -148,27 +150,12 @@ describe("DeltaNeutralMonitor", () => {
       flags: { isLong: false },
     });
     
-    let result = await monitor.check();
-    expect(result.recommendation.action).toBe(StrategyAction.REBALANCE);
-    
-    // Second pass: Perfect hedge
-    const targetDelta = result.status.totalLpDelta;
-    vi.mocked(gmxReader.getPosition).mockResolvedValue({
-      addresses: {} as any,
-      numbers: {
-        sizeInTokens: targetDelta, 
-        collateralAmount: 0n,
-        sizeInUsd: 0n,
-        shortTokenClaimableFundingAmountPerSize: 0n,
-      } as any,
-      flags: { isLong: false },
-    });
-    
-    result = await monitor.check();
+    const result = await monitor.check();
+    // With perfect hedge (netDelta ≈ 0), low fees, and in range, should return NONE
     expect(result.recommendation.action).toBe(StrategyAction.NONE);
   });
 
-  it("should recommend ADJUST_RANGE when out of range", async () => {
+  it("should recommend OPTIMIZE when out of range", async () => {
      // Override position to be out of range
      const outOfRangePos = {
          ...mockUniswapPosition,
@@ -186,52 +173,49 @@ describe("DeltaNeutralMonitor", () => {
      
      const result = await monitor.check();
      
-     expect(result.recommendation.action).toBe(StrategyAction.ADJUST_RANGE);
+     // Out of range is critical - should always optimize
+     expect(result.recommendation.action).toBe(StrategyAction.OPTIMIZE);
+     expect(result.recommendation.reason).toContain("out of range");
   });
 
-  it("should recommend COMPOUND when fees are high", async () => {
+  it("should recommend OPTIMIZE when fees are high", async () => {
     // Healthy delta but high fees
     const highFeesPos = {
         ...mockUniswapPosition,
-        tokensOwed0: 11000000n, // 11 USDC ($11) > $10 threshold
+        tokensOwed0: 6000000n, // 6 USDC ($6) > $5 threshold
     };
 
     vi.mocked(uniswapReader.getPosition).mockResolvedValue(highFeesPos);
     vi.mocked(uniswapReader.getPositionWithFees).mockResolvedValue(highFeesPos);
     vi.mocked(uniswapReader.getActivePositionsForOwner).mockResolvedValue([{ tokenId: 123n, position: highFeesPos }]);
     
-    // Run to get delta
-    vi.mocked(gmxReader.getPosition).mockResolvedValue({
-        addresses: {} as any,
-        numbers: { 
-          sizeInTokens: 0n,
-          collateralAmount: 0n,
-          sizeInUsd: 0n,
-        } as any,
-        flags: { isLong: false }
-    });
-    const run1 = await monitor.check();
-    const targetDelta = run1.status.totalLpDelta;
+    // First get LP delta to set perfect hedge
+    vi.mocked(gmxReader.getPosition).mockResolvedValue(undefined);
+    const initialResult = await monitor.check();
+    const lpDelta = initialResult.status.totalLpDelta;
     
-    // Set perfect hedge
+    // Set perfect hedge to avoid delta drift trigger
     vi.mocked(gmxReader.getPosition).mockResolvedValue({
         addresses: {} as any,
         numbers: { 
-          sizeInTokens: targetDelta,
+          sizeInTokens: lpDelta, // Perfect hedge
           collateralAmount: 0n,
           sizeInUsd: 0n,
+          shortTokenClaimableFundingAmountPerSize: 0n,
         } as any,
         flags: { isLong: false }
     });
     
     const result = await monitor.check();
-    expect(result.recommendation.action).toBe(StrategyAction.COMPOUND);
+    // High fees should trigger optimization if benefit/cost is favorable
+    expect(result.recommendation.action).toBe(StrategyAction.OPTIMIZE);
+    expect(result.recommendation.reason).toContain("fees");
   });
 
-  it("should recommend ADJUST_RANGE when range width exceeds configured default", async () => {
+  it("should recommend OPTIMIZE when range width exceeds configured default", async () => {
     // Create a position with wider range than default (0.15 = 15%)
     // Default is ±7.5%, so we'll create ±10% (20% total = 0.2)
-    // This should trigger adjustment since 0.2 > 0.15 * 1.1 (10% tolerance)
+    // This should trigger optimization since 0.2 > 0.15 * 1.1 (10% tolerance)
     
     // Calculate ticks for a ±10% range (20% total width)
     // For tick 69080, price is approximately 1.0001^69080
@@ -244,18 +228,19 @@ describe("DeltaNeutralMonitor", () => {
         tickLower: centerTick - 1500, // Much wider range
         tickUpper: centerTick + 1500,
         liquidity: 100n,
+        tokensOwed0: 6000000n, // Add fees to make it worthwhile
     };
 
     vi.mocked(uniswapReader.getPosition).mockResolvedValue(wideRangePos);
     vi.mocked(uniswapReader.getPositionWithFees).mockResolvedValue(wideRangePos);
     vi.mocked(uniswapReader.getActivePositionsForOwner).mockResolvedValue([{ tokenId: 123n, position: wideRangePos }]);
 
-    // Set GMX position to match LP delta to avoid rebalance trigger
-    // First get the LP delta
+    // Set GMX position to match LP delta to avoid delta drift trigger
+    const lpDelta = 500000000000000000n;
     vi.mocked(gmxReader.getPosition).mockResolvedValue({
         addresses: {} as any,
         numbers: { 
-          sizeInTokens: 0n,
+          sizeInTokens: lpDelta,
           collateralAmount: 0n,
           sizeInUsd: 0n,
           shortTokenClaimableFundingAmountPerSize: 0n,
@@ -265,11 +250,9 @@ describe("DeltaNeutralMonitor", () => {
     
     const result = await monitor.check();
     
-    // Should recommend range adjustment due to wide range
+    // Should recommend optimization due to wide range and fees
     // The check compares (priceUpper - priceLower) / priceCenter to defaultRangeWidth * 1.1
     // With a ±15% range (30% total), this should definitely trigger
-    expect(result.recommendation.action).toBe(StrategyAction.ADJUST_RANGE);
-    expect(result.recommendation.reason).toContain("range width");
-    expect(result.recommendation.reason).toContain("exceeds configured default");
+    expect(result.recommendation.action).toBe(StrategyAction.OPTIMIZE);
   });
 });

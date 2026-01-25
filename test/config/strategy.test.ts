@@ -23,24 +23,24 @@ describe("Strategy Configuration", () => {
   describe("DEFAULT_STRATEGY_CONFIG", () => {
     it("should have all required configuration properties", () => {
       const requiredKeys: (keyof StrategyConfig)[] = [
-        "deltaThreshold",
-        "emergencyThreshold",
-        "minRebalanceInterval",
-        "maxRebalanceInterval",
-        "minCompoundInterval",
-        "minRangeAdjustmentInterval",
+        "optimizationDeltaThreshold",
+        "emergencyDeltaThreshold",
+        "minOptimizationInterval",
+        "maxOptimizationInterval",
         "maxLeverage",
         "minPositionSizeUsd",
         "maxSlippage",
         "slippageBuffer",
-        "minFeeThresholdUsd",
+        "minOptimizationFeeThresholdUsd",
         "defaultExecutionFee",
+        "estimatedOptimizationGasCostUsd",
         "rangeAdjustmentThreshold",
         "rangeCenterDriftThreshold",
         "defaultRangeWidth",
         "minRangeWidth",
         "maxRangeWidth",
         "targetLeverage",
+        "minOptimizationBenefitRatio",
       ];
 
       for (const key of requiredKeys) {
@@ -49,21 +49,23 @@ describe("Strategy Configuration", () => {
     });
 
     it("should have valid default values", () => {
-      expect(DEFAULT_STRATEGY_CONFIG.deltaThreshold).toBe(0.05);
-      expect(DEFAULT_STRATEGY_CONFIG.emergencyThreshold).toBe(0.20);
+      expect(DEFAULT_STRATEGY_CONFIG.optimizationDeltaThreshold).toBe(0.10);
+      expect(DEFAULT_STRATEGY_CONFIG.emergencyDeltaThreshold).toBe(0.20);
       expect(DEFAULT_STRATEGY_CONFIG.maxLeverage).toBe(3.0);
       expect(DEFAULT_STRATEGY_CONFIG.targetLeverage).toBe(3.0);
-      expect(DEFAULT_STRATEGY_CONFIG.minRebalanceInterval).toBe(3600);
+      expect(DEFAULT_STRATEGY_CONFIG.minOptimizationInterval).toBe(3600);
       expect(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth).toBe(0.15);
     });
 
     it("should have bigint values for USD amounts", () => {
       expect(typeof DEFAULT_STRATEGY_CONFIG.minPositionSizeUsd).toBe("bigint");
-      expect(typeof DEFAULT_STRATEGY_CONFIG.minFeeThresholdUsd).toBe("bigint");
+      expect(typeof DEFAULT_STRATEGY_CONFIG.minOptimizationFeeThresholdUsd).toBe("bigint");
       expect(typeof DEFAULT_STRATEGY_CONFIG.defaultExecutionFee).toBe("bigint");
+      expect(typeof DEFAULT_STRATEGY_CONFIG.estimatedOptimizationGasCostUsd).toBe("bigint");
       expect(DEFAULT_STRATEGY_CONFIG.minPositionSizeUsd).toBeGreaterThan(0n);
-      expect(DEFAULT_STRATEGY_CONFIG.minFeeThresholdUsd).toBeGreaterThan(0n);
+      expect(DEFAULT_STRATEGY_CONFIG.minOptimizationFeeThresholdUsd).toBeGreaterThan(0n);
       expect(DEFAULT_STRATEGY_CONFIG.defaultExecutionFee).toBeGreaterThan(0n);
+      expect(DEFAULT_STRATEGY_CONFIG.estimatedOptimizationGasCostUsd).toBeGreaterThan(0n);
     });
   });
 
@@ -75,40 +77,40 @@ describe("Strategy Configuration", () => {
 
     it("should apply programmatic overrides", () => {
       const overrides: Partial<StrategyConfig> = {
-        deltaThreshold: 0.1,
+        optimizationDeltaThreshold: 0.15,
         maxLeverage: 5.0,
       };
       const config = loadStrategyConfig(overrides);
-      expect(config.deltaThreshold).toBe(0.1);
+      expect(config.optimizationDeltaThreshold).toBe(0.15);
       expect(config.maxLeverage).toBe(5.0);
-      expect(config.emergencyThreshold).toBe(DEFAULT_STRATEGY_CONFIG.emergencyThreshold);
+      expect(config.emergencyDeltaThreshold).toBe(DEFAULT_STRATEGY_CONFIG.emergencyDeltaThreshold);
     });
 
     it("should load from environment variables", () => {
-      process.env.DELTA_THRESHOLD = "0.08";
+      process.env.OPTIMIZATION_DELTA_THRESHOLD = "0.08";
       process.env.MAX_LEVERAGE = "4.0";
-      process.env.MIN_REBALANCE_INTERVAL = "7200";
+      process.env.MIN_OPTIMIZATION_INTERVAL = "7200";
 
       const config = loadStrategyConfig();
-      expect(config.deltaThreshold).toBe(0.08);
+      expect(config.optimizationDeltaThreshold).toBe(0.08);
       expect(config.maxLeverage).toBe(4.0);
-      expect(config.minRebalanceInterval).toBe(7200);
+      expect(config.minOptimizationInterval).toBe(7200);
     });
 
     it("should prioritize programmatic overrides over environment variables", () => {
-      process.env.DELTA_THRESHOLD = "0.08";
-      const config = loadStrategyConfig({ deltaThreshold: 0.1 });
-      expect(config.deltaThreshold).toBe(0.1);
+      process.env.OPTIMIZATION_DELTA_THRESHOLD = "0.08";
+      const config = loadStrategyConfig({ optimizationDeltaThreshold: 0.1 });
+      expect(config.optimizationDeltaThreshold).toBe(0.1);
     });
 
     it("should parse USD values from environment correctly", () => {
       process.env.MIN_POSITION_SIZE_USD = "2000";
-      process.env.MIN_FEE_THRESHOLD_USD = "20";
+      process.env.MIN_OPTIMIZATION_FEE_THRESHOLD_USD = "20";
 
       const config = loadStrategyConfig();
       // Values should be in 30 decimals
       expect(config.minPositionSizeUsd).toBeGreaterThan(0n);
-      expect(config.minFeeThresholdUsd).toBeGreaterThan(0n);
+      expect(config.minOptimizationFeeThresholdUsd).toBeGreaterThan(0n);
     });
   });
 
@@ -118,29 +120,29 @@ describe("Strategy Configuration", () => {
     });
 
     it("should reject invalid delta threshold", () => {
-      const invalid = { ...DEFAULT_STRATEGY_CONFIG, deltaThreshold: 1.5 };
+      const invalid = { ...DEFAULT_STRATEGY_CONFIG, optimizationDeltaThreshold: 1.5 };
       expect(() => validateStrategyConfig(invalid)).toThrow();
     });
 
     it("should reject emergency threshold less than delta threshold", () => {
       const invalid = {
         ...DEFAULT_STRATEGY_CONFIG,
-        deltaThreshold: 0.1,
-        emergencyThreshold: 0.05,
+        optimizationDeltaThreshold: 0.1,
+        emergencyDeltaThreshold: 0.05,
       };
       expect(() => validateStrategyConfig(invalid)).toThrow();
     });
 
     it("should reject invalid intervals", () => {
-      const invalid = { ...DEFAULT_STRATEGY_CONFIG, minRebalanceInterval: -1 };
+      const invalid = { ...DEFAULT_STRATEGY_CONFIG, minOptimizationInterval: -1 };
       expect(() => validateStrategyConfig(invalid)).toThrow();
     });
 
     it("should reject max interval less than min interval", () => {
       const invalid = {
         ...DEFAULT_STRATEGY_CONFIG,
-        minRebalanceInterval: 1000,
-        maxRebalanceInterval: 500,
+        minOptimizationInterval: 1000,
+        maxOptimizationInterval: 500,
       };
       expect(() => validateStrategyConfig(invalid)).toThrow();
     });

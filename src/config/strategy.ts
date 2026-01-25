@@ -32,20 +32,16 @@ export const DECIMALS = {
  */
 export interface StrategyConfig {
   // Delta thresholds
-  /** Delta drift threshold to trigger rebalance (as decimal, e.g., 0.05 = 5%) */
-  deltaThreshold: number;
-  /** Emergency delta drift threshold (as decimal, e.g., 0.20 = 20%) */
-  emergencyThreshold: number;
+  /** Delta drift threshold to trigger optimization (as decimal, e.g., 0.10 = 10%) */
+  optimizationDeltaThreshold: number;
+  /** Emergency delta drift threshold - always optimize (as decimal, e.g., 0.20 = 20%) */
+  emergencyDeltaThreshold: number;
 
   // Timing intervals (in seconds)
-  /** Minimum time between rebalances */
-  minRebalanceInterval: number;
-  /** Maximum time between forced rebalances */
-  maxRebalanceInterval: number;
-  /** Minimum time between compound operations */
-  minCompoundInterval: number;
-  /** Minimum time between range adjustments */
-  minRangeAdjustmentInterval: number;
+  /** Minimum time between optimizations */
+  minOptimizationInterval: number;
+  /** Maximum time between forced optimizations (even if conditions aren't ideal) */
+  maxOptimizationInterval: number;
 
   // Position limits
   /** Maximum leverage for GMX positions (as multiplier, e.g., 3.0 = 3x) */
@@ -60,15 +56,17 @@ export interface StrategyConfig {
   maxSlippage: number;
   /** Slippage buffer for rebalancing (as decimal, e.g., 0.005 = 0.5%) */
   slippageBuffer: number;
-  /** Minimum fee threshold in USD to trigger compound (30 decimals) */
-  minFeeThresholdUsd: bigint;
+  /** Minimum fee threshold in USD to make optimization worthwhile (30 decimals) */
+  minOptimizationFeeThresholdUsd: bigint;
   /** Default execution fee for GMX orders (in ETH, 18 decimals) */
   defaultExecutionFee: bigint;
+  /** Estimated gas cost for optimization in USD (30 decimals) - used for cost/benefit analysis */
+  estimatedOptimizationGasCostUsd: bigint;
 
-  // Range adjustment parameters
-  /** Range adjustment threshold - adjust if within this % of range edge (as decimal, e.g., 0.02 = 2%) */
+  // Range adjustment parameters (used by optimization)
+  /** Range adjustment threshold - optimize if within this % of range edge (as decimal, e.g., 0.02 = 2%) */
   rangeAdjustmentThreshold: number;
-  /** Range center drift threshold - adjust if price drifted > this % from center (as decimal, e.g., 0.05 = 5%) */
+  /** Range center drift threshold - optimize if price drifted > this % from center (as decimal, e.g., 0.05 = 5%) */
   rangeCenterDriftThreshold: number;
 
   // Range size parameters
@@ -79,9 +77,11 @@ export interface StrategyConfig {
   /** Maximum range width (as decimal, e.g., 0.4 = 40% maximum = ±20%) */
   maxRangeWidth: number;
 
-  // Rebalancing parameters
+  // Optimization parameters
   /** Target leverage for GMX positions (as multiplier, e.g., 3.0 = 3x) */
   targetLeverage: number;
+  /** Minimum benefit/cost ratio to optimize (e.g., 2.0 = benefit must be 2x the cost) */
+  minOptimizationBenefitRatio: number;
 }
 
 /**
@@ -89,14 +89,12 @@ export interface StrategyConfig {
  */
 export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   // Delta thresholds
-  deltaThreshold: 0.05, // 5%
-  emergencyThreshold: 0.2, // 20%
+  optimizationDeltaThreshold: 0.1, // 10% - higher threshold to avoid being too eager
+  emergencyDeltaThreshold: 0.2, // 20%
 
   // Timing intervals
-  minRebalanceInterval: 3600, // 1 hour
-  maxRebalanceInterval: 86400, // 24 hours
-  minCompoundInterval: 86400, // 24 hours
-  minRangeAdjustmentInterval: 3600, // 1 hour
+  minOptimizationInterval: 3600, // 1 hour - minimum time between optimizations
+  maxOptimizationInterval: 86400, // 24 hours - force optimization even if conditions aren't ideal
 
   // Position limits
   maxLeverage: 3.0, // 3x
@@ -106,8 +104,9 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   // Slippage and fees
   maxSlippage: 0.01, // 1%
   slippageBuffer: 0.005, // 0.5%
-  minFeeThresholdUsd: BigInt(10) * PRECISION.GMX_USD, // $10 in 30 decimals
+  minOptimizationFeeThresholdUsd: BigInt(5) * PRECISION.GMX_USD, // $5 in 30 decimals - lower threshold since we compound during optimization
   defaultExecutionFee: BigInt("1000000000000000"), // 0.001 ETH
+  estimatedOptimizationGasCostUsd: BigInt(2) * PRECISION.GMX_USD, // ~$2 in gas costs (30 decimals)
 
   // Range adjustment parameters
   rangeAdjustmentThreshold: 0.02, // 2%
@@ -118,8 +117,9 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   minRangeWidth: 0.1, // 10% minimum (±5%)
   maxRangeWidth: 0.4, // 40% maximum (±20%)
 
-  // Rebalancing parameters
+  // Optimization parameters
   targetLeverage: 3.0, // 3x
+  minOptimizationBenefitRatio: 1.5, // Benefit must be at least 1.5x the cost
 };
 
 /**
@@ -129,23 +129,17 @@ export function loadStrategyConfig(overrides?: Partial<StrategyConfig>): Strateg
   const config = { ...DEFAULT_STRATEGY_CONFIG };
 
   // Apply environment variable overrides
-  if (process.env.DELTA_THRESHOLD) {
-    config.deltaThreshold = parseFloat(process.env.DELTA_THRESHOLD);
+  if (process.env.OPTIMIZATION_DELTA_THRESHOLD) {
+    config.optimizationDeltaThreshold = parseFloat(process.env.OPTIMIZATION_DELTA_THRESHOLD);
   }
-  if (process.env.EMERGENCY_THRESHOLD) {
-    config.emergencyThreshold = parseFloat(process.env.EMERGENCY_THRESHOLD);
+  if (process.env.EMERGENCY_DELTA_THRESHOLD) {
+    config.emergencyDeltaThreshold = parseFloat(process.env.EMERGENCY_DELTA_THRESHOLD);
   }
-  if (process.env.MIN_REBALANCE_INTERVAL) {
-    config.minRebalanceInterval = parseInt(process.env.MIN_REBALANCE_INTERVAL, 10);
+  if (process.env.MIN_OPTIMIZATION_INTERVAL) {
+    config.minOptimizationInterval = parseInt(process.env.MIN_OPTIMIZATION_INTERVAL, 10);
   }
-  if (process.env.MAX_REBALANCE_INTERVAL) {
-    config.maxRebalanceInterval = parseInt(process.env.MAX_REBALANCE_INTERVAL, 10);
-  }
-  if (process.env.MIN_COMPOUND_INTERVAL) {
-    config.minCompoundInterval = parseInt(process.env.MIN_COMPOUND_INTERVAL, 10);
-  }
-  if (process.env.MIN_RANGE_ADJUSTMENT_INTERVAL) {
-    config.minRangeAdjustmentInterval = parseInt(process.env.MIN_RANGE_ADJUSTMENT_INTERVAL, 10);
+  if (process.env.MAX_OPTIMIZATION_INTERVAL) {
+    config.maxOptimizationInterval = parseInt(process.env.MAX_OPTIMIZATION_INTERVAL, 10);
   }
   if (process.env.MAX_LEVERAGE) {
     config.maxLeverage = parseFloat(process.env.MAX_LEVERAGE);
@@ -164,10 +158,18 @@ export function loadStrategyConfig(overrides?: Partial<StrategyConfig>): Strateg
   if (process.env.SLIPPAGE_BUFFER) {
     config.slippageBuffer = parseFloat(process.env.SLIPPAGE_BUFFER);
   }
-  if (process.env.MIN_FEE_THRESHOLD_USD) {
-    const minFee = parseFloat(process.env.MIN_FEE_THRESHOLD_USD);
-    config.minFeeThresholdUsd =
+  if (process.env.MIN_OPTIMIZATION_FEE_THRESHOLD_USD) {
+    const minFee = parseFloat(process.env.MIN_OPTIMIZATION_FEE_THRESHOLD_USD);
+    config.minOptimizationFeeThresholdUsd =
       (BigInt(Math.floor(minFee * 1e6)) * PRECISION.GMX_USD) / BigInt(10 ** 6);
+  }
+  if (process.env.ESTIMATED_OPTIMIZATION_GAS_COST_USD) {
+    const gasCost = parseFloat(process.env.ESTIMATED_OPTIMIZATION_GAS_COST_USD);
+    config.estimatedOptimizationGasCostUsd =
+      (BigInt(Math.floor(gasCost * 1e6)) * PRECISION.GMX_USD) / BigInt(10 ** 6);
+  }
+  if (process.env.MIN_OPTIMIZATION_BENEFIT_RATIO) {
+    config.minOptimizationBenefitRatio = parseFloat(process.env.MIN_OPTIMIZATION_BENEFIT_RATIO);
   }
   if (process.env.DEFAULT_EXECUTION_FEE) {
     config.defaultExecutionFee = BigInt(process.env.DEFAULT_EXECUTION_FEE);
@@ -205,33 +207,31 @@ export function loadStrategyConfig(overrides?: Partial<StrategyConfig>): Strateg
  */
 export function validateStrategyConfig(config: StrategyConfig): void {
   // Validate thresholds
-  if (config.deltaThreshold <= 0 || config.deltaThreshold >= 1) {
-    throw new Error(`deltaThreshold must be between 0 and 1, got ${config.deltaThreshold}`);
-  }
-  if (config.emergencyThreshold <= 0 || config.emergencyThreshold >= 1) {
-    throw new Error(`emergencyThreshold must be between 0 and 1, got ${config.emergencyThreshold}`);
-  }
-  if (config.emergencyThreshold <= config.deltaThreshold) {
+  if (config.optimizationDeltaThreshold <= 0 || config.optimizationDeltaThreshold >= 1) {
     throw new Error(
-      `emergencyThreshold (${config.emergencyThreshold}) must be greater than deltaThreshold (${config.deltaThreshold})`
+      `optimizationDeltaThreshold must be between 0 and 1, got ${config.optimizationDeltaThreshold}`
+    );
+  }
+  if (config.emergencyDeltaThreshold <= 0 || config.emergencyDeltaThreshold >= 1) {
+    throw new Error(
+      `emergencyDeltaThreshold must be between 0 and 1, got ${config.emergencyDeltaThreshold}`
+    );
+  }
+  if (config.emergencyDeltaThreshold <= config.optimizationDeltaThreshold) {
+    throw new Error(
+      `emergencyDeltaThreshold (${config.emergencyDeltaThreshold}) must be greater than optimizationDeltaThreshold (${config.optimizationDeltaThreshold})`
     );
   }
 
   // Validate intervals
-  if (config.minRebalanceInterval <= 0) {
-    throw new Error(`minRebalanceInterval must be positive, got ${config.minRebalanceInterval}`);
-  }
-  if (config.maxRebalanceInterval <= config.minRebalanceInterval) {
+  if (config.minOptimizationInterval <= 0) {
     throw new Error(
-      `maxRebalanceInterval (${config.maxRebalanceInterval}) must be greater than minRebalanceInterval (${config.minRebalanceInterval})`
+      `minOptimizationInterval must be positive, got ${config.minOptimizationInterval}`
     );
   }
-  if (config.minCompoundInterval <= 0) {
-    throw new Error(`minCompoundInterval must be positive, got ${config.minCompoundInterval}`);
-  }
-  if (config.minRangeAdjustmentInterval <= 0) {
+  if (config.maxOptimizationInterval <= config.minOptimizationInterval) {
     throw new Error(
-      `minRangeAdjustmentInterval must be positive, got ${config.minRangeAdjustmentInterval}`
+      `maxOptimizationInterval (${config.maxOptimizationInterval}) must be greater than minOptimizationInterval (${config.minOptimizationInterval})`
     );
   }
 
@@ -290,8 +290,20 @@ export function validateStrategyConfig(config: StrategyConfig): void {
       `maxPositionSizeUsd (${config.maxPositionSizeUsd}) must be >= minPositionSizeUsd (${config.minPositionSizeUsd})`
     );
   }
-  if (config.minFeeThresholdUsd <= 0n) {
-    throw new Error(`minFeeThresholdUsd must be positive, got ${config.minFeeThresholdUsd}`);
+  if (config.minOptimizationFeeThresholdUsd <= 0n) {
+    throw new Error(
+      `minOptimizationFeeThresholdUsd must be positive, got ${config.minOptimizationFeeThresholdUsd}`
+    );
+  }
+  if (config.estimatedOptimizationGasCostUsd <= 0n) {
+    throw new Error(
+      `estimatedOptimizationGasCostUsd must be positive, got ${config.estimatedOptimizationGasCostUsd}`
+    );
+  }
+  if (config.minOptimizationBenefitRatio <= 0) {
+    throw new Error(
+      `minOptimizationBenefitRatio must be positive, got ${config.minOptimizationBenefitRatio}`
+    );
   }
   if (config.defaultExecutionFee <= 0n) {
     throw new Error(`defaultExecutionFee must be positive, got ${config.defaultExecutionFee}`);
