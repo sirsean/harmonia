@@ -45,7 +45,6 @@ describe("Strategy Commands", () => {
     // Check that subcommands are registered
     const subcommands = strategyCommand?.commands.map((cmd) => cmd.name()) || [];
     expect(subcommands).toContain("monitor");
-    expect(subcommands).toContain("rebalance");
-    expect(subcommands).toContain("adjust-range");
+    expect(subcommands).toContain("optimize");
   });
 });
