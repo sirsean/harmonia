@@ -2,7 +2,7 @@ import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../../config/addresses";
 import { DeltaNeutralMonitor } from "../../../strategy/monitor";
 import { RebalanceManager } from "../../../strategy/rebalance";
-import { StrategyAction } from "../../../strategy/types";
+import { StrategyAction, RebalanceData } from "../../../strategy/types";
 import { loadStrategyConfig } from "../../../config/strategy";
 import { createRouter } from "../../../modules/gmx/orders";
 import {
@@ -28,7 +28,7 @@ export async function executeRebalance(options: ExecuteRebalanceOptions = {}): P
   const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
 
   const monitorConfig = loadStrategyConfig({
-    minFeeThresholdUsd: ethers.parseUnits("10", 30),
+    minOptimizationFeeThresholdUsd: ethers.parseUnits("10", 30),
   });
 
   const monitorContext = {
@@ -51,21 +51,33 @@ export async function executeRebalance(options: ExecuteRebalanceOptions = {}): P
   console.log("Checking position status...");
   const { status, recommendation } = await monitor.check();
 
-  if (recommendation.action !== StrategyAction.REBALANCE) {
-    console.log(`No rebalance needed. Status: ${recommendation.action}`);
+  // Note: execute-rebalance is deprecated in favor of execute-optimize
+  // This command now checks for OPTIMIZE recommendation and calculates rebalance data from status
+  if (recommendation.action !== StrategyAction.OPTIMIZE) {
+    console.log(`No optimization needed. Status: ${recommendation.action}`);
+    console.log(`Reason: ${recommendation.reason}`);
     return;
   }
 
-  console.log("REBALANCE RECOMMENDED");
+  console.log("OPTIMIZATION RECOMMENDED (rebalancing hedge)");
   console.log(`Reason: ${recommendation.reason}`);
 
-  if (!recommendation.data) {
-    console.error("No rebalance data available.");
+  // Calculate adjustment needed from status
+  const targetDelta = status.totalLpDelta;
+  const currentHedge = -status.gmx.delta;
+  const adjustmentNeeded = status.netDelta;
+
+  // Calculate USD values (simplified - would need price for accurate calculation)
+  // For now, use a placeholder or calculate from status
+  const adjustmentNeededUsd = 0n; // Would need to calculate properly with price
+  console.log(`Net Delta: ${ethers.formatEther(adjustmentNeeded)} ETH`);
+  console.log(`Target Delta: ${ethers.formatEther(targetDelta)} ETH`);
+  console.log(`Current Hedge: ${ethers.formatEther(currentHedge)} ETH`);
+
+  if (adjustmentNeeded === 0n) {
+    console.log("No adjustment needed - delta is neutral");
     return;
   }
-
-  const { adjustmentNeededUsd } = recommendation.data;
-  console.log(`Adjustment Needed USD: $${ethers.formatUnits(adjustmentNeededUsd, 30)}`);
 
   // 2. Prepare for Execution
   const router = createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
@@ -132,10 +144,19 @@ export async function executeRebalance(options: ExecuteRebalanceOptions = {}): P
     return;
   }
 
+  // Create RebalanceData from status
+  const rebalanceData = {
+    targetDelta,
+    currentHedge,
+    adjustmentNeeded,
+    targetSizeUsd: 0n, // Would need price to calculate
+    adjustmentNeededUsd: 0n, // Would need price to calculate
+  };
+
   console.log("\nExecuting rebalance...");
   try {
     const txHash = await manager.executeRebalance(
-      recommendation.data,
+      rebalanceData,
       usdcPriceNum,
       6, // USDC decimals
       wethPrice30

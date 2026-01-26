@@ -406,14 +406,14 @@ describe("daemon command", () => {
   it("should handle different recommendation actions", async () => {
     const status = createMockStatus();
     const recommendation: Recommendation = {
-      action: StrategyAction.REBALANCE,
+      action: StrategyAction.OPTIMIZE,
       reason: "Delta drift exceeds threshold",
       data: {
-        targetDelta: ethers.parseEther("0.5"),
-        currentHedge: ethers.parseEther("0.7"),
-        adjustmentNeeded: ethers.parseEther("-0.2"),
-        targetSizeUsd: ethers.parseUnits("1000", 30),
-        adjustmentNeededUsd: ethers.parseUnits("400", 30),
+        deltaDrift: 0.12,
+        anyOutOfRange: false,
+        totalFeesUsd: ethers.parseUnits("15", 30),
+        estimatedGasCostUsd: ethers.parseUnits("2", 30),
+        estimatedBenefitUsd: ethers.parseUnits("15", 30),
       },
     };
     mockCheckFn.mockResolvedValue({ status, recommendation });
@@ -453,7 +453,7 @@ describe("daemon command", () => {
     db.close();
 
     expect(snapshot).not.toBeNull();
-    expect(snapshot!.recommendationAction).toBe(StrategyAction.REBALANCE);
+    expect(snapshot!.recommendationAction).toBe(StrategyAction.OPTIMIZE);
     expect(snapshot!.recommendationReason).toBe("Delta drift exceeds threshold");
     exitSpy.mockRestore();
   });

@@ -12,12 +12,13 @@ import {
   StrategyAction,
   StrategyMonitor,
   StrategyStatus,
-  RebalanceData,
+  OptimizationData,
 } from "./types";
 import { StrategyConfig } from "../config/strategy";
 import { GMXPosition } from "../modules/gmx/types";
 import { UniswapPosition } from "../modules/uniswap/types";
 import { ERC20_ABI } from "../utils/abis";
+import { MonitoringDatabase } from "../utils/database";
 
 export class DeltaNeutralMonitor implements StrategyMonitor {
   constructor(
@@ -36,7 +37,8 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
         market: string;
         collateralToken: string;
       };
-    }
+    },
+    private database?: MonitoringDatabase
   ) {}
 
   async check(): Promise<{ status: StrategyStatus; recommendation: Recommendation }> {
@@ -262,13 +264,22 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       totalFeesUsd += this.calculateUsdValue(totalFees1, Number(decimals1), 1.0);
     }
 
-    const recommendation = this.generateRecommendation(
+    // Get last optimization time from database if available
+    let lastOptimizationTime: number | undefined;
+    if (this.database) {
+      const lastTime = this.database.getLastOptimizationTime(gmx.account);
+      if (lastTime !== undefined) {
+        lastOptimizationTime = lastTime;
+      }
+    }
+
+    const recommendation = this.shouldOptimize(
       status,
       anyOutOfRange,
       totalFeesUsd,
       riskTokenPrice,
       Number(riskTokenDecimals),
-      undefined // lastAdjustmentTime - can be passed from external state if tracking
+      lastOptimizationTime
     );
 
     return { status, recommendation };
@@ -291,66 +302,178 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
   }
 
   /**
-   * Determines if range should be adjusted based on proactive triggers
-   * @param status Current strategy status
-   * @param anyOutOfRange Whether any position is currently out of range
-   * @param currentPrice Current price of the risk token
-   * @param lastAdjustmentTime Optional timestamp of last adjustment (for rate limiting)
-   * @returns Object indicating whether to adjust and the reason
+   * Determines if we should optimize right now based on multiple factors:
+   * 1. Critical: Positions out of range (always optimize)
+   * 2. Time since last optimization (min/max intervals)
+   * 3. Delta drift (higher threshold to avoid being too eager)
+   * 4. Cost/benefit analysis (fees vs gas costs)
+   * 5. Range position (near edges or drifted from center)
    */
-  private shouldAdjustRange(
+  private shouldOptimize(
     status: StrategyStatus,
     anyOutOfRange: boolean,
-    currentPrice: number,
-    lastAdjustmentTime?: number
-  ): { shouldAdjust: boolean; reason: string } {
-    // Priority 1: Already out of range (must adjust)
+    totalFeesUsd: bigint,
+    price: number,
+    decimals: number,
+    lastOptimizationTime?: number
+  ): Recommendation {
+    const now = Date.now();
+    const timeSinceLastOptimization =
+      lastOptimizationTime !== undefined ? (now - lastOptimizationTime) / 1000 : undefined;
+
+    // Calculate estimated benefit (fees + value of delta correction)
+    const gasCostUsd = this.config.estimatedOptimizationGasCostUsd;
+    const estimatedBenefitUsd = this.estimateOptimizationBenefit(
+      status,
+      totalFeesUsd,
+      price,
+      decimals
+    );
+
+    const optimizationData: OptimizationData = {
+      deltaDrift: status.deltaDrift,
+      anyOutOfRange,
+      totalFeesUsd,
+      timeSinceLastOptimization,
+      estimatedGasCostUsd: gasCostUsd,
+      estimatedBenefitUsd,
+    };
+
+    // Priority 1: CRITICAL - Positions are out of range (always optimize)
     if (anyOutOfRange) {
       return {
-        shouldAdjust: true,
-        reason: "One or more positions are out of range.",
+        action: StrategyAction.OPTIMIZE,
+        reason: "One or more positions are out of range - immediate optimization required",
+        data: optimizationData,
       };
     }
 
-    // Check minimum interval (if last adjustment time is provided)
-    if (lastAdjustmentTime !== undefined) {
-      const now = Math.floor(Date.now() / 1000);
-      const timeSinceAdjustment = now - lastAdjustmentTime;
-      if (timeSinceAdjustment < this.config.minRangeAdjustmentInterval) {
+    // Priority 2: Check minimum interval (rate limiting)
+    if (timeSinceLastOptimization !== undefined) {
+      if (timeSinceLastOptimization < this.config.minOptimizationInterval) {
+        const minutesSince = Math.floor(timeSinceLastOptimization / 60);
+        const minMinutes = Math.floor(this.config.minOptimizationInterval / 60);
         return {
-          shouldAdjust: false,
-          reason: `Too soon since last adjustment (${timeSinceAdjustment}s < ${this.config.minRangeAdjustmentInterval}s)`,
+          action: StrategyAction.NONE,
+          reason: `Too soon since last optimization (${minutesSince}min < ${minMinutes}min minimum interval)`,
+          data: optimizationData,
         };
       }
     }
 
-    // Check each Uniswap position for proactive triggers
-    for (const position of status.uniswap) {
-      const { priceLower, priceUpper, currentPrice: posCurrentPrice } = position;
-      const price = posCurrentPrice || currentPrice;
+    // Priority 3: Emergency delta drift (always optimize regardless of other factors)
+    if (status.deltaDrift >= this.config.emergencyDeltaThreshold) {
+      return {
+        action: StrategyAction.OPTIMIZE,
+        reason: `Emergency: Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds emergency threshold ${(this.config.emergencyDeltaThreshold * 100).toFixed(2)}%`,
+        data: optimizationData,
+      };
+    }
 
-      // Skip if position has no liquidity
+    // Priority 4: Max interval reached (force optimization even if conditions aren't ideal)
+    if (timeSinceLastOptimization !== undefined) {
+      if (timeSinceLastOptimization >= this.config.maxOptimizationInterval) {
+        const hoursSince = (timeSinceLastOptimization / 3600).toFixed(1);
+        return {
+          action: StrategyAction.OPTIMIZE,
+          reason: `Max interval reached (${hoursSince}h since last optimization) - periodic optimization required`,
+          data: optimizationData,
+        };
+      }
+    }
+
+    // Priority 5: Delta drift exceeds threshold AND cost/benefit is favorable
+    if (status.deltaDrift >= this.config.optimizationDeltaThreshold) {
+      // Check cost/benefit ratio
+      if (estimatedBenefitUsd > 0n && gasCostUsd > 0n) {
+        const benefitRatio = Number(estimatedBenefitUsd) / Number(gasCostUsd);
+        if (benefitRatio >= this.config.minOptimizationBenefitRatio) {
+          return {
+            action: StrategyAction.OPTIMIZE,
+            reason: `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds threshold ${(this.config.optimizationDeltaThreshold * 100).toFixed(2)}% and benefit/cost ratio ${benefitRatio.toFixed(2)}x exceeds minimum ${this.config.minOptimizationBenefitRatio}x`,
+            data: optimizationData,
+          };
+        } else {
+          return {
+            action: StrategyAction.NONE,
+            reason: `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds threshold but benefit/cost ratio ${benefitRatio.toFixed(2)}x is below minimum ${this.config.minOptimizationBenefitRatio}x`,
+            data: optimizationData,
+          };
+        }
+      } else {
+        // If we can't calculate benefit ratio, still optimize if delta drift is high enough
+        return {
+          action: StrategyAction.OPTIMIZE,
+          reason: `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds threshold ${(this.config.optimizationDeltaThreshold * 100).toFixed(2)}%`,
+          data: optimizationData,
+        };
+      }
+    }
+
+    // Priority 6: Range position issues (near edges or drifted from center)
+    const rangeIssues = this.checkRangeIssues(status, price);
+    if (rangeIssues.hasIssues) {
+      // Only optimize if fees are worth collecting or benefit is sufficient
+      if (
+        totalFeesUsd >= this.config.minOptimizationFeeThresholdUsd ||
+        (estimatedBenefitUsd > 0n && gasCostUsd > 0n && estimatedBenefitUsd >= gasCostUsd)
+      ) {
+        return {
+          action: StrategyAction.OPTIMIZE,
+          reason: rangeIssues.reason,
+          data: optimizationData,
+        };
+      }
+    }
+
+    // Priority 7: Fees are significant enough to warrant optimization
+    if (totalFeesUsd >= this.config.minOptimizationFeeThresholdUsd) {
+      // Check if benefit exceeds cost
+      if (estimatedBenefitUsd > 0n && gasCostUsd > 0n) {
+        const benefitRatio = Number(estimatedBenefitUsd) / Number(gasCostUsd);
+        if (benefitRatio >= this.config.minOptimizationBenefitRatio) {
+          return {
+            action: StrategyAction.OPTIMIZE,
+            reason: `Unclaimed fees ($${ethers.formatUnits(totalFeesUsd, 30)}) exceed threshold and benefit/cost ratio ${benefitRatio.toFixed(2)}x is favorable`,
+            data: optimizationData,
+          };
+        }
+      } else {
+        // If fees are high enough, optimize anyway
+        return {
+          action: StrategyAction.OPTIMIZE,
+          reason: `Unclaimed fees ($${ethers.formatUnits(totalFeesUsd, 30)}) exceed threshold ($${ethers.formatUnits(this.config.minOptimizationFeeThresholdUsd, 30)})`,
+          data: optimizationData,
+        };
+      }
+    }
+
+    // No optimization needed
+    return {
+      action: StrategyAction.NONE,
+      reason: "Strategy is healthy - no optimization needed",
+      data: optimizationData,
+    };
+  }
+
+  /**
+   * Check if there are range position issues that might warrant optimization
+   */
+  private checkRangeIssues(
+    status: StrategyStatus,
+    currentPrice: number
+  ): { hasIssues: boolean; reason: string } {
+    for (const position of status.uniswap) {
       if (position.liquidity === 0n) {
         continue;
       }
 
+      const { priceLower, priceUpper, currentPrice: posCurrentPrice } = position;
+      const price = posCurrentPrice || currentPrice;
       const priceCenter = (priceLower + priceUpper) / 2;
       const rangeWidth = priceUpper - priceLower;
-      const currentRangeWidthPercent = rangeWidth / priceCenter;
 
-      // Priority 2: Range width is wider than configured default (optimize for better yield)
-      // Only check if current range is significantly wider than default (e.g., >10% wider)
-      const widthTolerance = 0.1; // 10% tolerance to avoid unnecessary adjustments
-      if (currentRangeWidthPercent > this.config.defaultRangeWidth * (1 + widthTolerance)) {
-        const currentWidthPercent = (currentRangeWidthPercent * 100).toFixed(1);
-        const targetWidthPercent = (this.config.defaultRangeWidth * 100).toFixed(1);
-        return {
-          shouldAdjust: true,
-          reason: `Position ${position.tokenId} range width (${currentWidthPercent}%) exceeds configured default (${targetWidthPercent}%) - tightening for better yield`,
-        };
-      }
-
-      // Priority 3: Price near range boundary (within threshold % of edge)
+      // Check if price is near range boundary
       const distanceToLower = (price - priceLower) / rangeWidth;
       const distanceToUpper = (priceUpper - price) / rangeWidth;
       const minDistanceToEdge = Math.min(distanceToLower, distanceToUpper);
@@ -359,82 +482,48 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
         const edge = distanceToLower < distanceToUpper ? "lower" : "upper";
         const distancePercent = (minDistanceToEdge * 100).toFixed(2);
         return {
-          shouldAdjust: true,
+          hasIssues: true,
           reason: `Position ${position.tokenId} price is within ${distancePercent}% of ${edge} edge (threshold: ${(this.config.rangeAdjustmentThreshold * 100).toFixed(2)}%)`,
         };
       }
 
-      // Priority 4: Price drifted significantly from center
+      // Check if price has drifted significantly from center
       const distanceFromCenter = Math.abs(price - priceCenter) / priceCenter;
       if (distanceFromCenter > this.config.rangeCenterDriftThreshold) {
         const driftPercent = (distanceFromCenter * 100).toFixed(2);
         return {
-          shouldAdjust: true,
+          hasIssues: true,
           reason: `Position ${position.tokenId} price has drifted ${driftPercent}% from center (threshold: ${(this.config.rangeCenterDriftThreshold * 100).toFixed(2)}%)`,
         };
       }
     }
 
-    return {
-      shouldAdjust: false,
-      reason: "No range adjustment needed",
-    };
+    return { hasIssues: false, reason: "" };
   }
 
-  private generateRecommendation(
+  /**
+   * Estimate the benefit of optimizing (fees + value of delta correction)
+   */
+  private estimateOptimizationBenefit(
     status: StrategyStatus,
-    anyOutOfRange: boolean,
     totalFeesUsd: bigint,
     price: number,
-    decimals: number,
-    lastAdjustmentTime?: number
-  ): Recommendation {
-    // 1. Check for Range Adjustment (with proactive triggers)
-    const rangeAdjustment = this.shouldAdjustRange(
-      status,
-      anyOutOfRange,
-      price,
-      lastAdjustmentTime
-    );
-    if (rangeAdjustment.shouldAdjust) {
-      return {
-        action: StrategyAction.ADJUST_RANGE,
-        reason: rangeAdjustment.reason,
-      };
+    decimals: number
+  ): bigint {
+    let benefit = totalFeesUsd;
+
+    // Add value of correcting delta drift
+    // Rough estimate: value of delta correction = abs(netDelta) * price * some factor
+    // This is a simplified estimate - actual benefit depends on future price movements
+    if (status.netDelta !== 0n && status.totalLpDelta !== 0n) {
+      // Estimate: correcting delta reduces risk, which has value
+      // Use a conservative estimate: 0.1% of the absolute delta value
+      const absNetDelta = status.netDelta < 0n ? -status.netDelta : status.netDelta;
+      const deltaValueUsd = this.calculateUsdValue(absNetDelta, decimals, price);
+      // Conservative estimate: 0.1% of delta value as benefit
+      benefit += deltaValueUsd / 1000n;
     }
 
-    // 2. Check for Rebalancing
-    if (status.deltaDrift > this.config.deltaThreshold) {
-      const targetDelta = status.totalLpDelta;
-      const currentHedge = -status.gmx.delta;
-      const adjustmentNeeded = status.netDelta;
-
-      const data: RebalanceData = {
-        targetDelta,
-        currentHedge,
-        adjustmentNeeded,
-        targetSizeUsd: this.calculateUsdValue(targetDelta, decimals, price),
-        adjustmentNeededUsd: this.calculateUsdValue(adjustmentNeeded, decimals, price),
-      };
-
-      return {
-        action: StrategyAction.REBALANCE,
-        reason: `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds threshold ${(this.config.deltaThreshold * 100).toFixed(2)}%`,
-        data,
-      };
-    }
-
-    // 3. Check for Compounding
-    if (totalFeesUsd > this.config.minFeeThresholdUsd) {
-      return {
-        action: StrategyAction.COMPOUND,
-        reason: `Unclaimed fees ($${ethers.formatUnits(totalFeesUsd, 30)}) exceed threshold ($${ethers.formatUnits(this.config.minFeeThresholdUsd, 30)})`,
-      };
-    }
-
-    return {
-      action: StrategyAction.NONE,
-      reason: "Strategy is healthy",
-    };
+    return benefit;
   }
 }

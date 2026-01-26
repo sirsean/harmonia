@@ -82,9 +82,45 @@ const migration001_initial_schema: Migration = {
 };
 
 /**
+ * Migration: Add optimization tracking table
+ */
+const migration002_optimization_tracking: Migration = {
+  version: 2,
+  name: "optimization_tracking",
+  up: (db: Database.Database) => {
+    // Track when optimizations were executed
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS optimization_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        delta_drift REAL NOT NULL,
+        total_fees_usd TEXT NOT NULL,
+        gas_cost_usd TEXT,
+        benefit_usd TEXT,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
+    // Index for quick lookups
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_optimization_history_account_timestamp 
+      ON optimization_history(account, timestamp DESC)
+    `);
+  },
+  down: (db: Database.Database) => {
+    db.exec(`DROP INDEX IF EXISTS idx_optimization_history_account_timestamp`);
+    db.exec(`DROP TABLE IF EXISTS optimization_history`);
+  },
+};
+
+/**
  * All migrations in order
  */
-export const migrations: Migration[] = [migration001_initial_schema];
+export const migrations: Migration[] = [
+  migration001_initial_schema,
+  migration002_optimization_tracking,
+];
 
 /**
  * Get the current database schema version

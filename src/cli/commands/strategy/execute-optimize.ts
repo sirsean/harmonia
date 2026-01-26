@@ -30,6 +30,7 @@ import {
   scalePriceTo30,
 } from "../../../modules/gmx/prices";
 import { getSignerAndAccount } from "../base";
+import { MonitoringDatabase } from "../../../utils/database";
 import { IERC20 as UniswapIERC20 } from "../../../modules/uniswap/types";
 import {
   ERC20_ABI,
@@ -74,7 +75,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
   const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
 
   const monitorConfig = loadStrategyConfig({
-    minFeeThresholdUsd: ethers.parseUnits("10", 30),
+    minOptimizationFeeThresholdUsd: ethers.parseUnits("10", 30),
   });
 
   const monitorContext = {
@@ -886,6 +887,26 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     console.log(`  LP position: ${mintResult.txHash || "minted"}`);
     if (allocation.gmxShortSizeUsd > 0n) {
       console.log(`  GMX hedge: ${allocation.gmxShortSizeUsd > 0n ? "order created" : "skipped"}`);
+    }
+
+    // Record optimization in database
+    try {
+      const db = new MonitoringDatabase();
+      const gasCostUsd = monitorConfig.estimatedOptimizationGasCostUsd;
+      // Calculate total fees from status
+      let totalFeesUsd = 0n;
+      for (const pos of status.uniswap) {
+        // Simplified fee calculation - use recommendation data if available
+        if (recommendation.data?.totalFeesUsd) {
+          totalFeesUsd = recommendation.data.totalFeesUsd;
+          break;
+        }
+      }
+      const benefitUsd = totalFeesUsd; // Simplified - could calculate more accurately
+      db.recordOptimization(account, status.deltaDrift, totalFeesUsd, gasCostUsd, benefitUsd);
+      console.log(`  Optimization recorded in database`);
+    } catch (error) {
+      console.warn(`  Warning: Failed to record optimization in database: ${error}`);
     }
   } else {
     console.log(`\n3. Open new LP position:`);

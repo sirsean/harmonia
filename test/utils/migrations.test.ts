@@ -156,12 +156,18 @@ describe("Database Migrations", () => {
       const versionBefore = getCurrentVersion(db);
       expect(versionBefore).toBeGreaterThan(0);
 
-      // Note: Current migrations don't have down migrations, so this test
-      // verifies the rollback mechanism works when down migrations are provided
-      // For now, we'll test that it throws appropriately
-      expect(() => {
-        rollback(db);
-      }).toThrow();
+      // Migration 2 has a down migration, so rollback should succeed
+      // Rollback from version 2 to version 1
+      rollback(db, 1);
+      
+      const versionAfter = getCurrentVersion(db);
+      expect(versionAfter).toBe(1);
+      
+      // Verify optimization_history table was removed
+      const tableExists = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='optimization_history'")
+        .get() as { name: string } | undefined;
+      expect(tableExists).toBeUndefined();
     });
 
     it("should rollback to specific version", () => {
