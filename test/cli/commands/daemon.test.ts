@@ -68,12 +68,25 @@ vi.mock("../../../src/utils/logger", () => {
 // Mock config
 vi.mock("../../../src/config/strategy", () => ({
   loadStrategyConfig: vi.fn().mockReturnValue({
-    deltaThreshold: 0.05,
-    minFeeThresholdUsd: BigInt("10000000000000000000000000000"), // 10 * 10^30
-    defaultRangeWidth: 0.1,
-    rangeAdjustmentThreshold: 0.1,
+    optimizationDeltaThreshold: 0.1,
+    emergencyDeltaThreshold: 0.2,
+    minOptimizationInterval: 3600,
+    maxOptimizationInterval: 86400,
+    maxLeverage: 3.0,
+    minPositionSizeUsd: BigInt("10000000000000000000000000000"), // 100 * 10^30
+    maxPositionSizeUsd: BigInt("50000000000000000000000000000"), // 500 * 10^30
+    maxSlippage: 0.01,
+    slippageBuffer: 0.005,
+    minOptimizationFeeThresholdUsd: BigInt("5000000000000000000000000000"), // 5 * 10^30
+    defaultExecutionFee: BigInt("1000000000000000"), // 0.001 ETH
+    estimatedOptimizationGasCostUsd: BigInt("2000000000000000000000000000"), // 2 * 10^30
+    rangeAdjustmentThreshold: 0.02,
     rangeCenterDriftThreshold: 0.05,
-    minRangeAdjustmentInterval: 3600,
+    defaultRangeWidth: 0.15,
+    minRangeWidth: 0.1,
+    maxRangeWidth: 0.4,
+    targetLeverage: 3.0,
+    minOptimizationBenefitRatio: 1.5,
   }),
 }));
 
@@ -107,6 +120,11 @@ vi.mock("../../../src/modules/uniswap/reader", () => ({
   getPoolState: vi.fn(),
   getPositionWithFees: vi.fn(),
   getActivePositionsForOwner: vi.fn(),
+}));
+
+// Mock executeOptimize
+vi.mock("../../../src/cli/commands/strategy/execute-optimize", () => ({
+  executeOptimize: vi.fn(),
 }));
 
 describe("daemon command", () => {
@@ -555,5 +573,376 @@ describe("daemon command", () => {
     expect(gmxPos).not.toBeUndefined();
     expect(gmxPos!.tokenId).toBe("gmx-hedge");
     exitSpy.mockRestore();
+  });
+
+  describe("auto-optimization", () => {
+    beforeEach(() => {
+      // Clear mock before each test
+      vi.clearAllMocks();
+    });
+
+    it("should trigger auto-optimization when enabled and recommendation is OPTIMIZE", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.OPTIMIZE,
+        reason: "Delta drift exceeds threshold",
+        data: {
+          deltaDrift: 0.12,
+          anyOutOfRange: false,
+          totalFeesUsd: ethers.parseUnits("15", 30),
+          estimatedGasCostUsd: ethers.parseUnits("2", 30),
+          estimatedBenefitUsd: ethers.parseUnits("15", 30),
+        },
+      };
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+      const { executeOptimize } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      vi.mocked(executeOptimize).mockResolvedValue(undefined);
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: true,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {
+        // Expected to exit
+      });
+
+      // Wait for initialization
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Trigger monitoring check
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Wait for optimization to complete
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Stop daemon
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Verify optimization was called
+      const { executeOptimize: executeOptimizeFn } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      expect(executeOptimizeFn).toHaveBeenCalledWith({
+        account: "0x1234567890123456789012345678901234567890",
+        execute: true,
+      });
+
+      exitSpy.mockRestore();
+    });
+
+    it("should not trigger auto-optimization when disabled", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.OPTIMIZE,
+        reason: "Delta drift exceeds threshold",
+      };
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: false, // Explicitly disabled
+      };
+
+      const daemonPromise = daemon(options).catch(() => {
+        // Expected to exit
+      });
+
+      // Wait for initialization
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Trigger monitoring check
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Stop daemon
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Verify optimization was NOT called
+      const { executeOptimize: executeOptimizeFn } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      expect(executeOptimizeFn).not.toHaveBeenCalled();
+
+      exitSpy.mockRestore();
+    });
+
+    it("should not trigger auto-optimization when recommendation is NONE", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.NONE,
+        reason: "Strategy is healthy",
+      };
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: true,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {
+        // Expected to exit
+      });
+
+      // Wait for initialization
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Trigger monitoring check
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Stop daemon
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Verify optimization was NOT called
+      const { executeOptimize: executeOptimizeFn } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      expect(executeOptimizeFn).not.toHaveBeenCalled();
+
+      exitSpy.mockRestore();
+    });
+
+    it("should handle optimization errors gracefully and track failures", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.OPTIMIZE,
+        reason: "Delta drift exceeds threshold",
+        data: {
+          deltaDrift: 0.12,
+          anyOutOfRange: false,
+          totalFeesUsd: ethers.parseUnits("15", 30),
+        },
+      };
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+      const { executeOptimize } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      vi.mocked(executeOptimize).mockRejectedValue(new Error("Optimization failed: insufficient balance"));
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: true,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {
+        // Expected to exit
+      });
+
+      // Wait for initialization
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Trigger monitoring check
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Wait for optimization to fail
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Stop daemon
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Verify optimization was called
+      const { executeOptimize: executeOptimizeFn } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      expect(executeOptimizeFn).toHaveBeenCalled();
+
+      // Verify failure was recorded in database
+      const db = new MonitoringDatabase(testDbPath);
+      const failures = db.getRecentOptimizationFailures(
+        "0x1234567890123456789012345678901234567890",
+        5
+      );
+      db.close();
+
+      expect(failures.length).toBeGreaterThan(0);
+      expect(failures[0].errorMessage).toContain("Optimization failed");
+
+      exitSpy.mockRestore();
+    });
+
+    it("should disable auto-optimization after max consecutive failures", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.OPTIMIZE,
+        reason: "Delta drift exceeds threshold",
+      };
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+      const { executeOptimize } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      vi.mocked(executeOptimize).mockRejectedValue(new Error("Persistent optimization failure"));
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: true,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {
+        // Expected to exit
+      });
+
+      // Wait for initialization
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Trigger multiple monitoring checks (each will fail optimization)
+      // Max failures is 3, so after 3 failures, optimization should stop
+      for (let i = 0; i < 5; i++) {
+        await vi.advanceTimersByTimeAsync(1000); // Trigger check
+        await vi.advanceTimersByTimeAsync(1000); // Wait for optimization attempt
+      }
+
+      // Stop daemon
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Verify optimization was called exactly 3 times (max failures)
+      const { executeOptimize: executeOptimizeFn } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      expect(executeOptimizeFn).toHaveBeenCalledTimes(3);
+
+      exitSpy.mockRestore();
+    });
+
+    it("should prevent concurrent optimizations", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.OPTIMIZE,
+        reason: "Delta drift exceeds threshold",
+      };
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+
+      // Make optimization take a long time
+      let resolveOptimization: () => void;
+      const optimizationPromise = new Promise<void>((resolve) => {
+        resolveOptimization = resolve;
+      });
+      const { executeOptimize } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      vi.mocked(executeOptimize).mockImplementation(() => optimizationPromise);
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: true,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {
+        // Expected to exit
+      });
+
+      // Wait for initialization
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Trigger first monitoring check (starts optimization)
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Trigger second monitoring check while optimization is still running
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Verify optimization was called only once (concurrent prevention)
+      const { executeOptimize: executeOptimizeFn } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      expect(executeOptimizeFn).toHaveBeenCalledTimes(1);
+
+      // Resolve optimization
+      resolveOptimization!();
+
+      // Stop daemon
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      exitSpy.mockRestore();
+    });
+
+    it("should reset failure counter after successful optimization", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.OPTIMIZE,
+        reason: "Delta drift exceeds threshold",
+      };
+
+      // First call fails, second succeeds
+      let callCount = 0;
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+      const { executeOptimize } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      vi.mocked(executeOptimize).mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.reject(new Error("First optimization fails"));
+        }
+        return Promise.resolve(undefined);
+      });
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: true,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {
+        // Expected to exit
+      });
+
+      // Wait for initialization
+      await vi.advanceTimersByTimeAsync(100);
+
+      // First check - optimization fails
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Get call count after first failure
+      const { executeOptimize: executeOptimizeFn } = await import("../../../src/cli/commands/strategy/execute-optimize");
+      const callsAfterFirstFailure = vi.mocked(executeOptimizeFn).mock.calls.length;
+
+      // Second check - optimization succeeds (should reset counter)
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Third check - should still trigger optimization (counter was reset)
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Stop daemon
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Verify optimization was called at least 3 times (failure, success, then another attempt)
+      // We check for at least 3 because the daemon may have made additional checks
+      expect(vi.mocked(executeOptimizeFn).mock.calls.length).toBeGreaterThanOrEqual(3);
+      
+      // Verify that after the first failure, we had at least 2 more calls (success + another attempt)
+      const totalCalls = vi.mocked(executeOptimizeFn).mock.calls.length;
+      expect(totalCalls - callsAfterFirstFailure).toBeGreaterThanOrEqual(2);
+
+      exitSpy.mockRestore();
+    });
   });
 });

@@ -115,11 +115,46 @@ const migration002_optimization_tracking: Migration = {
 };
 
 /**
+ * Migration: Add optimization failure tracking
+ */
+const migration003_optimization_failures: Migration = {
+  version: 3,
+  name: "optimization_failures",
+  up: (db: Database.Database) => {
+    // Track optimization failures for recovery and analysis
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS optimization_failures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        error_message TEXT NOT NULL,
+        error_stack TEXT,
+        delta_drift REAL,
+        total_fees_usd TEXT,
+        recommendation_reason TEXT,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
+    // Index for quick lookups
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_optimization_failures_account_timestamp 
+      ON optimization_failures(account, timestamp DESC)
+    `);
+  },
+  down: (db: Database.Database) => {
+    db.exec(`DROP INDEX IF EXISTS idx_optimization_failures_account_timestamp`);
+    db.exec(`DROP TABLE IF EXISTS optimization_failures`);
+  },
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
   migration001_initial_schema,
   migration002_optimization_tracking,
+  migration003_optimization_failures,
 ];
 
 /**
