@@ -536,44 +536,6 @@ npm run cli -- strategy monitor --network arbitrum --token-id 12345
 NETWORK=arbitrum npm run cli -- strategy monitor --token-id 12345
 ```
 
-### Execute Rebalance
-
-Execute rebalance operation:
-
-```bash
-npm run cli -- strategy rebalance [options]
-```
-
-Options:
-- `--token-id <id>` - Uniswap token ID
-- `--dry-run` - Perform dry run without executing
-
-Example:
-```bash
-npm run cli -- strategy rebalance --network arbitrum --token-id 12345 --dry-run
-# Or using environment variable:
-NETWORK=arbitrum npm run cli -- strategy rebalance --token-id 12345 --dry-run
-```
-
-### Execute Adjust Range
-
-Execute range adjustment:
-
-```bash
-npm run cli -- strategy adjust-range [options]
-```
-
-Options:
-- `--token-id <id>` - Uniswap token ID
-- `--dry-run` - Perform dry run without executing
-
-Example:
-```bash
-npm run cli -- strategy adjust-range --network arbitrum --token-id 12345 --dry-run
-# Or using environment variable:
-NETWORK=arbitrum npm run cli -- strategy adjust-range --token-id 12345 --dry-run
-```
-
 ## Extending the CLI
 
 The CLI is designed to be easily extensible. To add a new command:

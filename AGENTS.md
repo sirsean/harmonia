@@ -177,11 +177,8 @@ npm run cli -- gmx read-order --network arbitrum --order-key <key>
 # Monitor delta-neutral positions
 npm run cli -- monitor --network arbitrum
 
-# Execute rebalance (when implemented)
-npm run cli -- strategy rebalance --network arbitrum --token-id <id>
-
-# Adjust range (when implemented)
-npm run cli -- strategy adjust-range --network arbitrum --token-id <id>
+# Optimize strategy position
+npm run cli -- strategy optimize --network arbitrum --token-id <id>
 ```
 
 ### Utility Commands
@@ -257,11 +254,10 @@ const bounds = getDefaultRangeBounds(currentPrice, rangeWidth);
 See `PLAN.md` Part 6 for the detailed implementation roadmap:
 
 1. **Phase 1**: Core modules (GMX, Uniswap, Math, Chainlink) ✅ **Complete**
-2. **Phase 2**: Strategy layer (monitor, rebalance, compound) 🔄 **In Progress**
+2. **Phase 2**: Strategy layer (monitor, optimize, compound) 🔄 **In Progress**
    - ✅ Position monitoring (`monitor.ts`, `monitor` CLI command)
-   - ✅ Rebalance execution (`rebalance.ts`, `strategy rebalance` CLI command)
+   - ✅ Strategy optimization (`optimize` CLI command)
    - ⏳ Compounding logic
-   - ⏳ Range adjustment
 3. **Phase 3**: Operations (CLI, monitoring, alerts) ✅ **Complete**
    - ✅ Unified CLI interface (`src/cli/`)
    - ✅ All commands accessible via CLI
