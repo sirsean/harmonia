@@ -806,4 +806,236 @@ describe("MonitoringDatabase", () => {
       }).toThrow();
     });
   });
+
+  describe("operation history", () => {
+    it("should record an operation", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      const operationId = db.recordOperation(account, "rebalance", ethers.parseUnits("10", 30), {
+        deltaAdjustment: "0.5",
+      });
+
+      expect(operationId).toBeGreaterThan(0);
+
+      const history = db.getOperationHistory(account);
+      expect(history.length).toBe(1);
+      expect(history[0].operationType).toBe("rebalance");
+      expect(history[0].gasCostUsd).toBe(ethers.parseUnits("10", 30).toString());
+      expect(history[0].operationData?.deltaAdjustment).toBe("0.5");
+    });
+
+    it("should get last operation time", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      const timestamp1 = Date.now() - 10000;
+      const timestamp2 = Date.now();
+
+      // Manually insert operations with specific timestamps
+      const insert = db.getDb().prepare(`
+        INSERT INTO operation_history (timestamp, account, operation_type, gas_cost_usd)
+        VALUES (?, ?, ?, ?)
+      `);
+      insert.run(timestamp1, account, "rebalance", ethers.parseUnits("10", 30).toString());
+      insert.run(timestamp2, account, "compound", ethers.parseUnits("5", 30).toString());
+
+      const lastRebalance = db.getLastOperationTime(account, "rebalance");
+      const lastCompound = db.getLastOperationTime(account, "compound");
+      const lastRangeAdjustment = db.getLastOperationTime(account, "range_adjustment");
+
+      expect(lastRebalance).toBe(timestamp1);
+      expect(lastCompound).toBe(timestamp2);
+      expect(lastRangeAdjustment).toBeUndefined();
+    });
+
+    it("should filter operation history by type", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.recordOperation(account, "rebalance", ethers.parseUnits("10", 30));
+      db.recordOperation(account, "compound", ethers.parseUnits("5", 30));
+      db.recordOperation(account, "rebalance", ethers.parseUnits("8", 30));
+
+      const rebalanceHistory = db.getOperationHistory(account, "rebalance");
+      const compoundHistory = db.getOperationHistory(account, "compound");
+
+      expect(rebalanceHistory.length).toBe(2);
+      expect(compoundHistory.length).toBe(1);
+      expect(rebalanceHistory.every((op) => op.operationType === "rebalance")).toBe(true);
+      expect(compoundHistory.every((op) => op.operationType === "compound")).toBe(true);
+    });
+
+    it("should limit operation history results", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      for (let i = 0; i < 10; i++) {
+        db.recordOperation(account, "rebalance", ethers.parseUnits("10", 30));
+      }
+
+      const limitedHistory = db.getOperationHistory(account, undefined, 5);
+      expect(limitedHistory.length).toBe(5);
+    });
+  });
+
+  describe("alert suppressions", () => {
+    it("should suppress an alert", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.suppressAlert(account, "delta_drift_high", 3600); // 1 hour
+
+      const isSuppressed = db.isAlertSuppressed(account, "delta_drift_high");
+      expect(isSuppressed).toBe(true);
+    });
+
+    it("should return false for non-suppressed alerts", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      const isSuppressed = db.isAlertSuppressed(account, "delta_drift_high");
+      expect(isSuppressed).toBe(false);
+    });
+
+    it("should return false for expired suppressions", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      // Insert expired suppression
+      const insert = db.getDb().prepare(`
+        INSERT INTO alert_suppressions (account, alert_type, expires_at)
+        VALUES (?, ?, ?)
+      `);
+      insert.run(account, "delta_drift_high", Date.now() - 1000); // Expired 1 second ago
+
+      const isSuppressed = db.isAlertSuppressed(account, "delta_drift_high");
+      expect(isSuppressed).toBe(false);
+
+      // Verify it was cleaned up
+      const check = db.getDb().prepare(`
+        SELECT COUNT(*) as count FROM alert_suppressions
+        WHERE account = ? AND alert_type = ?
+      `);
+      const result = check.get(account, "delta_drift_high") as { count: number };
+      expect(result.count).toBe(0);
+    });
+
+    it("should clear suppressed alerts", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.suppressAlert(account, "delta_drift_high", 3600);
+      db.suppressAlert(account, "position_out_of_range", 3600);
+
+      db.clearSuppressedAlerts(account, "delta_drift_high");
+
+      expect(db.isAlertSuppressed(account, "delta_drift_high")).toBe(false);
+      expect(db.isAlertSuppressed(account, "position_out_of_range")).toBe(true);
+
+      db.clearSuppressedAlerts(account);
+      expect(db.isAlertSuppressed(account, "position_out_of_range")).toBe(false);
+    });
+  });
+
+  describe("config overrides", () => {
+    it("should set and get config override", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.setConfigOverride(account, "optimizationDeltaThreshold", 0.15);
+
+      const value = db.getConfigOverride(account, "optimizationDeltaThreshold");
+      expect(value).toBe(0.15);
+    });
+
+    it("should support global config overrides", () => {
+      db.setConfigOverride(null, "optimizationDeltaThreshold", 0.12);
+
+      const value = db.getConfigOverride(null, "optimizationDeltaThreshold");
+      expect(value).toBe(0.12);
+    });
+
+    it("should return null for non-existent override", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      const value = db.getConfigOverride(account, "nonExistentKey");
+      expect(value).toBeNull();
+    });
+
+    it("should handle expired overrides", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      // Insert expired override
+      const insert = db.getDb().prepare(`
+        INSERT INTO config_overrides (account, config_key, config_value, expires_at)
+        VALUES (?, ?, ?, ?)
+      `);
+      insert.run(account, "testKey", JSON.stringify("testValue"), Date.now() - 1000);
+
+      const value = db.getConfigOverride(account, "testKey");
+      expect(value).toBeNull();
+
+      // Verify it was cleaned up
+      const check = db.getDb().prepare(`
+        SELECT COUNT(*) as count FROM config_overrides
+        WHERE account = ? AND config_key = ?
+      `);
+      const result = check.get(account, "testKey") as { count: number };
+      expect(result.count).toBe(0);
+    });
+
+    it("should clear config override", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.setConfigOverride(account, "testKey", "testValue");
+      db.clearConfigOverride(account, "testKey");
+
+      const value = db.getConfigOverride(account, "testKey");
+      expect(value).toBeNull();
+    });
+  });
+
+  describe("strategy metrics", () => {
+    it("should initialize metrics on first access", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      const metrics = db.getMetrics(account);
+
+      expect(metrics.totalFeesCollected).toBe(0n);
+      expect(metrics.totalGasSpent).toBe(0n);
+      expect(metrics.rebalanceCount).toBe(0);
+      expect(metrics.compoundCount).toBe(0);
+      expect(metrics.rangeAdjustmentCount).toBe(0);
+      expect(metrics.optimizationCount).toBe(0);
+    });
+
+    it("should update metrics", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.updateMetrics(account, {
+        totalFeesCollected: ethers.parseUnits("100", 30),
+        totalGasSpent: ethers.parseUnits("10", 30),
+        rebalanceCount: 5,
+        compoundCount: 3,
+      });
+
+      const metrics = db.getMetrics(account);
+      expect(metrics.totalFeesCollected).toBe(ethers.parseUnits("100", 30));
+      expect(metrics.totalGasSpent).toBe(ethers.parseUnits("10", 30));
+      expect(metrics.rebalanceCount).toBe(5);
+      expect(metrics.compoundCount).toBe(3);
+    });
+
+    it("should increment metrics correctly", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.updateMetrics(account, {
+        rebalanceCount: 1,
+        totalGasSpent: ethers.parseUnits("5", 30),
+      });
+
+      db.updateMetrics(account, {
+        rebalanceCount: 2,
+        totalGasSpent: ethers.parseUnits("10", 30),
+      });
+
+      const metrics = db.getMetrics(account);
+      expect(metrics.rebalanceCount).toBe(2);
+      expect(metrics.totalGasSpent).toBe(ethers.parseUnits("10", 30));
+    });
+
+    it("should update partial metrics", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.updateMetrics(account, {
+        rebalanceCount: 5,
+        compoundCount: 3,
+      });
+
+      db.updateMetrics(account, {
+        rangeAdjustmentCount: 2,
+      });
+
+      const metrics = db.getMetrics(account);
+      expect(metrics.rebalanceCount).toBe(5);
+      expect(metrics.compoundCount).toBe(3);
+      expect(metrics.rangeAdjustmentCount).toBe(2);
+    });
+  });
 });

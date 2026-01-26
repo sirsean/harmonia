@@ -149,12 +149,98 @@ const migration003_optimization_failures: Migration = {
 };
 
 /**
+ * Migration: Add state persistence tables
+ */
+const migration004_state_persistence: Migration = {
+  version: 4,
+  name: "state_persistence",
+  up: (db: Database.Database) => {
+    // Operation history table - tracks all operations (rebalance, compound, range_adjustment, optimization)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS operation_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        operation_type TEXT NOT NULL CHECK(operation_type IN ('rebalance', 'compound', 'range_adjustment', 'optimization')),
+        gas_cost_usd TEXT,
+        operation_data TEXT,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
+    // Alert suppressions table - tracks suppressed alerts to avoid spam
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS alert_suppressions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account TEXT NOT NULL,
+        alert_type TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER DEFAULT (strftime('%s', 'now')),
+        UNIQUE(account, alert_type)
+      )
+    `);
+
+    // Configuration overrides table - allows runtime config overrides
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS config_overrides (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account TEXT,
+        config_key TEXT NOT NULL,
+        config_value TEXT NOT NULL,
+        expires_at INTEGER,
+        created_at INTEGER DEFAULT (strftime('%s', 'now')),
+        UNIQUE(account, config_key)
+      )
+    `);
+
+    // Strategy metrics table - tracks cumulative metrics across all operations
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS strategy_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account TEXT NOT NULL,
+        total_fees_collected_usd TEXT NOT NULL DEFAULT '0',
+        total_gas_spent_usd TEXT NOT NULL DEFAULT '0',
+        rebalance_count INTEGER NOT NULL DEFAULT 0,
+        compound_count INTEGER NOT NULL DEFAULT 0,
+        range_adjustment_count INTEGER NOT NULL DEFAULT 0,
+        optimization_count INTEGER NOT NULL DEFAULT 0,
+        last_updated INTEGER DEFAULT (strftime('%s', 'now')),
+        UNIQUE(account)
+      )
+    `);
+
+    // Indexes for performance
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_operation_history_account_timestamp 
+      ON operation_history(account, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_operation_history_type 
+      ON operation_history(operation_type);
+      CREATE INDEX IF NOT EXISTS idx_alert_suppressions_account_expires 
+      ON alert_suppressions(account, expires_at);
+      CREATE INDEX IF NOT EXISTS idx_config_overrides_account_key 
+      ON config_overrides(account, config_key);
+    `);
+  },
+  down: (db: Database.Database) => {
+    db.exec(`DROP INDEX IF EXISTS idx_config_overrides_account_key`);
+    db.exec(`DROP INDEX IF EXISTS idx_alert_suppressions_account_expires`);
+    db.exec(`DROP INDEX IF EXISTS idx_operation_history_type`);
+    db.exec(`DROP INDEX IF EXISTS idx_operation_history_account_timestamp`);
+    db.exec(`DROP TABLE IF EXISTS strategy_metrics`);
+    db.exec(`DROP TABLE IF EXISTS config_overrides`);
+    db.exec(`DROP TABLE IF EXISTS alert_suppressions`);
+    db.exec(`DROP TABLE IF EXISTS operation_history`);
+  },
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
   migration001_initial_schema,
   migration002_optimization_tracking,
   migration003_optimization_failures,
+  migration004_state_persistence,
 ];
 
 /**
