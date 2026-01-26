@@ -31,6 +31,7 @@ import {
 } from "../../../modules/gmx/prices";
 import { getSignerAndAccount } from "../base";
 import { MonitoringDatabase } from "../../../utils/database";
+import { StateManager } from "../../../utils/state";
 import { IERC20 as UniswapIERC20 } from "../../../modules/uniswap/types";
 import {
   ERC20_ABI,
@@ -949,9 +950,10 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       console.log(`  GMX hedge: ${allocation.gmxShortSizeUsd > 0n ? "order created" : "skipped"}`);
     }
 
-    // Record optimization in database
+    // Record optimization in database using StateManager
     try {
       const db = new MonitoringDatabase();
+      const stateManager = new StateManager(db);
       const gasCostUsd = monitorConfig.estimatedOptimizationGasCostUsd;
       // Calculate total fees from status
       let totalFeesUsd = 0n;
@@ -963,7 +965,26 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         }
       }
       const benefitUsd = totalFeesUsd; // Simplified - could calculate more accurately
+
+      // Record optimization operation via StateManager (tracks operation history and metrics)
+      await stateManager.recordOperation(account, "optimization", gasCostUsd, {
+        deltaDrift: status.deltaDrift,
+        totalFeesUsd: totalFeesUsd.toString(),
+        benefitUsd: benefitUsd.toString(),
+        anyOutOfRange: recommendation.data?.anyOutOfRange || false,
+      });
+
+      // Also record in optimization_history table for backward compatibility
       db.recordOptimization(account, status.deltaDrift, totalFeesUsd, gasCostUsd, benefitUsd);
+
+      // Update fees collected metric if fees were collected
+      if (totalFeesUsd > 0n) {
+        const metrics = await stateManager.getMetrics(account);
+        await stateManager.updateMetrics(account, {
+          totalFeesCollected: metrics.totalFeesCollected + totalFeesUsd,
+        });
+      }
+
       console.log(`  Optimization recorded in database`);
     } catch (error) {
       console.warn(`  Warning: Failed to record optimization in database: ${error}`);

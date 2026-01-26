@@ -528,6 +528,348 @@ export class MonitoringDatabase {
   }
 
   /**
+   * Record an operation (rebalance, compound, range_adjustment, or optimization)
+   */
+  recordOperation(
+    account: string,
+    operationType: "rebalance" | "compound" | "range_adjustment" | "optimization",
+    gasCostUsd?: bigint,
+    operationData?: Record<string, any>
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO operation_history (
+        timestamp, account, operation_type, gas_cost_usd, operation_data
+      ) VALUES (?, ?, ?, ?, ?)
+    `);
+
+    const result = insert.run(
+      timestamp,
+      account,
+      operationType,
+      gasCostUsd?.toString() || null,
+      operationData ? JSON.stringify(operationData) : null
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Get the timestamp of the last operation of a specific type for an account
+   */
+  getLastOperationTime(
+    account: string,
+    operationType: "rebalance" | "compound" | "range_adjustment" | "optimization"
+  ): number | undefined {
+    const stmt = this.db.prepare(`
+      SELECT timestamp FROM operation_history
+      WHERE account = ? AND operation_type = ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(account, operationType) as { timestamp: number } | undefined;
+    return row?.timestamp;
+  }
+
+  /**
+   * Get operation history for an account
+   */
+  getOperationHistory(
+    account: string,
+    operationType?: "rebalance" | "compound" | "range_adjustment" | "optimization",
+    limit?: number
+  ): Array<{
+    id: number;
+    timestamp: number;
+    operationType: string;
+    gasCostUsd?: string;
+    operationData?: Record<string, any>;
+  }> {
+    let query = `
+      SELECT id, timestamp, operation_type, gas_cost_usd, operation_data
+      FROM operation_history
+      WHERE account = ?
+    `;
+    const params: any[] = [account];
+
+    if (operationType) {
+      query += " AND operation_type = ?";
+      params.push(operationType);
+    }
+
+    query += " ORDER BY timestamp DESC";
+
+    if (limit !== undefined) {
+      query += " LIMIT ?";
+      params.push(limit);
+    }
+
+    const stmt = this.db.prepare(query);
+    const rows = stmt.all(...params) as Array<{
+      id: number;
+      timestamp: number;
+      operation_type: string;
+      gas_cost_usd?: string;
+      operation_data?: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      timestamp: row.timestamp,
+      operationType: row.operation_type,
+      gasCostUsd: row.gas_cost_usd || undefined,
+      operationData: row.operation_data ? JSON.parse(row.operation_data) : undefined,
+    }));
+  }
+
+  /**
+   * Suppress an alert for a specific duration
+   */
+  suppressAlert(account: string, alertType: string, durationSeconds: number): void {
+    const expiresAt = Date.now() + durationSeconds * 1000;
+    const insert = this.db.prepare(`
+      INSERT OR REPLACE INTO alert_suppressions (account, alert_type, expires_at)
+      VALUES (?, ?, ?)
+    `);
+
+    insert.run(account, alertType, expiresAt);
+  }
+
+  /**
+   * Check if an alert is currently suppressed
+   */
+  isAlertSuppressed(account: string, alertType: string): boolean {
+    const stmt = this.db.prepare(`
+      SELECT expires_at FROM alert_suppressions
+      WHERE account = ? AND alert_type = ?
+    `);
+
+    const row = stmt.get(account, alertType) as { expires_at: number } | undefined;
+    if (!row) {
+      return false;
+    }
+
+    // Check if suppression has expired
+    if (Date.now() > row.expires_at) {
+      // Clean up expired suppression
+      const deleteStmt = this.db.prepare(`
+        DELETE FROM alert_suppressions
+        WHERE account = ? AND alert_type = ?
+      `);
+      deleteStmt.run(account, alertType);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Clear all suppressed alerts for an account (or specific alert type)
+   */
+  clearSuppressedAlerts(account: string, alertType?: string): void {
+    if (alertType) {
+      const stmt = this.db.prepare(`
+        DELETE FROM alert_suppressions
+        WHERE account = ? AND alert_type = ?
+      `);
+      stmt.run(account, alertType);
+    } else {
+      const stmt = this.db.prepare(`
+        DELETE FROM alert_suppressions
+        WHERE account = ?
+      `);
+      stmt.run(account);
+    }
+  }
+
+  /**
+   * Set a configuration override
+   */
+  setConfigOverride(
+    account: string | null,
+    configKey: string,
+    configValue: any,
+    expiresAt?: number
+  ): void {
+    const insert = this.db.prepare(`
+      INSERT OR REPLACE INTO config_overrides (account, config_key, config_value, expires_at)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    insert.run(account, configKey, JSON.stringify(configValue), expiresAt || null);
+  }
+
+  /**
+   * Get a configuration override
+   */
+  getConfigOverride(account: string | null, configKey: string): any | null {
+    const stmt = this.db.prepare(`
+      SELECT config_value, expires_at FROM config_overrides
+      WHERE account IS ? AND config_key = ?
+    `);
+
+    const row = stmt.get(account, configKey) as
+      | { config_value: string; expires_at: number | null }
+      | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    // Check if override has expired
+    if (row.expires_at !== null && Date.now() > row.expires_at) {
+      // Clean up expired override
+      const deleteStmt = this.db.prepare(`
+        DELETE FROM config_overrides
+        WHERE account IS ? AND config_key = ?
+      `);
+      deleteStmt.run(account, configKey);
+      return null;
+    }
+
+    return JSON.parse(row.config_value);
+  }
+
+  /**
+   * Clear a configuration override
+   */
+  clearConfigOverride(account: string | null, configKey: string): void {
+    const stmt = this.db.prepare(`
+      DELETE FROM config_overrides
+      WHERE account IS ? AND config_key = ?
+    `);
+    stmt.run(account, configKey);
+  }
+
+  /**
+   * Get or initialize strategy metrics for an account
+   */
+  getMetrics(account: string): {
+    totalFeesCollected: bigint;
+    totalGasSpent: bigint;
+    rebalanceCount: number;
+    compoundCount: number;
+    rangeAdjustmentCount: number;
+    optimizationCount: number;
+  } {
+    const stmt = this.db.prepare(`
+      SELECT 
+        total_fees_collected_usd,
+        total_gas_spent_usd,
+        rebalance_count,
+        compound_count,
+        range_adjustment_count,
+        optimization_count
+      FROM strategy_metrics
+      WHERE account = ?
+    `);
+
+    const row = stmt.get(account) as
+      | {
+          total_fees_collected_usd: string;
+          total_gas_spent_usd: string;
+          rebalance_count: number;
+          compound_count: number;
+          range_adjustment_count: number;
+          optimization_count: number;
+        }
+      | undefined;
+
+    if (!row) {
+      // Initialize metrics if they don't exist
+      const insert = this.db.prepare(`
+        INSERT INTO strategy_metrics (
+          account, total_fees_collected_usd, total_gas_spent_usd,
+          rebalance_count, compound_count, range_adjustment_count, optimization_count
+        ) VALUES (?, '0', '0', 0, 0, 0, 0)
+      `);
+      insert.run(account);
+
+      return {
+        totalFeesCollected: 0n,
+        totalGasSpent: 0n,
+        rebalanceCount: 0,
+        compoundCount: 0,
+        rangeAdjustmentCount: 0,
+        optimizationCount: 0,
+      };
+    }
+
+    return {
+      totalFeesCollected: BigInt(row.total_fees_collected_usd),
+      totalGasSpent: BigInt(row.total_gas_spent_usd),
+      rebalanceCount: row.rebalance_count,
+      compoundCount: row.compound_count,
+      rangeAdjustmentCount: row.range_adjustment_count,
+      optimizationCount: row.optimization_count,
+    };
+  }
+
+  /**
+   * Update strategy metrics for an account
+   */
+  updateMetrics(
+    account: string,
+    updates: {
+      totalFeesCollected?: bigint;
+      totalGasSpent?: bigint;
+      rebalanceCount?: number;
+      compoundCount?: number;
+      rangeAdjustmentCount?: number;
+      optimizationCount?: number;
+    }
+  ): void {
+    // Ensure metrics exist
+    this.getMetrics(account);
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.totalFeesCollected !== undefined) {
+      fields.push("total_fees_collected_usd = ?");
+      values.push(updates.totalFeesCollected.toString());
+    }
+    if (updates.totalGasSpent !== undefined) {
+      fields.push("total_gas_spent_usd = ?");
+      values.push(updates.totalGasSpent.toString());
+    }
+    if (updates.rebalanceCount !== undefined) {
+      fields.push("rebalance_count = ?");
+      values.push(updates.rebalanceCount);
+    }
+    if (updates.compoundCount !== undefined) {
+      fields.push("compound_count = ?");
+      values.push(updates.compoundCount);
+    }
+    if (updates.rangeAdjustmentCount !== undefined) {
+      fields.push("range_adjustment_count = ?");
+      values.push(updates.rangeAdjustmentCount);
+    }
+    if (updates.optimizationCount !== undefined) {
+      fields.push("optimization_count = ?");
+      values.push(updates.optimizationCount);
+    }
+
+    if (fields.length === 0) {
+      return; // No updates to apply
+    }
+
+    fields.push("last_updated = ?");
+    values.push(Date.now());
+
+    values.push(account);
+
+    const updateStmt = this.db.prepare(`
+      UPDATE strategy_metrics
+      SET ${fields.join(", ")}
+      WHERE account = ?
+    `);
+
+    updateStmt.run(...values);
+  }
+
+  /**
    * Get database instance (for testing)
    */
   getDb(): Database.Database {
