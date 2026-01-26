@@ -180,4 +180,5 @@ export interface GMXOrderExecutionResult {
   orderParams: GMXOrderParams;
   multicallData: string[];
   txHash: string;
+  tx?: { hash: string; wait: () => Promise<unknown> };
 }

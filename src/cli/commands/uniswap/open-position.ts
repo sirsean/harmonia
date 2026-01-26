@@ -236,7 +236,7 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
       nonce,
     });
     await approval.wait();
-    nonce += 1;
+    nonce = await signer.getNonce("pending");
   }
 
   const swapTx = await router.exactInputSingle(
@@ -254,7 +254,7 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
   );
   console.log("Swap Tx Hash:", swapTx.hash);
   await swapTx.wait();
-  nonce += 1;
+  nonce = await signer.getNonce("pending");
 
   const [usdcBalanceAfter, wethBalanceAfter] = await Promise.all([
     usdcContract.balanceOf(account),
@@ -309,12 +309,12 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
   if (allowance0 < amount0Desired) {
     const approval = await token0Contract.approve(positionManager, amount0Desired, { nonce });
     await approval.wait();
-    nonce += 1;
+    nonce = await signer.getNonce("pending");
   }
   if (allowance1 < amount1Desired) {
     const approval = await token1Contract.approve(positionManager, amount1Desired, { nonce });
     await approval.wait();
-    nonce += 1;
+    nonce = await signer.getNonce("pending");
   }
 
   const mintResult = await mintPosition(

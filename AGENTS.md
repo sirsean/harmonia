@@ -71,6 +71,36 @@ npm run format        # Auto-format all code
 
 **Remember:** The test suite is a critical part of this project. Maintain comprehensive test coverage and ensure tests always pass. Well-tested code is essential for a financial strategy that manages real funds.
 
+#### Transaction Handling
+
+**CRITICAL: Always wait for transaction confirmations before sending subsequent transactions.**
+
+**Transaction Confirmation Requirements:**
+- ✅ **ALWAYS wait for confirmation** - After sending any transaction (approve, transfer, mint, swap, etc.), you MUST wait for the transaction receipt before continuing
+- ✅ **Use `await tx.wait()`** - For ethers.js transactions, use `await tx.wait()` to wait for confirmation
+- ✅ **Use `await provider.waitForTransaction(txHash)`** - For transaction hashes, use `await provider.waitForTransaction(txHash)` to wait for confirmation
+- ✅ **Fetch fresh nonces** - After waiting for a transaction, fetch a fresh nonce using `await signer.getNonce("pending")` instead of manually incrementing
+- ✅ **Never manually increment nonces** - Manual nonce incrementing (`nonce += 1`) can cause "nonce too low" errors if transactions fail or other transactions occur
+
+**Why this matters:**
+- Sending transactions without waiting causes "nonce too low" errors
+- The blockchain state may not reflect your transaction immediately
+- Subsequent transactions will fail if they use stale nonces
+- This is especially critical in production where real funds are at stake
+
+**Example:**
+```typescript
+// ✅ CORRECT: Wait for confirmation and fetch fresh nonce
+const approval = await token.approve(spender, amount, { nonce });
+await approval.wait();
+nonce = await signer.getNonce("pending"); // Fetch fresh nonce
+
+// ❌ WRONG: Don't manually increment nonce
+const approval = await token.approve(spender, amount, { nonce });
+await approval.wait();
+nonce += 1; // This can cause nonce errors!
+```
+
 ## Codebase Structure
 
 ```
