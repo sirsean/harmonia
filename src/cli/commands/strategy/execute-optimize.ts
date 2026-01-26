@@ -773,7 +773,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       const approval = await token0Contract.approve(positionManager, finalAmount0, { nonce });
       await approval.wait();
       nonce = await signer.getNonce("pending");
-      
+
       // Verify approval succeeded
       const newAllowance0 = await token0Contract.allowance(account, positionManager);
       if (newAllowance0 < finalAmount0) {
@@ -781,14 +781,16 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           `Approval failed for ${token0Symbol}: allowance is ${ethers.formatUnits(newAllowance0, token0Decimals)}, need ${ethers.formatUnits(finalAmount0, token0Decimals)}`
         );
       }
-      console.log(`  ✓ Approved ${token0Symbol}: ${ethers.formatUnits(newAllowance0, token0Decimals)}`);
+      console.log(
+        `  ✓ Approved ${token0Symbol}: ${ethers.formatUnits(newAllowance0, token0Decimals)}`
+      );
     }
     if (allowance1 < finalAmount1 && finalAmount1 > 0n) {
       console.log(`  Approving ${token1Symbol}...`);
       const approval = await token1Contract.approve(positionManager, finalAmount1, { nonce });
       await approval.wait();
       nonce = await signer.getNonce("pending");
-      
+
       // Verify approval succeeded
       const newAllowance1 = await token1Contract.allowance(account, positionManager);
       if (newAllowance1 < finalAmount1) {
@@ -796,7 +798,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           `Approval failed for ${token1Symbol}: allowance is ${ethers.formatUnits(newAllowance1, token1Decimals)}, need ${ethers.formatUnits(finalAmount1, token1Decimals)}`
         );
       }
-      console.log(`  ✓ Approved ${token1Symbol}: ${ethers.formatUnits(newAllowance1, token1Decimals)}`);
+      console.log(
+        `  ✓ Approved ${token1Symbol}: ${ethers.formatUnits(newAllowance1, token1Decimals)}`
+      );
     }
 
     console.log(`  Minting LP position...`);

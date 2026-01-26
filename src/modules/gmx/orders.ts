@@ -122,9 +122,10 @@ export async function ensureAllowance(
   }
   // Cast to any to allow passing nonce override
   const tokenWithOverrides = token as any;
-  const approval = nonce !== undefined
-    ? await tokenWithOverrides.approve(spender, amount, { nonce })
-    : await token.approve(spender, amount);
+  const approval =
+    nonce !== undefined
+      ? await tokenWithOverrides.approve(spender, amount, { nonce })
+      : await token.approve(spender, amount);
   await approval.wait();
   return true;
 }
