@@ -7,6 +7,7 @@ import { getAmountsForLiquidity, getSqrtRatioAtTick } from "../../modules/math/t
 import * as uniswapReader from "../../modules/uniswap/reader";
 import { getSignerAndAccount } from "./base";
 import { ERC20_ABI } from "../../utils/abis";
+import { sendErrorAlert, sendWarningAlert } from "../../utils/alerts";
 
 export interface MonitorOptions {
   account?: string;
@@ -169,6 +170,75 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
     console.log(`  Action: ${color}${recommendation.action}\x1b[0m`);
     console.log(`  Reason: ${recommendation.reason}`);
 
+    // Send alerts for critical conditions
+    if (recommendation.action === StrategyAction.OPTIMIZE) {
+      const isEmergency = status.deltaDrift >= config.emergencyDeltaThreshold;
+      const isOutOfRange = recommendation.data?.anyOutOfRange || false;
+
+      if (isEmergency) {
+        // Emergency alert for high delta drift
+        await sendErrorAlert(
+          "🚨 Emergency: High Delta Drift Detected",
+          `Delta drift has exceeded the emergency threshold. Immediate optimization required.`,
+          [
+            {
+              name: "Delta Drift",
+              value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+              inline: true,
+            },
+            {
+              name: "Emergency Threshold",
+              value: `${(config.emergencyDeltaThreshold * 100).toFixed(2)}%`,
+              inline: true,
+            },
+            {
+              name: "Net Delta",
+              value: `${ethers.formatEther(status.netDelta)} ETH`,
+              inline: true,
+            },
+            {
+              name: "Account",
+              value: account,
+              inline: false,
+            },
+            {
+              name: "Reason",
+              value: recommendation.reason,
+              inline: false,
+            },
+          ]
+        );
+      } else if (isOutOfRange) {
+        // Warning alert for positions out of range
+        await sendWarningAlert(
+          "⚠️ Position Out of Range",
+          `One or more LP positions are out of range. Optimization recommended.`,
+          [
+            {
+              name: "Delta Drift",
+              value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+              inline: true,
+            },
+            {
+              name: "Net Delta",
+              value: `${ethers.formatEther(status.netDelta)} ETH`,
+              inline: true,
+            },
+            {
+              name: "Account",
+              value: account,
+              inline: false,
+            },
+            {
+              name: "Reason",
+              value: recommendation.reason,
+              inline: false,
+            },
+          ]
+        );
+      }
+    }
+
     if (recommendation.data) {
       if (recommendation.action === StrategyAction.OPTIMIZE) {
         console.log(`  Data:`);
@@ -216,6 +286,17 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
   } catch (error: any) {
     console.error("\nError during monitor check:");
     console.error(error);
+
+    // Send error alert to Discord
+    await sendErrorAlert(
+      "❌ Monitor Check Failed",
+      `An error occurred while monitoring the strategy position.`,
+      error
+    ).catch((alertError) => {
+      // Don't fail the monitor command if alert fails
+      console.warn("Failed to send Discord alert:", alertError);
+    });
+
     throw error;
   }
 }

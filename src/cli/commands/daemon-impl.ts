@@ -10,6 +10,12 @@ import { MonitoringDatabase } from "../../utils/database";
 import { getLogger } from "../../utils/logger";
 import { executeOptimize } from "./strategy/execute-optimize";
 import { StrategyAction } from "../../strategy/types";
+import {
+  sendErrorAlert,
+  sendWarningAlert,
+  sendSuccessAlert,
+  sendInfoAlert,
+} from "../../utils/alerts";
 
 export interface DaemonOptions {
   account?: string;
@@ -195,6 +201,28 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
             totalFeesUsd: totalFeesUsd.toString(),
           });
 
+          // Send alert that auto-optimization is starting
+          await sendInfoAlert(
+            "🔄 Auto-Optimization Triggered",
+            `Daemon is automatically optimizing the strategy position.`,
+            [
+              { name: "Account", value: account, inline: false },
+              { name: "Reason", value: recommendation.reason, inline: false },
+              {
+                name: "Delta Drift",
+                value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+                inline: true,
+              },
+              {
+                name: "Unclaimed Fees",
+                value: `$${ethers.formatUnits(totalFeesUsd, 30)}`,
+                inline: true,
+              },
+            ]
+          ).catch((alertError) => {
+            logger.warn("Failed to send Discord alert", { error: alertError.message });
+          });
+
           try {
             // Execute optimization
             await executeOptimize({
@@ -205,6 +233,27 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
             // Optimization succeeded - reset failure counter
             consecutiveOptimizationFailures = 0;
             logger.info("Auto-optimization completed successfully");
+
+            // Send success alert for auto-optimization
+            await sendSuccessAlert(
+              "✅ Auto-Optimization Complete",
+              `Daemon successfully completed automatic optimization.`,
+              [
+                { name: "Account", value: account, inline: false },
+                {
+                  name: "Delta Drift Before",
+                  value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+                  inline: true,
+                },
+                {
+                  name: "Fees Collected",
+                  value: `$${ethers.formatUnits(totalFeesUsd, 30)}`,
+                  inline: true,
+                },
+              ]
+            ).catch((alertError) => {
+              logger.warn("Failed to send Discord alert", { error: alertError.message });
+            });
 
             // Record successful optimization in database
             try {
@@ -230,6 +279,15 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               stack: optimizationError.stack,
               consecutiveOptimizationFailures,
               maxFailures: maxConsecutiveOptimizationFailures,
+            });
+
+            // Send error alert for optimization failure
+            await sendErrorAlert(
+              "❌ Auto-Optimization Failed",
+              `Daemon failed to automatically optimize the strategy position.`,
+              optimizationError
+            ).catch((alertError) => {
+              logger.warn("Failed to send Discord alert", { error: alertError.message });
             });
 
             // Record failure in database for recovery and analysis
@@ -258,6 +316,27 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
                   lastError: optimizationError.message,
                 }
               );
+
+              // Send critical alert when auto-optimization is disabled
+              await sendErrorAlert(
+                "🚨 Auto-Optimization Disabled",
+                `Auto-optimization has been disabled due to ${consecutiveOptimizationFailures} consecutive failures. Manual intervention required.`,
+                [
+                  { name: "Account", value: account, inline: false },
+                  {
+                    name: "Consecutive Failures",
+                    value: `${consecutiveOptimizationFailures}/${maxConsecutiveOptimizationFailures}`,
+                    inline: true,
+                  },
+                  {
+                    name: "Last Error",
+                    value: optimizationError.message,
+                    inline: false,
+                  },
+                ]
+              ).catch((alertError) => {
+                logger.warn("Failed to send Discord alert", { error: alertError.message });
+              });
 
               // Log recent failures for debugging
               try {
@@ -311,10 +390,48 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
           consecutiveErrors,
         });
 
+        // Send warning alert for monitoring errors
+        if (consecutiveErrors === 1) {
+          // Only send alert on first error to avoid spam
+          await sendWarningAlert(
+            "⚠️ Monitoring Check Failed",
+            `An error occurred during monitoring check. Daemon will retry.`,
+            [
+              { name: "Account", value: account, inline: false },
+              { name: "Error", value: error.message, inline: false },
+              {
+                name: "Consecutive Errors",
+                value: `${consecutiveErrors}/${maxConsecutiveErrors}`,
+                inline: true,
+              },
+            ]
+          ).catch((alertError) => {
+            logger.warn("Failed to send Discord alert", { error: alertError.message });
+          });
+        }
+
         if (consecutiveErrors >= maxConsecutiveErrors) {
           logger.error("Too many consecutive errors, shutting down daemon", {
             consecutiveErrors,
           });
+
+          // Send critical alert when daemon shuts down due to errors
+          await sendErrorAlert(
+            "🚨 Daemon Shutting Down",
+            `Daemon is shutting down due to ${consecutiveErrors} consecutive errors.`,
+            [
+              { name: "Account", value: account, inline: false },
+              {
+                name: "Consecutive Errors",
+                value: `${consecutiveErrors}/${maxConsecutiveErrors}`,
+                inline: true,
+              },
+              { name: "Last Error", value: error.message, inline: false },
+            ]
+          ).catch((alertError) => {
+            logger.warn("Failed to send Discord alert", { error: alertError.message });
+          });
+
           isRunning = false;
           break;
         }
