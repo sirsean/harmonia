@@ -8,11 +8,14 @@ import { getSignerAndAccount } from "./base";
 import { ERC20_ABI } from "../../utils/abis";
 import { MonitoringDatabase } from "../../utils/database";
 import { getLogger } from "../../utils/logger";
+import { executeOptimize } from "./strategy/execute-optimize";
+import { StrategyAction } from "../../strategy/types";
 
 export interface DaemonOptions {
   account?: string;
   interval?: number; // Monitoring interval in seconds
   dbPath?: string; // Optional custom database path
+  autoOptimize?: boolean; // Automatically execute optimization when recommended
 }
 
 /**
@@ -24,10 +27,13 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
   const interval = options.interval || 60; // Default 60 seconds
   const dbPath = options.dbPath;
 
+  const autoOptimize = options.autoOptimize ?? false;
+
   logger.info("Starting monitoring daemon", {
     account,
     interval,
     dbPath: dbPath || "default",
+    autoOptimize,
   });
 
   // Initialize database
@@ -91,6 +97,9 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
   let isRunning = true;
   let consecutiveErrors = 0;
   const maxConsecutiveErrors = 5;
+  let consecutiveOptimizationFailures = 0;
+  const maxConsecutiveOptimizationFailures = 3; // Stop auto-optimization after 3 failures
+  let isOptimizationInProgress = false; // Prevent concurrent optimizations
 
   // Monitoring loop
   const monitoringLoop = async (): Promise<void> => {
@@ -171,6 +180,114 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
         });
 
         consecutiveErrors = 0; // Reset error counter on success
+
+        // Auto-optimization logic
+        if (
+          autoOptimize &&
+          recommendation.action === StrategyAction.OPTIMIZE &&
+          !isOptimizationInProgress &&
+          consecutiveOptimizationFailures < maxConsecutiveOptimizationFailures
+        ) {
+          isOptimizationInProgress = true;
+          logger.info("Auto-optimization triggered", {
+            reason: recommendation.reason,
+            deltaDrift: status.deltaDrift,
+            totalFeesUsd: totalFeesUsd.toString(),
+          });
+
+          try {
+            // Execute optimization
+            await executeOptimize({
+              account,
+              execute: true,
+            });
+
+            // Optimization succeeded - reset failure counter
+            consecutiveOptimizationFailures = 0;
+            logger.info("Auto-optimization completed successfully");
+
+            // Record successful optimization in database
+            try {
+              const gasCostUsd = config.estimatedOptimizationGasCostUsd;
+              const benefitUsd = recommendation.data?.estimatedBenefitUsd || totalFeesUsd;
+              db.recordOptimization(
+                account,
+                status.deltaDrift,
+                totalFeesUsd,
+                gasCostUsd,
+                benefitUsd
+              );
+            } catch (dbError: any) {
+              logger.warn("Failed to record optimization in database", {
+                error: dbError.message,
+              });
+              // Don't fail the optimization if DB recording fails
+            }
+          } catch (optimizationError: any) {
+            consecutiveOptimizationFailures++;
+            logger.error("Auto-optimization failed", {
+              error: optimizationError.message,
+              stack: optimizationError.stack,
+              consecutiveOptimizationFailures,
+              maxFailures: maxConsecutiveOptimizationFailures,
+            });
+
+            // Record failure in database for recovery and analysis
+            try {
+              db.recordOptimizationFailure(
+                account,
+                optimizationError.message,
+                optimizationError.stack,
+                status.deltaDrift,
+                totalFeesUsd,
+                recommendation.reason
+              );
+            } catch (dbError: any) {
+              logger.warn("Failed to record optimization failure in database", {
+                error: dbError.message,
+              });
+              // Continue even if DB recording fails
+            }
+
+            // If we've hit max failures, disable auto-optimization
+            if (consecutiveOptimizationFailures >= maxConsecutiveOptimizationFailures) {
+              logger.error(
+                "Auto-optimization disabled due to consecutive failures. Manual intervention required.",
+                {
+                  consecutiveOptimizationFailures,
+                  lastError: optimizationError.message,
+                }
+              );
+
+              // Log recent failures for debugging
+              try {
+                const recentFailures = db.getRecentOptimizationFailures(account, 5);
+                logger.error("Recent optimization failures", {
+                  count: recentFailures.length,
+                  failures: recentFailures.map((f) => ({
+                    timestamp: new Date(f.timestamp).toISOString(),
+                    error: f.errorMessage,
+                    deltaDrift: f.deltaDrift,
+                  })),
+                });
+              } catch (dbError: any) {
+                logger.warn("Failed to retrieve recent failures", {
+                  error: dbError.message,
+                });
+              }
+            }
+          } finally {
+            isOptimizationInProgress = false;
+          }
+        } else if (autoOptimize && recommendation.action === StrategyAction.OPTIMIZE) {
+          if (isOptimizationInProgress) {
+            logger.debug("Skipping optimization - already in progress");
+          } else if (consecutiveOptimizationFailures >= maxConsecutiveOptimizationFailures) {
+            logger.warn("Skipping optimization - too many consecutive failures", {
+              consecutiveOptimizationFailures,
+            });
+          }
+        }
 
         // Wait for next interval (check isRunning periodically)
         if (isRunning) {

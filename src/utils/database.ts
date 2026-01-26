@@ -443,6 +443,84 @@ export class MonitoringDatabase {
   }
 
   /**
+   * Record an optimization failure
+   */
+  recordOptimizationFailure(
+    account: string,
+    errorMessage: string,
+    errorStack?: string,
+    deltaDrift?: number,
+    totalFeesUsd?: bigint,
+    recommendationReason?: string
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO optimization_failures (
+        timestamp, account, error_message, error_stack, delta_drift, total_fees_usd, recommendation_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = insert.run(
+      timestamp,
+      account,
+      errorMessage,
+      errorStack || null,
+      deltaDrift !== undefined ? deltaDrift : null,
+      totalFeesUsd?.toString() || null,
+      recommendationReason || null
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Get recent optimization failures for an account
+   * @param account Account address
+   * @param limit Maximum number of failures to return
+   * @returns Array of failure records
+   */
+  getRecentOptimizationFailures(
+    account: string,
+    limit: number = 10
+  ): Array<{
+    id: number;
+    timestamp: number;
+    errorMessage: string;
+    errorStack?: string;
+    deltaDrift?: number;
+    totalFeesUsd?: string;
+    recommendationReason?: string;
+  }> {
+    const stmt = this.db.prepare(`
+      SELECT id, timestamp, error_message, error_stack, delta_drift, total_fees_usd, recommendation_reason
+      FROM optimization_failures
+      WHERE account = ?
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+
+    const rows = stmt.all(account, limit) as Array<{
+      id: number;
+      timestamp: number;
+      error_message: string;
+      error_stack?: string;
+      delta_drift?: number;
+      total_fees_usd?: string;
+      recommendation_reason?: string;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      timestamp: row.timestamp,
+      errorMessage: row.error_message,
+      errorStack: row.error_stack,
+      deltaDrift: row.delta_drift,
+      totalFeesUsd: row.total_fees_usd,
+      recommendationReason: row.recommendation_reason,
+    }));
+  }
+
+  /**
    * Close database connection
    */
   close(): void {

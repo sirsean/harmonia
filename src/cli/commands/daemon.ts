@@ -12,11 +12,17 @@ export function registerDaemonCommand(program: Command): void {
       .description("Run automated monitoring daemon that continuously tracks strategy metrics")
       .option("--interval <seconds>", "Monitoring interval in seconds (default: 60)", "60")
       .option("--db-path <path>", "Custom database path (default: ./data/monitoring.db)")
+      .option(
+        "--auto-optimize",
+        "Automatically execute optimization when recommended (default: false)",
+        false
+      )
       .action(async (options) => {
         await daemon({
           account: options.account,
           interval: parseInt(options.interval, 10),
           dbPath: options.dbPath,
+          autoOptimize: options.autoOptimize ?? false,
         });
       })
   );
