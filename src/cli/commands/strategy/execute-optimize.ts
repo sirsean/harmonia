@@ -247,7 +247,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       const executionFee = monitorConfig.defaultExecutionFee;
 
       const router = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
-      const nonce = await signer.getNonce("pending");
+      let nonce = await signer.getNonce("pending");
 
       const closeResult = await gmxOrders.createDecreaseOrder(
         router,
@@ -269,18 +269,15 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       );
 
       console.log(`  Close GMX order tx: ${closeResult.txHash}`);
-      // Try to wait for transaction confirmation (not available in Hardhat)
-      if (signer.provider && typeof signer.provider.waitForTransaction === "function") {
-        try {
-          const txReceipt = await signer.provider.waitForTransaction(closeResult.txHash);
-          if (txReceipt) {
-            console.log(`  Transaction confirmed in block ${txReceipt.blockNumber}`);
-          }
-        } catch (error) {
-          // Ignore errors - transaction is still submitted
-          console.log(`  Transaction submitted (waitForTransaction not available)`);
-        }
+      // Wait for transaction confirmation
+      if (closeResult.tx) {
+        const txReceipt = (await closeResult.tx.wait()) as { blockNumber: number };
+        console.log(`  Transaction confirmed in block ${txReceipt.blockNumber}`);
+      } else {
+        console.log(`  Transaction submitted: ${closeResult.txHash}`);
       }
+      // Update nonce after GMX close for subsequent transactions
+      nonce = await signer.getNonce("pending");
     } else {
       console.log(`\nWould close GMX short position`);
       console.log(`  Size: $${ethers.formatUnits(gmxPosition.numbers.sizeInUsd, 30)}`);
@@ -605,7 +602,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           { nonce }
         );
         await approval.wait();
-        nonce += 1;
+        nonce = await signer.getNonce("pending");
       }
       const swapTx = await swapRouter.exactInputSingle(
         {
@@ -622,7 +619,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       );
       console.log(`  Swap tx: ${swapTx.hash}`);
       await swapTx.wait();
-      nonce += 1;
+      nonce = await signer.getNonce("pending");
 
       const [newBalance0, newBalance1] = await Promise.all([
         token0Contract.balanceOf(account),
@@ -675,7 +672,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           { nonce }
         );
         await approval.wait();
-        nonce += 1;
+        nonce = await signer.getNonce("pending");
       }
       const swapTx = await swapRouter.exactInputSingle(
         {
@@ -692,7 +689,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       );
       console.log(`  Swap tx: ${swapTx.hash}`);
       await swapTx.wait();
-      nonce += 1;
+      nonce = await signer.getNonce("pending");
 
       const [newBalance0, newBalance1] = await Promise.all([
         token0Contract.balanceOf(account),
@@ -744,23 +741,62 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
     const positionManager = ARBITRUM_MAINNET.uniswapV3PositionManager;
 
-    // Check and approve if needed
-    const [allowance0, allowance1] = await Promise.all([
+    // Verify balances before proceeding
+    const [currentBalance0, currentBalance1, allowance0, allowance1] = await Promise.all([
+      token0Contract.balanceOf(account),
+      token1Contract.balanceOf(account),
       token0Contract.allowance(account, positionManager),
       token1Contract.allowance(account, positionManager),
     ]);
 
+    console.log(`  Current balances:`);
+    console.log(`    ${token0Symbol}: ${ethers.formatUnits(currentBalance0, token0Decimals)}`);
+    console.log(`    ${token1Symbol}: ${ethers.formatUnits(currentBalance1, token1Decimals)}`);
+    console.log(`  Required amounts:`);
+    console.log(`    ${token0Symbol}: ${ethers.formatUnits(finalAmount0, token0Decimals)}`);
+    console.log(`    ${token1Symbol}: ${ethers.formatUnits(finalAmount1, token1Decimals)}`);
+
+    if (currentBalance0 < finalAmount0) {
+      throw new Error(
+        `Insufficient ${token0Symbol} balance: have ${ethers.formatUnits(currentBalance0, token0Decimals)}, need ${ethers.formatUnits(finalAmount0, token0Decimals)}`
+      );
+    }
+    if (currentBalance1 < finalAmount1) {
+      throw new Error(
+        `Insufficient ${token1Symbol} balance: have ${ethers.formatUnits(currentBalance1, token1Decimals)}, need ${ethers.formatUnits(finalAmount1, token1Decimals)}`
+      );
+    }
+
+    // Check and approve if needed
     if (allowance0 < finalAmount0 && finalAmount0 > 0n) {
       console.log(`  Approving ${token0Symbol}...`);
       const approval = await token0Contract.approve(positionManager, finalAmount0, { nonce });
       await approval.wait();
-      nonce += 1;
+      nonce = await signer.getNonce("pending");
+      
+      // Verify approval succeeded
+      const newAllowance0 = await token0Contract.allowance(account, positionManager);
+      if (newAllowance0 < finalAmount0) {
+        throw new Error(
+          `Approval failed for ${token0Symbol}: allowance is ${ethers.formatUnits(newAllowance0, token0Decimals)}, need ${ethers.formatUnits(finalAmount0, token0Decimals)}`
+        );
+      }
+      console.log(`  ✓ Approved ${token0Symbol}: ${ethers.formatUnits(newAllowance0, token0Decimals)}`);
     }
     if (allowance1 < finalAmount1 && finalAmount1 > 0n) {
       console.log(`  Approving ${token1Symbol}...`);
       const approval = await token1Contract.approve(positionManager, finalAmount1, { nonce });
       await approval.wait();
-      nonce += 1;
+      nonce = await signer.getNonce("pending");
+      
+      // Verify approval succeeded
+      const newAllowance1 = await token1Contract.allowance(account, positionManager);
+      if (newAllowance1 < finalAmount1) {
+        throw new Error(
+          `Approval failed for ${token1Symbol}: allowance is ${ethers.formatUnits(newAllowance1, token1Decimals)}, need ${ethers.formatUnits(finalAmount1, token1Decimals)}`
+        );
+      }
+      console.log(`  ✓ Approved ${token1Symbol}: ${ethers.formatUnits(newAllowance1, token1Decimals)}`);
     }
 
     console.log(`  Minting LP position...`);
@@ -786,13 +822,21 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         owner: account,
         spender: positionManager,
         performApproval: false,
+        waitForReceipt: false,
         overrides: { nonce },
       }
     );
 
     if (mintResult.txHash) {
       console.log(`  LP position minted. Tx: ${mintResult.txHash}`);
-      nonce += 1;
+      // Wait for transaction confirmation
+      if (mintResult.tx) {
+        const mintReceipt = (await mintResult.tx.wait()) as { blockNumber: number };
+        console.log(`  LP position confirmed in block ${mintReceipt.blockNumber}`);
+      } else {
+        console.log(`  Transaction submitted: ${mintResult.txHash}`);
+      }
+      nonce = await signer.getNonce("pending");
     }
 
     // Open GMX hedge position
@@ -850,16 +894,20 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       );
       if (usdcAllowance < collateralAmount) {
         console.log(`  Approving USDC for GMX...`);
+        // Fetch fresh nonce for approval
+        const approvalNonce = await signer.getNonce("pending");
         const approval = await usdcContractForGmx.approve(
           ARBITRUM_MAINNET.gmxExchangeRouter,
           collateralAmount,
           {
-            nonce,
+            nonce: approvalNonce,
           }
         );
         await approval.wait();
-        nonce += 1;
       }
+
+      // Fetch fresh nonce for GMX order (after approval if it happened)
+      const gmxOrderNonce = await signer.getNonce("pending");
 
       const gmxRouter = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
       const gmxResult = await gmxOrders.createIncreaseOrder(
@@ -877,10 +925,18 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         },
         {
           orderVault: ARBITRUM_MAINNET.gmxOrderVault,
+          nonce: gmxOrderNonce,
         }
       );
 
       console.log(`  GMX short order created. Tx: ${gmxResult.txHash}`);
+      // Wait for GMX transaction confirmation
+      if (gmxResult.tx) {
+        const gmxReceipt = (await gmxResult.tx.wait()) as { blockNumber: number };
+        console.log(`  GMX order confirmed in block ${gmxReceipt.blockNumber}`);
+      } else {
+        console.log(`  Transaction submitted: ${gmxResult.txHash}`);
+      }
     }
 
     console.log(`\n✅ Optimization complete!`);

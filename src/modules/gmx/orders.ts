@@ -113,13 +113,18 @@ export async function ensureAllowance(
   token: IERC20,
   owner: string,
   spender: string,
-  amount: bigint
+  amount: bigint,
+  nonce?: number
 ): Promise<boolean> {
   const allowance = await token.allowance(owner, spender);
   if (allowance >= amount) {
     return false;
   }
-  const approval = await token.approve(spender, amount);
+  // Cast to any to allow passing nonce override
+  const tokenWithOverrides = token as any;
+  const approval = nonce !== undefined
+    ? await tokenWithOverrides.approve(spender, amount, { nonce })
+    : await token.approve(spender, amount);
   await approval.wait();
   return true;
 }
@@ -146,7 +151,11 @@ export async function createIncreaseOrder(
   const orderParams = buildIncreaseOrderParams(request);
 
   const routerAddress = config.routerAddress ?? routerAddressFromInterface(router);
-  await ensureAllowance(token, request.account, routerAddress, request.collateralAmount);
+  // Only ensure allowance if nonce is not provided (caller is managing nonces)
+  // If nonce is provided, caller should have already approved
+  if (config.nonce === undefined) {
+    await ensureAllowance(token, request.account, routerAddress, request.collateralAmount);
+  }
 
   const multicallData = buildMulticallData(router.interface, {
     orderVault: config.orderVault,
@@ -169,6 +178,7 @@ export async function createIncreaseOrder(
     orderParams,
     multicallData,
     txHash: tx.hash,
+    tx,
   };
 }
 
@@ -198,6 +208,7 @@ export async function createDecreaseOrder(
     orderParams,
     multicallData,
     txHash: tx.hash,
+    tx,
   };
 }
 

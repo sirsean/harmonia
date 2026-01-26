@@ -96,6 +96,13 @@ export async function gmxOpenShort(options: GmxOpenShortOptions): Promise<void> 
   );
 
   console.log("Tx Hash:", result.txHash);
+  console.log("Waiting for confirmation...");
+  if (result.tx) {
+    const receipt = (await result.tx.wait()) as { blockNumber: number };
+    console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+  } else {
+    console.log("Transaction submitted: " + result.txHash);
+  }
   console.log("\nSUCCESS! Short Order Created.");
   console.log("Explorer: https://arbiscan.io/tx/" + result.txHash);
 }

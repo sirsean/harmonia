@@ -116,4 +116,5 @@ export interface UniswapExecutionConfig {
 export interface UniswapTransactionResult<TParams> {
   params: TParams;
   txHash?: string;
+  tx?: { hash: string; wait: () => Promise<unknown> };
 }

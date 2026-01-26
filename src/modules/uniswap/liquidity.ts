@@ -62,9 +62,10 @@ export async function mintPosition(
   const tx = await manager.mint(buildMintParams(params), config.overrides);
   if (config.waitForReceipt !== false) {
     await tx.wait();
+    return { params, txHash: tx.hash };
   }
 
-  return { params, txHash: tx.hash };
+  return { params, txHash: tx.hash, tx };
 }
 
 export async function increaseLiquidity(
