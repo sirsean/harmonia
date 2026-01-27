@@ -152,7 +152,31 @@ ALCHEMY_API_KEY=your_alchemy_api_key_here
 
 # Required for transactions
 PRIVATE_KEY=your_private_key
+
+# Optional: Discord alerts
+DISCORD_CHANNEL_ID=your_discord_channel_id_here
+DISCORD_APP_TOKEN=your_discord_bot_token_here
 ```
+
+### Discord Alerts
+
+The strategy can send alerts to Discord when important events occur:
+
+- **Error alerts**: Sent when monitor checks fail or optimizations encounter errors
+- **Warning alerts**: Sent when positions are out of range or delta drift is high
+- **Success alerts**: Sent when optimizations complete successfully
+
+To enable Discord alerts:
+
+1. Create a Discord bot in the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Get your bot token (`DISCORD_APP_TOKEN`)
+3. Get the channel ID where you want alerts sent (`DISCORD_CHANNEL_ID`)
+   - Enable Developer Mode in Discord settings
+   - Right-click the channel and select "Copy ID"
+4. Add the bot to your server with permissions to send messages
+5. Add both values to your `.env` file
+
+If Discord is not configured, alerts will be skipped gracefully without affecting strategy operations.
 
 ## Key Concepts
 

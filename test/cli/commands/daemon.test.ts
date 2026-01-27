@@ -43,6 +43,14 @@ vi.mock("hardhat", () => ({
   },
 }));
 
+// Mock Discord alerts
+vi.mock("../../../src/utils/alerts", () => ({
+  sendErrorAlert: vi.fn().mockResolvedValue(undefined),
+  sendWarningAlert: vi.fn().mockResolvedValue(undefined),
+  sendSuccessAlert: vi.fn().mockResolvedValue(undefined),
+  sendInfoAlert: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock getSignerAndAccount
 vi.mock("../../../src/cli/commands/base", () => ({
   getSignerAndAccount: vi.fn().mockResolvedValue({
