@@ -598,7 +598,7 @@ export class MonitoringDatabase {
       params.push(operationType);
     }
 
-    query += " ORDER BY timestamp DESC";
+    query += " ORDER BY timestamp DESC, id DESC";
 
     if (limit !== undefined) {
       query += " LIMIT ?";

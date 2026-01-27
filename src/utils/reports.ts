@@ -179,7 +179,7 @@ export function formatReportSummary(report: DailyReport): string {
   lines.push(`Total GMX Value: $${report.summary.totalGmxValueUsd}`);
   lines.push(`Total Net Value: $${report.summary.totalNetValueUsd}`);
   lines.push(`Net Delta: ${report.summary.netDelta} ETH`);
-  lines.push(`Delta Drift: ${report.summary.deltaDrift.toFixed(2)}%`);
+  lines.push(`Delta Drift: ${(report.summary.deltaDrift * 100).toFixed(2)}%`);
   lines.push(`Recommendation: ${report.summary.recommendation}`);
   lines.push("");
 

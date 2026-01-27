@@ -15,7 +15,11 @@ import {
   sendWarningAlert,
   sendSuccessAlert,
   sendInfoAlert,
+  sendDiscordAlert,
 } from "../../utils/alerts";
+import { generateDailyReport, saveDailyReport } from "../../utils/reports";
+import { generateDiscordSummary } from "./report-impl";
+import { StrategyStatus, Recommendation } from "../../strategy/types";
 
 export interface DaemonOptions {
   account?: string;
@@ -97,6 +101,91 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
       return sign * ethers.parseUnits(usdFloat.toFixed(18), 30);
     } catch (e) {
       return sign * BigInt(Math.floor(usdFloat * 1e30));
+    }
+  };
+
+  // Track last report date to avoid generating multiple reports per day
+  let lastReportDate: string | null = null; // Track last report date (YYYY-MM-DD)
+
+  /**
+   * Check if it's time to generate a daily report (5am CT)
+   * Returns true if it's past 5am CT today and we haven't generated a report yet
+   */
+  const shouldGenerateReport = (): boolean => {
+    const now = new Date();
+
+    // Get today's date in YYYY-MM-DD format
+    const today = now.toISOString().split("T")[0];
+
+    // If we already generated a report today, don't generate another one
+    if (lastReportDate === today) {
+      return false;
+    }
+
+    // Convert to Central Time (CT)
+    // CT is UTC-6 (CST) or UTC-5 (CDT) depending on DST
+    // 5am CT = 11am UTC (CST) or 10am UTC (CDT)
+    // To handle both cases safely, we check if UTC hour >= 11
+    // This ensures we're definitely past 5am CT in both time zones
+    // For CDT (UTC-5): 5am CT = 10am UTC, so >= 11am UTC is safe
+    // For CST (UTC-6): 5am CT = 11am UTC, so >= 11am UTC is correct
+    const utcHour = now.getUTCHours();
+    const utcMinute = now.getUTCMinutes();
+
+    // Check if it's past 5am CT
+    // We use >= 11:00 UTC to ensure we're past 5am CT in both CST and CDT
+    const isPast5amCT = utcHour > 11 || (utcHour === 11 && utcMinute >= 0);
+
+    // Generate report if it's past 5am CT and we haven't generated one today
+    return isPast5amCT;
+  };
+
+  /**
+   * Generate daily report and send Discord summary
+   */
+  const generateDailyReportAndNotify = async (
+    status: StrategyStatus,
+    recommendation: Recommendation,
+    totalLpValueUsd: bigint,
+    totalFeesUsd: bigint
+  ): Promise<void> => {
+    try {
+      logger.info("Generating daily report", { account });
+
+      // Generate report
+      const report = generateDailyReport(
+        account,
+        status,
+        recommendation,
+        totalLpValueUsd,
+        totalFeesUsd
+      );
+
+      // Save report to file
+      const filepath = saveDailyReport(report);
+      logger.info("Daily report saved", { filepath, date: report.date });
+
+      // Update last report date
+      lastReportDate = report.date;
+
+      // Generate and send Discord summary
+      const summary = generateDiscordSummary(report);
+      await sendDiscordAlert({
+        title: summary.title,
+        message: summary.message,
+        fields: summary.fields,
+        severity: "info",
+      }).catch((alertError) => {
+        logger.warn("Failed to send Discord report summary", { error: alertError.message });
+      });
+
+      logger.info("Daily report generated and Discord summary sent", { date: report.date });
+    } catch (reportError: any) {
+      logger.error("Failed to generate daily report", {
+        error: reportError.message,
+        stack: reportError.stack,
+      });
+      // Don't throw - we don't want report generation failures to stop the daemon
     }
   };
 
@@ -186,6 +275,11 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
         });
 
         consecutiveErrors = 0; // Reset error counter on success
+
+        // Check if it's time to generate daily report (5am CT)
+        if (shouldGenerateReport()) {
+          await generateDailyReportAndNotify(status, recommendation, totalLpValueUsd, totalFeesUsd);
+        }
 
         // Auto-optimization logic
         if (
