@@ -309,7 +309,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               },
               {
                 name: "Unclaimed Fees",
-                value: `$${ethers.formatUnits(totalFeesUsd, 30)}`,
+                value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
                 inline: true,
               },
             ]
@@ -341,7 +341,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
                 },
                 {
                   name: "Fees Collected",
-                  value: `$${ethers.formatUnits(totalFeesUsd, 30)}`,
+                  value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
                   inline: true,
                 },
               ]
