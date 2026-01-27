@@ -303,6 +303,11 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               { name: "Account", value: account, inline: false },
               { name: "Reason", value: recommendation.reason, inline: false },
               {
+                name: "Total NAV",
+                value: `$${parseFloat(ethers.formatUnits(totalNavUsd, 30)).toFixed(4)}`,
+                inline: true,
+              },
+              {
                 name: "Delta Drift",
                 value: `${(status.deltaDrift * 100).toFixed(2)}%`,
                 inline: true,
@@ -334,6 +339,11 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               `Daemon successfully completed automatic optimization.`,
               [
                 { name: "Account", value: account, inline: false },
+                {
+                  name: "Total NAV",
+                  value: `$${parseFloat(ethers.formatUnits(totalNavUsd, 30)).toFixed(4)}`,
+                  inline: true,
+                },
                 {
                   name: "Delta Drift Before",
                   value: `${(status.deltaDrift * 100).toFixed(2)}%`,
