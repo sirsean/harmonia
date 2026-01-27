@@ -187,7 +187,7 @@ export function generateDiscordSummary(report: DailyReport): {
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [
     {
       name: "Total Net Value",
-      value: `$${totalNetValue.toFixed(2)}`,
+      value: `$${totalNetValue.toFixed(4)}`,
       inline: true,
     },
     {
@@ -197,7 +197,7 @@ export function generateDiscordSummary(report: DailyReport): {
     },
     {
       name: "Unclaimed Fees",
-      value: `$${feesUsd.toFixed(2)}`,
+      value: `$${feesUsd.toFixed(4)}`,
       inline: true,
     },
     {
