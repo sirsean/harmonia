@@ -868,13 +868,12 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           owner: account,
           spender: positionManager,
           performApproval: false,
-          waitForReceipt: true, // CRITICAL: Wait for receipt to ensure position is created
         }
       );
 
       if (mintResult.txHash) {
         console.log(`  LP position minted. Tx: ${mintResult.txHash}`);
-        // Transaction already waited for receipt (waitForReceipt: true)
+        // Transaction already waited for receipt (always waits)
         console.log(`  LP position confirmed`);
       }
 

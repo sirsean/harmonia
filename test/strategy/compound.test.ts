@@ -71,7 +71,7 @@ describe("compoundFees", () => {
       owner: "0xOwner",
       spender: "0xSpender",
       performApproval: false,
-      waitForReceipt: false,
+      // Note: waitForReceipt removed - always waits for receipt
     };
 
     // Default mocks
@@ -158,7 +158,7 @@ describe("compoundFees", () => {
       }),
       expect.objectContaining({
         performApproval: false,
-        waitForReceipt: false,
+        // Note: waitForReceipt removed - always waits for receipt
       })
     );
   });
@@ -211,7 +211,7 @@ describe("compoundFees", () => {
     );
   });
 
-  it("should wait for receipts when waitForReceipt is true", async () => {
+  it("should always wait for receipts", async () => {
     const amount0Fees = 1000000n;
     const amount1Fees = 100000000000000000n;
 
@@ -234,7 +234,8 @@ describe("compoundFees", () => {
       mockIncreaseLiquidityResult as any
     );
 
-    const result = await compoundFees(123n, { ...config, waitForReceipt: true });
+    // Note: waitForReceipt option removed - always waits for receipt
+    const result = await compoundFees(123n, config);
 
     expect(mockCollectTx.wait).toHaveBeenCalled();
     expect(result.collectTxHash).toBe("0xCollectHashReceipt");

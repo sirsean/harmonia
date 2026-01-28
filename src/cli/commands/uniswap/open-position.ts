@@ -335,7 +335,7 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
       owner: account,
       spender: positionManager,
       performApproval: false,
-      waitForReceipt: true, // CRITICAL: Wait for receipt to ensure position is created
+      // Note: Always waits for receipt (no option to disable)
     }
   );
 

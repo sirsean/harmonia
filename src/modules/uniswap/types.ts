@@ -111,7 +111,7 @@ export interface UniswapExecutionConfig {
   performApproval?: boolean;
   // Note: overrides should not include nonce - let ethers manage nonces automatically
   overrides?: Record<string, unknown>;
-  waitForReceipt?: boolean;
+  // Note: All transactions always wait for receipt - no option to disable
 }
 
 export interface UniswapTransactionResult<TParams> {

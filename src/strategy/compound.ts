@@ -42,8 +42,7 @@ export interface CompoundConfig {
   spender: string;
   /** Whether to perform token approvals */
   performApproval?: boolean;
-  /** Whether to wait for transaction receipts (default: true for safety) */
-  waitForReceipt?: boolean;
+  // Note: All transactions always wait for receipt - no option to disable
 }
 
 /**
@@ -104,15 +103,9 @@ export async function compoundFees(
   // Let ethers manage nonce automatically - no manual nonce management
   const collectTx = await uniswapFees.collectFees(positionManager, collectParams);
 
-  let collectTxHash: string | undefined;
-  // CRITICAL: Default to waiting for receipt unless explicitly disabled
-  const waitForReceipt = config.waitForReceipt !== false;
-  if (waitForReceipt) {
-    const receipt = await collectTx.wait();
-    collectTxHash = receipt.hash;
-  } else {
-    collectTxHash = collectTx.hash;
-  }
+  // CRITICAL: Always wait for receipt to ensure transaction is confirmed
+  const receipt = await collectTx.wait();
+  const collectTxHash = receipt.hash;
 
   // 3. Add liquidity back to position
   // Uniswap's increaseLiquidity will automatically calculate the correct ratio
@@ -129,7 +122,7 @@ export async function compoundFees(
     spender,
   };
 
-  // Use same waitForReceipt setting for consistency
+  // CRITICAL: Always wait for receipt (no option to disable)
   const increaseLiquidityResult = await uniswapLiquidity.increaseLiquidity(
     positionManager,
     token0,
@@ -137,7 +130,6 @@ export async function compoundFees(
     increaseLiquidityParams,
     {
       performApproval: config.performApproval !== false,
-      waitForReceipt: waitForReceipt,
     }
   );
 

@@ -62,13 +62,9 @@ export async function mintPosition(
   // Let ethers manage nonce automatically - no manual nonce management
   // Only pass overrides if explicitly provided (but should not include nonce)
   const tx = await manager.mint(buildMintParams(params), config.overrides || undefined);
-  // CRITICAL: Default to waiting for receipt unless explicitly disabled
-  if (config.waitForReceipt !== false) {
-    await tx.wait();
-    return { params, txHash: tx.hash };
-  }
-
-  return { params, txHash: tx.hash, tx };
+  // CRITICAL: Always wait for receipt to ensure transaction is confirmed
+  await tx.wait();
+  return { params, txHash: tx.hash };
 }
 
 export async function increaseLiquidity(
@@ -92,10 +88,8 @@ export async function increaseLiquidity(
     buildIncreaseLiquidityParams(callParams),
     config.overrides || undefined
   );
-  // CRITICAL: Default to waiting for receipt unless explicitly disabled
-  if (config.waitForReceipt !== false) {
-    await tx.wait();
-  }
+  // CRITICAL: Always wait for receipt to ensure transaction is confirmed
+  await tx.wait();
 
   return { params: callParams, txHash: tx.hash };
 }
