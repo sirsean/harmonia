@@ -42,10 +42,8 @@ export interface CompoundConfig {
   spender: string;
   /** Whether to perform token approvals */
   performApproval?: boolean;
-  /** Whether to wait for transaction receipts */
+  /** Whether to wait for transaction receipts (default: true for safety) */
   waitForReceipt?: boolean;
-  /** Transaction overrides (nonce, etc.) */
-  overrides?: { nonce?: number };
 }
 
 /**
@@ -103,10 +101,13 @@ export async function compoundFees(
     amount1Max: amount1Collected > MAX_UINT128 ? MAX_UINT128 : (amount1Collected as bigint),
   };
 
-  const collectTx = await uniswapFees.collectFees(positionManager, collectParams, config.overrides);
+  // Let ethers manage nonce automatically - no manual nonce management
+  const collectTx = await uniswapFees.collectFees(positionManager, collectParams);
 
   let collectTxHash: string | undefined;
-  if (config.waitForReceipt !== false) {
+  // CRITICAL: Default to waiting for receipt unless explicitly disabled
+  const waitForReceipt = config.waitForReceipt !== false;
+  if (waitForReceipt) {
     const receipt = await collectTx.wait();
     collectTxHash = receipt.hash;
   } else {
@@ -128,6 +129,7 @@ export async function compoundFees(
     spender,
   };
 
+  // Use same waitForReceipt setting for consistency
   const increaseLiquidityResult = await uniswapLiquidity.increaseLiquidity(
     positionManager,
     token0,
@@ -135,8 +137,7 @@ export async function compoundFees(
     increaseLiquidityParams,
     {
       performApproval: config.performApproval !== false,
-      waitForReceipt: config.waitForReceipt !== false,
-      overrides: config.overrides,
+      waitForReceipt: waitForReceipt,
     }
   );
 

@@ -120,7 +120,8 @@ export interface GMXRouter {
   };
   multicall: ((
     data: string[],
-    overrides: { value: bigint; gasLimit?: number; nonce?: number }
+    // Note: overrides should not include nonce - let ethers manage nonces automatically
+    overrides: { value: bigint; gasLimit?: number }
   ) => Promise<{ hash: string; wait: () => Promise<unknown> }>) & {
     staticCall?: (data: string[], overrides: { value: bigint }) => Promise<unknown>;
   };

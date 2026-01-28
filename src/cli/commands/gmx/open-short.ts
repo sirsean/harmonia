@@ -71,7 +71,7 @@ export async function gmxOpenShort(options: GmxOpenShortOptions): Promise<void> 
   const usdc = new ethers.Contract(usdcAddress, ERC20_ABI, signer) as unknown as IERC20;
 
   console.log("Sending Transaction...");
-  const nonce = await signer.getNonce("pending");
+  // Let ethers manage nonce automatically - no manual nonce management
 
   const result = await createIncreaseOrder(
     router,
@@ -90,18 +90,18 @@ export async function gmxOpenShort(options: GmxOpenShortOptions): Promise<void> 
       orderVault: orderVaultAddress,
       routerAddress,
       gasLimit: 4000000,
-      nonce,
       performStaticCall: false,
     }
   );
 
   console.log("Tx Hash:", result.txHash);
   console.log("Waiting for confirmation...");
+  // CRITICAL: Wait for transaction confirmation before proceeding
   if (result.tx) {
     const receipt = (await result.tx.wait()) as { blockNumber: number };
     console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
   } else {
-    console.log("Transaction submitted: " + result.txHash);
+    throw new Error("GMX order transaction was not returned - cannot proceed safely");
   }
   console.log("\nSUCCESS! Short Order Created.");
   console.log("Explorer: https://arbiscan.io/tx/" + result.txHash);

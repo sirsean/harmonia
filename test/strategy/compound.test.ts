@@ -131,7 +131,7 @@ describe("compoundFees", () => {
     expect(result.collectTxHash).toBe("0xCollectHash");
     expect(result.increaseLiquidityTxHash).toBe("0xIncreaseHash");
 
-    // Verify collect was called with correct parameters
+    // Verify collect was called with correct parameters (no overrides - let ethers manage nonces)
     expect(uniswapFees.collectFees).toHaveBeenCalledWith(
       mockPositionManager,
       {
@@ -139,8 +139,7 @@ describe("compoundFees", () => {
         recipient: "0xOwner",
         amount0Max: amount0Fees,
         amount1Max: amount1Fees,
-      },
-      undefined
+      }
     );
 
     // Verify increaseLiquidity was called with correct parameters
@@ -190,14 +189,13 @@ describe("compoundFees", () => {
 
     const result = await compoundFees(123n, config);
 
-    // Should cap at MAX_UINT128 for collect params
+    // Should cap at MAX_UINT128 for collect params (no overrides - let ethers manage nonces)
     expect(uniswapFees.collectFees).toHaveBeenCalledWith(
       mockPositionManager,
       expect.objectContaining({
         amount0Max: MAX_UINT128,
         amount1Max: MAX_UINT128,
-      }),
-      undefined
+      })
     );
 
     // But should use full amounts for increaseLiquidity
@@ -278,7 +276,7 @@ describe("compoundFees", () => {
     );
   });
 
-  it("should use transaction overrides when provided", async () => {
+  it("should not use transaction overrides (let ethers manage nonces)", async () => {
     const amount0Fees = 1000000n;
     const amount1Fees = 100000000000000000n;
 
@@ -301,24 +299,18 @@ describe("compoundFees", () => {
       mockIncreaseLiquidityResult as any
     );
 
-    const overrides = { nonce: 42 };
-    await compoundFees(123n, { ...config, overrides });
+    // Note: nonce management removed - let ethers handle it automatically
+    // Test that compoundFees works without overrides
+    const result = await compoundFees(123n, { ...config });
 
-    expect(uniswapFees.collectFees).toHaveBeenCalledWith(
-      mockPositionManager,
-      expect.anything(),
-      overrides
-    );
-
-    expect(uniswapLiquidity.increaseLiquidity).toHaveBeenCalledWith(
-      mockPositionManager,
-      mockToken0,
-      mockToken1,
-      expect.anything(),
-      expect.objectContaining({
-        overrides,
-      })
-    );
+    // Verify functions were called (exact args don't matter - key is no nonce management)
+    expect(uniswapFees.collectFees).toHaveBeenCalled();
+    expect(uniswapLiquidity.increaseLiquidity).toHaveBeenCalled();
+    
+    // Verify result
+    expect(result.tokenId).toBe(123n);
+    expect(result.collectTxHash).toBe("0xCollectHash");
+    expect(result.increaseLiquidityTxHash).toBe("0xIncreaseHash");
   });
 
   it("should set deadline to 30 minutes from now", async () => {

@@ -228,33 +228,28 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
     return;
   }
 
-  let nonce = await signer.getNonce("pending");
-
+  // Let ethers manage nonce automatically - no manual nonce management
   const allowance = await usdcContract.allowance(account, ARBITRUM_MAINNET.uniswapV3SwapRouter);
   if (allowance < amountIn) {
-    const approval = await usdcContract.approve(ARBITRUM_MAINNET.uniswapV3SwapRouter, amountIn, {
-      nonce,
-    });
+    const approval = await usdcContract.approve(ARBITRUM_MAINNET.uniswapV3SwapRouter, amountIn);
+    // CRITICAL: Wait for approval before proceeding
     await approval.wait();
-    nonce = await signer.getNonce("pending");
   }
 
-  const swapTx = await router.exactInputSingle(
-    {
-      tokenIn: usdcToken,
-      tokenOut: wethToken,
-      fee,
-      recipient: account,
-      deadline,
-      amountIn,
-      amountOutMinimum: amountOutMin,
-      sqrtPriceLimitX96: 0,
-    },
-    { nonce }
-  );
+  // Let ethers manage nonce automatically
+  const swapTx = await router.exactInputSingle({
+    tokenIn: usdcToken,
+    tokenOut: wethToken,
+    fee,
+    recipient: account,
+    deadline,
+    amountIn,
+    amountOutMinimum: amountOutMin,
+    sqrtPriceLimitX96: 0,
+  });
   console.log("Swap Tx Hash:", swapTx.hash);
+  // CRITICAL: Wait for swap confirmation before proceeding
   await swapTx.wait();
-  nonce = await signer.getNonce("pending");
 
   const [usdcBalanceAfter, wethBalanceAfter] = await Promise.all([
     usdcContract.balanceOf(account),
@@ -306,17 +301,19 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
     return;
   }
 
+  // Let ethers manage nonce automatically - sequential approvals
   if (allowance0 < amount0Desired) {
-    const approval = await token0Contract.approve(positionManager, amount0Desired, { nonce });
+    const approval = await token0Contract.approve(positionManager, amount0Desired);
+    // CRITICAL: Wait for approval before proceeding
     await approval.wait();
-    nonce = await signer.getNonce("pending");
   }
   if (allowance1 < amount1Desired) {
-    const approval = await token1Contract.approve(positionManager, amount1Desired, { nonce });
+    const approval = await token1Contract.approve(positionManager, amount1Desired);
+    // CRITICAL: Wait for approval before proceeding
     await approval.wait();
-    nonce = await signer.getNonce("pending");
   }
 
+  // Let ethers manage nonce automatically
   const mintResult = await mintPosition(
     manager,
     token0Contract as unknown as IERC20,
@@ -338,7 +335,7 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
       owner: account,
       spender: positionManager,
       performApproval: false,
-      overrides: { nonce },
+      waitForReceipt: true, // CRITICAL: Wait for receipt to ensure position is created
     }
   );
 

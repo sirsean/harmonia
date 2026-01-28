@@ -113,19 +113,15 @@ export async function ensureAllowance(
   token: IERC20,
   owner: string,
   spender: string,
-  amount: bigint,
-  nonce?: number
+  amount: bigint
 ): Promise<boolean> {
   const allowance = await token.allowance(owner, spender);
   if (allowance >= amount) {
     return false;
   }
-  // Cast to any to allow passing nonce override
-  const tokenWithOverrides = token as any;
-  const approval =
-    nonce !== undefined
-      ? await tokenWithOverrides.approve(spender, amount, { nonce })
-      : await token.approve(spender, amount);
+  // Let ethers manage nonce automatically - no manual nonce management
+  const approval = await token.approve(spender, amount);
+  // CRITICAL: Wait for approval before proceeding
   await approval.wait();
   return true;
 }
@@ -152,11 +148,8 @@ export async function createIncreaseOrder(
   const orderParams = buildIncreaseOrderParams(request);
 
   const routerAddress = config.routerAddress ?? routerAddressFromInterface(router);
-  // Only ensure allowance if nonce is not provided (caller is managing nonces)
-  // If nonce is provided, caller should have already approved
-  if (config.nonce === undefined) {
-    await ensureAllowance(token, request.account, routerAddress, request.collateralAmount);
-  }
+  // Always ensure allowance - let ethers manage nonces automatically
+  await ensureAllowance(token, request.account, routerAddress, request.collateralAmount);
 
   const multicallData = buildMulticallData(router.interface, {
     orderVault: config.orderVault,

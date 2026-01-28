@@ -408,7 +408,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
 
       if (executeFlag) {
         let decreaseSucceeded = false;
-        
+
         // Step 1: Remove liquidity if present
         if (position.liquidity > 0n) {
           const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
@@ -416,25 +416,27 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
 
           try {
             // Let ethers manage nonce automatically - no manual nonce management
-            const decreaseTx = await decreaseLiquidity(
-              manager,
-              {
-                tokenId,
-                liquidity: position.liquidity,
-                amount0Min: 0n,
-                amount1Min: 0n,
-                deadline,
-              }
-            );
+            const decreaseTx = await decreaseLiquidity(manager, {
+              tokenId,
+              liquidity: position.liquidity,
+              amount0Min: 0n,
+              amount1Min: 0n,
+              deadline,
+            });
             console.log(`  Decrease liquidity transaction submitted: ${decreaseTx.hash}`);
             // CRITICAL: Wait for confirmation before proceeding to prevent stuck funds
             await decreaseTx.wait();
             console.log(`  Decrease liquidity confirmed`);
             decreaseSucceeded = true;
           } catch (error: any) {
-            console.error(`  ERROR: Failed to decrease liquidity for position ${pos.tokenId}:`, error.message);
+            console.error(
+              `  ERROR: Failed to decrease liquidity for position ${pos.tokenId}:`,
+              error.message
+            );
             // Continue to try collecting anyway - there might be tokens/fees to collect
-            console.warn(`  Attempting to collect fees/tokens despite decreaseLiquidity failure...`);
+            console.warn(
+              `  Attempting to collect fees/tokens despite decreaseLiquidity failure...`
+            );
           }
         } else {
           console.log(`  Position has no liquidity; collecting fees only.`);
@@ -447,27 +449,27 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         console.log(`  Collecting fees and tokens...`);
         try {
           // Let ethers manage nonce automatically - no manual nonce management
-          const collectTx = await collectFees(
-            manager,
-            {
-              tokenId,
-              recipient: account,
-              amount0Max: MAX_UINT128,
-              amount1Max: MAX_UINT128,
-            }
-          );
+          const collectTx = await collectFees(manager, {
+            tokenId,
+            recipient: account,
+            amount0Max: MAX_UINT128,
+            amount1Max: MAX_UINT128,
+          });
           console.log(`  Collect transaction submitted: ${collectTx.hash}`);
           // CRITICAL: Wait for confirmation before proceeding
           await collectTx.wait();
           console.log(`  Collect confirmed - tokens transferred to wallet`);
         } catch (error: any) {
-          console.error(`  ERROR: Failed to collect fees/tokens for position ${pos.tokenId}:`, error.message);
+          console.error(
+            `  ERROR: Failed to collect fees/tokens for position ${pos.tokenId}:`,
+            error.message
+          );
           // If decreaseLiquidity succeeded but collect failed, funds are stuck!
           if (decreaseSucceeded) {
             throw new Error(
               `CRITICAL: Position ${pos.tokenId} liquidity was removed but collection failed. ` +
-              `Funds may be stuck in position contract. Manual intervention required. ` +
-              `Original error: ${error.message}`
+                `Funds may be stuck in position contract. Manual intervention required. ` +
+                `Original error: ${error.message}`
             );
           }
           // If both failed, throw the error

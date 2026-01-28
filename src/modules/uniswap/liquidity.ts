@@ -52,14 +52,17 @@ export async function mintPosition(
   params: MintParams,
   config: UniswapExecutionConfig & { owner: string; spender: string }
 ): Promise<UniswapTransactionResult<MintParams>> {
+  // CRITICAL: Process approvals sequentially to avoid nonce conflicts
   if (config.performApproval !== false) {
-    await Promise.all([
-      ensureAllowance(token0, config.owner, config.spender, params.amount0Desired),
-      ensureAllowance(token1, config.owner, config.spender, params.amount1Desired),
-    ]);
+    // Sequential approvals - let ethers manage nonces automatically
+    await ensureAllowance(token0, config.owner, config.spender, params.amount0Desired);
+    await ensureAllowance(token1, config.owner, config.spender, params.amount1Desired);
   }
 
-  const tx = await manager.mint(buildMintParams(params), config.overrides);
+  // Let ethers manage nonce automatically - no manual nonce management
+  // Only pass overrides if explicitly provided (but should not include nonce)
+  const tx = await manager.mint(buildMintParams(params), config.overrides || undefined);
+  // CRITICAL: Default to waiting for receipt unless explicitly disabled
   if (config.waitForReceipt !== false) {
     await tx.wait();
     return { params, txHash: tx.hash };
@@ -75,18 +78,21 @@ export async function increaseLiquidity(
   params: IncreaseLiquidityParams & { owner: string; spender: string },
   config: UniswapExecutionConfig = {}
 ): Promise<UniswapTransactionResult<IncreaseLiquidityParams>> {
+  // CRITICAL: Process approvals sequentially to avoid nonce conflicts
   if (config.performApproval !== false) {
-    await Promise.all([
-      ensureAllowance(token0, params.owner, params.spender, params.amount0Desired),
-      ensureAllowance(token1, params.owner, params.spender, params.amount1Desired),
-    ]);
+    // Sequential approvals - let ethers manage nonces automatically
+    await ensureAllowance(token0, params.owner, params.spender, params.amount0Desired);
+    await ensureAllowance(token1, params.owner, params.spender, params.amount1Desired);
   }
 
   const { owner, spender, ...callParams } = params;
+  // Let ethers manage nonce automatically - no manual nonce management
+  // Only pass overrides if explicitly provided (but should not include nonce)
   const tx = await manager.increaseLiquidity(
     buildIncreaseLiquidityParams(callParams),
-    config.overrides
+    config.overrides || undefined
   );
+  // CRITICAL: Default to waiting for receipt unless explicitly disabled
   if (config.waitForReceipt !== false) {
     await tx.wait();
   }
