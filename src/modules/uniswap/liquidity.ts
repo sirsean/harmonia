@@ -61,7 +61,9 @@ export async function mintPosition(
 
   // Let ethers manage nonce automatically - no manual nonce management
   // Only pass overrides if explicitly provided (but should not include nonce)
-  const tx = await manager.mint(buildMintParams(params), config.overrides || undefined);
+  const tx = config.overrides
+    ? await manager.mint(buildMintParams(params), config.overrides)
+    : await manager.mint(buildMintParams(params));
   // CRITICAL: Always wait for receipt to ensure transaction is confirmed
   await tx.wait();
   return { params, txHash: tx.hash };
@@ -84,10 +86,9 @@ export async function increaseLiquidity(
   const { owner, spender, ...callParams } = params;
   // Let ethers manage nonce automatically - no manual nonce management
   // Only pass overrides if explicitly provided (but should not include nonce)
-  const tx = await manager.increaseLiquidity(
-    buildIncreaseLiquidityParams(callParams),
-    config.overrides || undefined
-  );
+  const tx = config.overrides
+    ? await manager.increaseLiquidity(buildIncreaseLiquidityParams(callParams), config.overrides)
+    : await manager.increaseLiquidity(buildIncreaseLiquidityParams(callParams));
   // CRITICAL: Always wait for receipt to ensure transaction is confirmed
   await tx.wait();
 
