@@ -1031,12 +1031,12 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           },
           {
             name: "LP Size",
-            value: `$${ethers.formatUnits(allocation.lpSizeUsd, 30)}`,
+            value: `$${parseFloat(ethers.formatUnits(allocation.lpSizeUsd, 30)).toFixed(4)}`,
             inline: true,
           },
           {
             name: "GMX Short Size",
-            value: `$${ethers.formatUnits(allocation.gmxShortSizeUsd, 30)}`,
+            value: `$${parseFloat(ethers.formatUnits(allocation.gmxShortSizeUsd, 30)).toFixed(4)}`,
             inline: true,
           },
           {
@@ -1049,7 +1049,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         if (totalFeesUsd > 0n) {
           fields.push({
             name: "Fees Collected",
-            value: `$${ethers.formatUnits(totalFeesUsd, 30)}`,
+            value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
             inline: true,
           });
         }
