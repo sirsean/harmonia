@@ -26,10 +26,10 @@ describe("RangeAdjustmentManager", () => {
 
       const result = manager.calculateNewRangeBounds(currentPrice);
 
-      // Default is 0.15 (15% = ±7.5%)
-      expect(result.rangeWidth).toBe(0.15);
-      expect(result.lower).toBeCloseTo(3000 * 0.925, 0); // 2775
-      expect(result.upper).toBeCloseTo(3000 * 1.075, 0); // 3225
+      // Default is 0.06 (6% = ±3%)
+      expect(result.rangeWidth).toBe(0.06);
+      expect(result.lower).toBeCloseTo(3000 * 0.97, 0); // 2910
+      expect(result.upper).toBeCloseTo(3000 * 1.03, 0); // 3090
     });
 
     it("should use override range width when provided", () => {
@@ -52,8 +52,8 @@ describe("RangeAdjustmentManager", () => {
 
       expect(result.lower).toBeLessThan(currentPrice);
       expect(result.upper).toBeGreaterThan(currentPrice);
-      expect(result.lower).toBeCloseTo(2000 * 0.925, 0);
-      expect(result.upper).toBeCloseTo(2000 * 1.075, 0);
+      expect(result.lower).toBeCloseTo(2000 * 0.97, 0); // 1940
+      expect(result.upper).toBeCloseTo(2000 * 1.03, 0); // 2060
     });
   });
 
@@ -128,9 +128,9 @@ describe("RangeAdjustmentManager", () => {
       );
 
       expect(result.tokenIdsToClose).toEqual([123n]);
-      expect(result.priceLower).toBeCloseTo(2775, 0);
-      expect(result.priceUpper).toBeCloseTo(3225, 0);
-      expect(result.rangeWidth).toBe(0.15);
+      expect(result.priceLower).toBeCloseTo(2910, 0); // 3000 * 0.97
+      expect(result.priceUpper).toBeCloseTo(3090, 0); // 3000 * 1.03
+      expect(result.rangeWidth).toBe(0.06);
       expect(result.tickLower).toBeLessThan(result.tickUpper);
     });
 

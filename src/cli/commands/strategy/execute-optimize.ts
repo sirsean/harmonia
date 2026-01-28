@@ -253,7 +253,6 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         const executionFee = monitorConfig.defaultExecutionFee;
 
         const router = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
-        let nonce = await signer.getNonce("pending");
 
         const closeResult = await gmxOrders.createDecreaseOrder(
           router,
@@ -269,21 +268,18 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           {
             orderVault: ARBITRUM_MAINNET.gmxOrderVault,
             gasLimit: 4000000,
-            nonce,
             performStaticCall: false,
           }
         );
 
         console.log(`  Close GMX order tx: ${closeResult.txHash}`);
-        // Wait for transaction confirmation
+        // Wait for transaction confirmation - CRITICAL: must wait before proceeding
         if (closeResult.tx) {
           const txReceipt = (await closeResult.tx.wait()) as { blockNumber: number };
           console.log(`  Transaction confirmed in block ${txReceipt.blockNumber}`);
         } else {
-          console.log(`  Transaction submitted: ${closeResult.txHash}`);
+          throw new Error("GMX close transaction was not returned - cannot proceed safely");
         }
-        // Update nonce after GMX close for subsequent transactions
-        nonce = await signer.getNonce("pending");
       } else {
         console.log(`\nWould close GMX short position`);
         console.log(`  Size: $${ethers.formatUnits(gmxPosition.numbers.sizeInUsd, 30)}`);
@@ -401,6 +397,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     // Even if no tokens from positions, we might have wallet balance or GMX collateral
 
     // Close each LP position and collect tokens (if executing)
+    // CRITICAL: Process positions sequentially to avoid nonce conflicts
     for (const pos of positionsToOptimize) {
       const tokenId = BigInt(pos.tokenId);
       if (executeFlag) {
@@ -410,50 +407,74 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       const position = await getPosition(reader, tokenId);
 
       if (executeFlag) {
-        // Get fresh nonce for each position operation
-        let positionNonce = await signer.getNonce("pending");
+        let decreaseSucceeded = false;
 
+        // Step 1: Remove liquidity if present
         if (position.liquidity > 0n) {
           const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
           console.log(`  Removing liquidity: ${position.liquidity.toString()}`);
 
-          const decreaseTx = await decreaseLiquidity(
-            manager,
-            {
+          try {
+            // Let ethers manage nonce automatically - no manual nonce management
+            const decreaseTx = await decreaseLiquidity(manager, {
               tokenId,
               liquidity: position.liquidity,
               amount0Min: 0n,
               amount1Min: 0n,
               deadline,
-            },
-            { nonce: positionNonce }
-          );
-          console.log(`  Decrease liquidity transaction submitted: ${decreaseTx.hash}`);
-          await decreaseTx.wait();
-          console.log(`  Decrease liquidity confirmed`);
-
-          // Get fresh nonce after decreaseLiquidity confirms
-          positionNonce = await signer.getNonce("pending");
+            });
+            console.log(`  Decrease liquidity transaction submitted: ${decreaseTx.hash}`);
+            // CRITICAL: Wait for confirmation before proceeding to prevent stuck funds
+            await decreaseTx.wait();
+            console.log(`  Decrease liquidity confirmed`);
+            decreaseSucceeded = true;
+          } catch (error: any) {
+            console.error(
+              `  ERROR: Failed to decrease liquidity for position ${pos.tokenId}:`,
+              error.message
+            );
+            // Continue to try collecting anyway - there might be tokens/fees to collect
+            console.warn(
+              `  Attempting to collect fees/tokens despite decreaseLiquidity failure...`
+            );
+          }
         } else {
           console.log(`  Position has no liquidity; collecting fees only.`);
         }
 
-        // Always collect fees and tokens (even if liquidity was 0)
+        // Step 2: Always collect fees and tokens (even if liquidity was 0 or decreaseLiquidity failed)
         // Note: decreaseLiquidity stores tokens in the position contract - collect() transfers them to wallet
+        // CRITICAL: Must collect after decreaseLiquidity to avoid stuck funds
+        // CRITICAL: Must collect even if decreaseLiquidity failed (in case it partially succeeded)
         console.log(`  Collecting fees and tokens...`);
-        const collectTx = await collectFees(
-          manager,
-          {
+        try {
+          // Let ethers manage nonce automatically - no manual nonce management
+          const collectTx = await collectFees(manager, {
             tokenId,
             recipient: account,
             amount0Max: MAX_UINT128,
             amount1Max: MAX_UINT128,
-          },
-          { nonce: positionNonce }
-        );
-        console.log(`  Collect transaction submitted: ${collectTx.hash}`);
-        await collectTx.wait();
-        console.log(`  Collect confirmed - tokens transferred to wallet`);
+          });
+          console.log(`  Collect transaction submitted: ${collectTx.hash}`);
+          // CRITICAL: Wait for confirmation before proceeding
+          await collectTx.wait();
+          console.log(`  Collect confirmed - tokens transferred to wallet`);
+        } catch (error: any) {
+          console.error(
+            `  ERROR: Failed to collect fees/tokens for position ${pos.tokenId}:`,
+            error.message
+          );
+          // If decreaseLiquidity succeeded but collect failed, funds are stuck!
+          if (decreaseSucceeded) {
+            throw new Error(
+              `CRITICAL: Position ${pos.tokenId} liquidity was removed but collection failed. ` +
+                `Funds may be stuck in position contract. Manual intervention required. ` +
+                `Original error: ${error.message}`
+            );
+          }
+          // If both failed, throw the error
+          throw error;
+        }
       } else {
         if (position.liquidity > 0n) {
           console.log(`  Would remove liquidity: ${position.liquidity.toString()}`);
@@ -574,8 +595,6 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
 
     let finalBalance0 = balance0;
     let finalBalance1 = balance1;
-    // Get fresh nonce for swaps (after closing positions)
-    let nonce = executeFlag ? await signer.getNonce("pending") : 0;
 
     // If we need more WETH, swap USDC for WETH
     if (wethShortfall > 0n && executeFlag) {
@@ -617,30 +636,28 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           ARBITRUM_MAINNET.uniswapV3SwapRouter
         );
         if (allowance < amountIn) {
+          // Let ethers manage nonce automatically
           const approval = await usdcContract.approve(
             ARBITRUM_MAINNET.uniswapV3SwapRouter,
-            amountIn,
-            { nonce }
+            amountIn
           );
+          // CRITICAL: Wait for approval before proceeding
           await approval.wait();
-          nonce = await signer.getNonce("pending");
         }
-        const swapTx = await swapRouter.exactInputSingle(
-          {
-            tokenIn: usdcToken,
-            tokenOut: wethToken,
-            fee,
-            recipient: account,
-            deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
-            amountIn,
-            amountOutMinimum: amountOutMin,
-            sqrtPriceLimitX96: 0,
-          },
-          { nonce }
-        );
+        // Let ethers manage nonce automatically
+        const swapTx = await swapRouter.exactInputSingle({
+          tokenIn: usdcToken,
+          tokenOut: wethToken,
+          fee,
+          recipient: account,
+          deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
+          amountIn,
+          amountOutMinimum: amountOutMin,
+          sqrtPriceLimitX96: 0,
+        });
         console.log(`  Swap tx: ${swapTx.hash}`);
+        // CRITICAL: Wait for swap confirmation before proceeding
         await swapTx.wait();
-        nonce = await signer.getNonce("pending");
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),
@@ -690,30 +707,28 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           ARBITRUM_MAINNET.uniswapV3SwapRouter
         );
         if (allowance < amountIn) {
+          // Let ethers manage nonce automatically
           const approval = await wethContract.approve(
             ARBITRUM_MAINNET.uniswapV3SwapRouter,
-            amountIn,
-            { nonce }
+            amountIn
           );
+          // CRITICAL: Wait for approval before proceeding
           await approval.wait();
-          nonce = await signer.getNonce("pending");
         }
-        const swapTx = await swapRouter.exactInputSingle(
-          {
-            tokenIn: wethToken,
-            tokenOut: usdcToken,
-            fee,
-            recipient: account,
-            deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
-            amountIn,
-            amountOutMinimum: amountOutMin,
-            sqrtPriceLimitX96: 0,
-          },
-          { nonce }
-        );
+        // Let ethers manage nonce automatically
+        const swapTx = await swapRouter.exactInputSingle({
+          tokenIn: wethToken,
+          tokenOut: usdcToken,
+          fee,
+          recipient: account,
+          deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
+          amountIn,
+          amountOutMinimum: amountOutMin,
+          sqrtPriceLimitX96: 0,
+        });
         console.log(`  Swap tx: ${swapTx.hash}`);
+        // CRITICAL: Wait for swap confirmation before proceeding
         await swapTx.wait();
-        nonce = await signer.getNonce("pending");
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),
@@ -791,14 +806,22 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         );
       }
 
-      // Check and approve if needed
+      // Check and approve if needed - approve MAX_UINT256 to avoid re-approvals
+      const MAX_UINT256 = ethers.MaxUint256;
       if (allowance0 < finalAmount0 && finalAmount0 > 0n) {
         console.log(`  Approving ${token0Symbol}...`);
-        const approval = await token0Contract.approve(positionManager, finalAmount0, { nonce });
-        await approval.wait();
-        nonce = await signer.getNonce("pending");
+        // Let ethers manage nonce automatically
+        const approval = await token0Contract.approve(positionManager, MAX_UINT256);
+        // CRITICAL: Wait for approval before proceeding
+        const receipt = await approval.wait();
 
-        // Verify approval succeeded
+        // Verify transaction didn't revert
+        if (receipt.status !== 1) {
+          throw new Error(`Approval transaction reverted for ${token0Symbol}`);
+        }
+
+        // Verify approval succeeded - check with a small delay to ensure state is updated
+        await new Promise((resolve) => setTimeout(resolve, 500));
         const newAllowance0 = await token0Contract.allowance(account, positionManager);
         if (newAllowance0 < finalAmount0) {
           throw new Error(
@@ -811,11 +834,18 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       }
       if (allowance1 < finalAmount1 && finalAmount1 > 0n) {
         console.log(`  Approving ${token1Symbol}...`);
-        const approval = await token1Contract.approve(positionManager, finalAmount1, { nonce });
-        await approval.wait();
-        nonce = await signer.getNonce("pending");
+        // Let ethers manage nonce automatically
+        const approval = await token1Contract.approve(positionManager, MAX_UINT256);
+        // CRITICAL: Wait for approval before proceeding
+        const receipt = await approval.wait();
 
-        // Verify approval succeeded
+        // Verify transaction didn't revert
+        if (receipt.status !== 1) {
+          throw new Error(`Approval transaction reverted for ${token1Symbol}`);
+        }
+
+        // Verify approval succeeded - check with a small delay to ensure state is updated
+        await new Promise((resolve) => setTimeout(resolve, 500));
         const newAllowance1 = await token1Contract.allowance(account, positionManager);
         if (newAllowance1 < finalAmount1) {
           throw new Error(
@@ -829,6 +859,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
 
       console.log(`  Minting LP position...`);
 
+      // Let ethers manage nonce automatically - no manual nonce management
       const mintResult = await mintPosition(
         manager,
         token0Contract as unknown as UniswapIERC20,
@@ -850,21 +881,13 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           owner: account,
           spender: positionManager,
           performApproval: false,
-          waitForReceipt: false,
-          overrides: { nonce },
         }
       );
 
       if (mintResult.txHash) {
         console.log(`  LP position minted. Tx: ${mintResult.txHash}`);
-        // Wait for transaction confirmation
-        if (mintResult.tx) {
-          const mintReceipt = (await mintResult.tx.wait()) as { blockNumber: number };
-          console.log(`  LP position confirmed in block ${mintReceipt.blockNumber}`);
-        } else {
-          console.log(`  Transaction submitted: ${mintResult.txHash}`);
-        }
-        nonce = await signer.getNonce("pending");
+        // Transaction already waited for receipt (always waits)
+        console.log(`  LP position confirmed`);
       }
 
       // Open GMX hedge position
@@ -923,21 +946,16 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         );
         if (usdcAllowance < collateralAmount) {
           console.log(`  Approving USDC for GMX...`);
-          // Fetch fresh nonce for approval
-          const approvalNonce = await signer.getNonce("pending");
+          // Let ethers manage nonce automatically
           const approval = await usdcContractForGmx.approve(
             ARBITRUM_MAINNET.gmxExchangeRouter,
-            collateralAmount,
-            {
-              nonce: approvalNonce,
-            }
+            collateralAmount
           );
+          // CRITICAL: Wait for approval before proceeding
           await approval.wait();
         }
 
-        // Fetch fresh nonce for GMX order (after approval if it happened)
-        const gmxOrderNonce = await signer.getNonce("pending");
-
+        // Let ethers manage nonce automatically - no manual nonce management
         const gmxRouter = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
         gmxResult = await gmxOrders.createIncreaseOrder(
           gmxRouter,
@@ -954,17 +972,16 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           },
           {
             orderVault: ARBITRUM_MAINNET.gmxOrderVault,
-            nonce: gmxOrderNonce,
           }
         );
 
         console.log(`  GMX short order created. Tx: ${gmxResult.txHash}`);
-        // Wait for GMX transaction confirmation
+        // CRITICAL: Wait for GMX transaction confirmation before proceeding
         if (gmxResult.tx) {
           const gmxReceipt = (await gmxResult.tx.wait()) as { blockNumber: number };
           console.log(`  GMX order confirmed in block ${gmxReceipt.blockNumber}`);
         } else {
-          console.log(`  Transaction submitted: ${gmxResult.txHash}`);
+          throw new Error("GMX order transaction was not returned - cannot proceed safely");
         }
       }
 

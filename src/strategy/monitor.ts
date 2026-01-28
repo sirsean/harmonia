@@ -410,11 +410,17 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       }
     }
 
-    // Priority 6: Range position issues (near edges or drifted from center)
+    // Priority 6: Range position issues (wide range, near edges, or drifted from center)
     const rangeIssues = this.checkRangeIssues(status, price);
     if (rangeIssues.hasIssues) {
-      // Only optimize if fees are worth collecting or benefit is sufficient
+      // Range width issues (exceeding default) should always trigger optimization
+      // Other range issues (near edges, drifted) require fees/benefit check
+      const isRangeWidthIssue =
+        rangeIssues.reason.includes("range width") &&
+        rangeIssues.reason.includes("exceeds configured default");
+
       if (
+        isRangeWidthIssue ||
         totalFeesUsd >= this.config.minOptimizationFeeThresholdUsd ||
         (estimatedBenefitUsd > 0n && gasCostUsd > 0n && estimatedBenefitUsd >= gasCostUsd)
       ) {
@@ -472,6 +478,19 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       const price = posCurrentPrice || currentPrice;
       const priceCenter = (priceLower + priceUpper) / 2;
       const rangeWidth = priceUpper - priceLower;
+
+      // Check if current range width exceeds configured default (priority check)
+      // Calculate current range width as percentage of price
+      const currentRangeWidthPercent = rangeWidth / price;
+      if (currentRangeWidthPercent > this.config.defaultRangeWidth * 1.1) {
+        // Allow 10% tolerance to avoid constant rebalancing due to tick rounding
+        const currentWidthPercent = (currentRangeWidthPercent * 100).toFixed(1);
+        const defaultWidthPercent = (this.config.defaultRangeWidth * 100).toFixed(1);
+        return {
+          hasIssues: true,
+          reason: `Position ${position.tokenId} range width ${currentWidthPercent}% exceeds configured default ${defaultWidthPercent}% - optimization recommended to tighten range`,
+        };
+      }
 
       // Check if price is near range boundary
       const distanceToLower = (price - priceLower) / rangeWidth;

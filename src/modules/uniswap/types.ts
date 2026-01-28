@@ -109,8 +109,7 @@ export interface CollectParams {
 export interface UniswapExecutionConfig {
   spender?: string;
   performApproval?: boolean;
-  overrides?: { nonce?: number };
-  waitForReceipt?: boolean;
+  // Note: All transactions always wait for receipt - no option to disable
 }
 
 export interface UniswapTransactionResult<TParams> {
