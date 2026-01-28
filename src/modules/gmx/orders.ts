@@ -169,11 +169,19 @@ export async function createIncreaseOrder(
   const performStaticCall = config.performStaticCall ?? true;
   await maybeStaticCall(router, multicallData, request.executionFee, performStaticCall);
 
-  const tx = await router.multicall(multicallData, {
+  // Build transaction options - only include nonce if provided (let ethers manage it otherwise)
+  const txOptions: { value: bigint; gasLimit?: number; nonce?: number } = {
     value: request.executionFee,
-    gasLimit: config.gasLimit,
-    nonce: config.nonce,
-  });
+  };
+  if (config.gasLimit) {
+    txOptions.gasLimit = config.gasLimit;
+  }
+  // Only include nonce if explicitly provided - otherwise let ethers manage it
+  if (config.nonce !== undefined) {
+    txOptions.nonce = config.nonce;
+  }
+
+  const tx = await router.multicall(multicallData, txOptions);
 
   return {
     orderParams,
@@ -199,11 +207,19 @@ export async function createDecreaseOrder(
   const performStaticCall = config.performStaticCall ?? true;
   await maybeStaticCall(router, multicallData, request.executionFee, performStaticCall);
 
-  const tx = await router.multicall(multicallData, {
+  // Build transaction options - only include nonce if provided (let ethers manage it otherwise)
+  const txOptions: { value: bigint; gasLimit?: number; nonce?: number } = {
     value: request.executionFee,
-    gasLimit: config.gasLimit,
-    nonce: config.nonce,
-  });
+  };
+  if (config.gasLimit) {
+    txOptions.gasLimit = config.gasLimit;
+  }
+  // Only include nonce if explicitly provided - otherwise let ethers manage it
+  if (config.nonce !== undefined) {
+    txOptions.nonce = config.nonce;
+  }
+
+  const tx = await router.multicall(multicallData, txOptions);
 
   return {
     orderParams,
