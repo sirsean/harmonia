@@ -410,13 +410,12 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       const position = await getPosition(reader, tokenId);
 
       if (executeFlag) {
-        // Get fresh nonce for each position operation
-        let positionNonce = await signer.getNonce("pending");
-
         if (position.liquidity > 0n) {
           const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
           console.log(`  Removing liquidity: ${position.liquidity.toString()}`);
 
+          // Get fresh nonce right before sending transaction
+          const decreaseNonce = await signer.getNonce("pending");
           const decreaseTx = await decreaseLiquidity(
             manager,
             {
@@ -426,14 +425,11 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
               amount1Min: 0n,
               deadline,
             },
-            { nonce: positionNonce }
+            { nonce: decreaseNonce }
           );
           console.log(`  Decrease liquidity transaction submitted: ${decreaseTx.hash}`);
           await decreaseTx.wait();
           console.log(`  Decrease liquidity confirmed`);
-
-          // Get fresh nonce after decreaseLiquidity confirms
-          positionNonce = await signer.getNonce("pending");
         } else {
           console.log(`  Position has no liquidity; collecting fees only.`);
         }
@@ -441,6 +437,8 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         // Always collect fees and tokens (even if liquidity was 0)
         // Note: decreaseLiquidity stores tokens in the position contract - collect() transfers them to wallet
         console.log(`  Collecting fees and tokens...`);
+        // Get fresh nonce right before sending transaction
+        const collectNonce = await signer.getNonce("pending");
         const collectTx = await collectFees(
           manager,
           {
@@ -449,7 +447,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
             amount0Max: MAX_UINT128,
             amount1Max: MAX_UINT128,
           },
-          { nonce: positionNonce }
+          { nonce: collectNonce }
         );
         console.log(`  Collect transaction submitted: ${collectTx.hash}`);
         await collectTx.wait();
@@ -794,8 +792,11 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       // Check and approve if needed
       if (allowance0 < finalAmount0 && finalAmount0 > 0n) {
         console.log(`  Approving ${token0Symbol}...`);
-        const approval = await token0Contract.approve(positionManager, finalAmount0, { nonce });
+        // Get fresh nonce right before sending transaction
+        const approvalNonce0 = await signer.getNonce("pending");
+        const approval = await token0Contract.approve(positionManager, finalAmount0, { nonce: approvalNonce0 });
         await approval.wait();
+        // Update nonce for next transaction
         nonce = await signer.getNonce("pending");
 
         // Verify approval succeeded
@@ -811,8 +812,11 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       }
       if (allowance1 < finalAmount1 && finalAmount1 > 0n) {
         console.log(`  Approving ${token1Symbol}...`);
-        const approval = await token1Contract.approve(positionManager, finalAmount1, { nonce });
+        // Get fresh nonce right before sending transaction
+        const approvalNonce1 = await signer.getNonce("pending");
+        const approval = await token1Contract.approve(positionManager, finalAmount1, { nonce: approvalNonce1 });
         await approval.wait();
+        // Update nonce for next transaction
         nonce = await signer.getNonce("pending");
 
         // Verify approval succeeded
@@ -829,6 +833,8 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
 
       console.log(`  Minting LP position...`);
 
+      // Get fresh nonce right before minting
+      const mintNonce = await signer.getNonce("pending");
       const mintResult = await mintPosition(
         manager,
         token0Contract as unknown as UniswapIERC20,
@@ -851,7 +857,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           spender: positionManager,
           performApproval: false,
           waitForReceipt: false,
-          overrides: { nonce },
+          overrides: { nonce: mintNonce },
         }
       );
 
