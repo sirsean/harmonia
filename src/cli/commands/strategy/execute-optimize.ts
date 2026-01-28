@@ -430,9 +430,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           console.log(`  Decrease liquidity transaction submitted: ${decreaseTx.hash}`);
           await decreaseTx.wait();
           console.log(`  Decrease liquidity confirmed`);
-          
+
           // Small delay to ensure nonce state is updated after confirmation
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise((resolve) => setTimeout(resolve, 200));
         } else {
           console.log(`  Position has no liquidity; collecting fees only.`);
         }
