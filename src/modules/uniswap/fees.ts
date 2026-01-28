@@ -13,16 +13,9 @@ export function buildCollectParams(params: CollectParams): CollectParams {
 
 export async function decreaseLiquidity(
   manager: UniswapPositionManager,
-  params: DecreaseLiquidityParams,
-  overrides?: Record<string, unknown>
+  params: DecreaseLiquidityParams
 ): Promise<{ hash: string; wait: () => Promise<unknown> }> {
   // Let ethers manage nonce automatically - no manual nonce management
-  if (overrides) {
-    return manager.decreaseLiquidity(params, overrides) as Promise<{
-      hash: string;
-      wait: () => Promise<unknown>;
-    }>;
-  }
   return manager.decreaseLiquidity(params) as Promise<{
     hash: string;
     wait: () => Promise<unknown>;
@@ -31,16 +24,9 @@ export async function decreaseLiquidity(
 
 export async function collectFees(
   manager: UniswapPositionManager,
-  params: CollectParams,
-  overrides?: Record<string, unknown>
+  params: CollectParams
 ): Promise<{ hash: string; wait: () => Promise<ethers.TransactionReceipt> }> {
   // Let ethers manage nonce automatically - no manual nonce management
-  if (overrides) {
-    return manager.collect(params, overrides) as Promise<{
-      hash: string;
-      wait: () => Promise<ethers.TransactionReceipt>;
-    }>;
-  }
   return manager.collect(params) as Promise<{
     hash: string;
     wait: () => Promise<ethers.TransactionReceipt>;

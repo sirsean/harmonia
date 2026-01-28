@@ -109,8 +109,6 @@ export interface CollectParams {
 export interface UniswapExecutionConfig {
   spender?: string;
   performApproval?: boolean;
-  // Note: overrides should not include nonce - let ethers manage nonces automatically
-  overrides?: Record<string, unknown>;
   // Note: All transactions always wait for receipt - no option to disable
 }
 
