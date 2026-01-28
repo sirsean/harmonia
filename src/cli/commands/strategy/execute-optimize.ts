@@ -430,6 +430,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           console.log(`  Decrease liquidity transaction submitted: ${decreaseTx.hash}`);
           await decreaseTx.wait();
           console.log(`  Decrease liquidity confirmed`);
+          
+          // Small delay to ensure nonce state is updated after confirmation
+          await new Promise(resolve => setTimeout(resolve, 200));
         } else {
           console.log(`  Position has no liquidity; collecting fees only.`);
         }
@@ -438,7 +441,8 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         // Note: decreaseLiquidity stores tokens in the position contract - collect() transfers them to wallet
         console.log(`  Collecting fees and tokens...`);
         // Get fresh nonce right before sending transaction
-        const collectNonce = await signer.getNonce("pending");
+        // Use "latest" to get confirmed nonce after previous transaction (if any)
+        const collectNonce = await signer.getNonce("latest");
         const collectTx = await collectFees(
           manager,
           {
@@ -794,7 +798,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         console.log(`  Approving ${token0Symbol}...`);
         // Get fresh nonce right before sending transaction
         const approvalNonce0 = await signer.getNonce("pending");
-        const approval = await token0Contract.approve(positionManager, finalAmount0, { nonce: approvalNonce0 });
+        const approval = await token0Contract.approve(positionManager, finalAmount0, {
+          nonce: approvalNonce0,
+        });
         await approval.wait();
         // Update nonce for next transaction
         nonce = await signer.getNonce("pending");
@@ -814,7 +820,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         console.log(`  Approving ${token1Symbol}...`);
         // Get fresh nonce right before sending transaction
         const approvalNonce1 = await signer.getNonce("pending");
-        const approval = await token1Contract.approve(positionManager, finalAmount1, { nonce: approvalNonce1 });
+        const approval = await token1Contract.approve(positionManager, finalAmount1, {
+          nonce: approvalNonce1,
+        });
         await approval.wait();
         // Update nonce for next transaction
         nonce = await signer.getNonce("pending");

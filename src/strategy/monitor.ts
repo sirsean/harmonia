@@ -415,8 +415,10 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     if (rangeIssues.hasIssues) {
       // Range width issues (exceeding default) should always trigger optimization
       // Other range issues (near edges, drifted) require fees/benefit check
-      const isRangeWidthIssue = rangeIssues.reason.includes("range width") && rangeIssues.reason.includes("exceeds configured default");
-      
+      const isRangeWidthIssue =
+        rangeIssues.reason.includes("range width") &&
+        rangeIssues.reason.includes("exceeds configured default");
+
       if (
         isRangeWidthIssue ||
         totalFeesUsd >= this.config.minOptimizationFeeThresholdUsd ||
@@ -476,7 +478,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       const price = posCurrentPrice || currentPrice;
       const priceCenter = (priceLower + priceUpper) / 2;
       const rangeWidth = priceUpper - priceLower;
-      
+
       // Check if current range width exceeds configured default (priority check)
       // Calculate current range width as percentage of price
       const currentRangeWidthPercent = rangeWidth / price;
