@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { addCommonOptions } from "./base";
 import { monitorPosition } from "./strategy/monitor-position";
 import { executeOptimize } from "./strategy/execute-optimize";
+import { closeAll } from "./strategy/close-all";
 
 /**
  * Register all strategy commands
@@ -44,6 +45,22 @@ export function registerStrategyCommands(program: Command): void {
           priceLower: options.priceLower ? Number(options.priceLower) : undefined,
           priceUpper: options.priceUpper ? Number(options.priceUpper) : undefined,
           slippageBps: options.slippageBps ? BigInt(options.slippageBps) : undefined,
+          execute: options.execute ?? false,
+        });
+      })
+  );
+
+  // Close all positions
+  addCommonOptions(
+    strategy
+      .command("close")
+      .description("Close all strategy positions: Uniswap LP and GMX short (dry-run by default)")
+      .option("--token-id <id>", "Uniswap token ID to close (default: all positions)")
+      .option("--execute", "Actually execute the transaction (default: dry-run)", false)
+      .action(async (options) => {
+        await closeAll({
+          account: options.account,
+          tokenId: options.tokenId,
           execute: options.execute ?? false,
         });
       })

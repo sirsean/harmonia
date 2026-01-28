@@ -46,5 +46,6 @@ describe("Strategy Commands", () => {
     const subcommands = strategyCommand?.commands.map((cmd) => cmd.name()) || [];
     expect(subcommands).toContain("monitor");
     expect(subcommands).toContain("optimize");
+    expect(subcommands).toContain("close");
   });
 });
