@@ -90,8 +90,8 @@ vi.mock("../../../src/config/strategy", () => ({
     estimatedOptimizationGasCostUsd: BigInt("2000000000000000000000000000"), // 2 * 10^30
     rangeAdjustmentThreshold: 0.02,
     rangeCenterDriftThreshold: 0.05,
-    defaultRangeWidth: 0.15,
-    minRangeWidth: 0.1,
+    defaultRangeWidth: 0.06,
+    minRangeWidth: 0.04,
     maxRangeWidth: 0.4,
     targetLeverage: 3.0,
     minOptimizationBenefitRatio: 1.5,

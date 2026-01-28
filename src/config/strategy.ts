@@ -113,8 +113,8 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   rangeCenterDriftThreshold: 0.05, // 5%
 
   // Range size parameters
-  defaultRangeWidth: 0.15, // 15% total width (±7.5% on each side) - optimized for balanced yield vs operational costs
-  minRangeWidth: 0.1, // 10% minimum (±5%)
+  defaultRangeWidth: 0.06, // 6% total width (±3% on each side) - tighter range for higher capital efficiency
+  minRangeWidth: 0.04, // 4% minimum (±2%)
   maxRangeWidth: 0.4, // 40% maximum (±20%)
 
   // Optimization parameters

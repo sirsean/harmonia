@@ -14,25 +14,25 @@ import { getDefaultRangeBounds, validateRangeWidth } from "../../src/config/mark
  */
 describe("Range Configuration Optimization (Issue #41)", () => {
   describe("Default Range Width", () => {
-    it("should use optimized default range width of 15% (±7.5%)", () => {
-      // Based on range analysis, ±7.5% provides optimal balance:
-      // - ~24% net APY (vs 18% for ±10%)
-      // - 0.6% out-of-range time
-      // - ~12.7 adjustments/month (manageable)
-      expect(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth).toBe(0.15);
+    it("should use optimized default range width of 6% (±3%)", () => {
+      // Tighter range for higher capital efficiency:
+      // - Higher fee yield per unit of liquidity
+      // - More frequent rebalancing (protected by GMX hedge)
+      expect(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth).toBe(0.06);
     });
 
     it("should calculate correct bounds for optimized default", () => {
       const price = 3000;
-      const bounds = getDefaultRangeBounds(price);
+      const rangeWidth = DEFAULT_STRATEGY_CONFIG.defaultRangeWidth;
+      const bounds = getDefaultRangeBounds(price, rangeWidth);
 
-      // 15% width = ±7.5% on each side
-      expect(bounds.lower).toBeCloseTo(2775, 0); // 3000 * 0.925
-      expect(bounds.upper).toBeCloseTo(3225, 0); // 3000 * 1.075
+      // 6% width = ±3% on each side
+      expect(bounds.lower).toBeCloseTo(2910, 0); // 3000 * 0.97
+      expect(bounds.upper).toBeCloseTo(3090, 0); // 3000 * 1.03
 
       // Verify range width is correct
-      const rangeWidth = (bounds.upper - bounds.lower) / price;
-      expect(rangeWidth).toBeCloseTo(0.15, 2);
+      const calculatedWidth = (bounds.upper - bounds.lower) / price;
+      expect(calculatedWidth).toBeCloseTo(0.06, 2);
     });
 
     it("should allow environment variable override", () => {
@@ -56,8 +56,8 @@ describe("Range Configuration Optimization (Issue #41)", () => {
     it("should have reasonable min/max bounds", () => {
       const { minRangeWidth, maxRangeWidth } = DEFAULT_STRATEGY_CONFIG;
 
-      // Min: ±5% (10% total) - tight but manageable
-      expect(minRangeWidth).toBe(0.1);
+      // Min: ±2% (4% total) - tight for maximum capital efficiency
+      expect(minRangeWidth).toBe(0.04);
 
       // Max: ±20% (40% total) - wide for low-maintenance strategies
       expect(maxRangeWidth).toBe(0.4);
@@ -70,7 +70,7 @@ describe("Range Configuration Optimization (Issue #41)", () => {
     it("should reject invalid range width configurations", () => {
       const invalid1 = {
         ...DEFAULT_STRATEGY_CONFIG,
-        defaultRangeWidth: 0.05, // Below minimum
+        defaultRangeWidth: 0.03, // Below minimum (0.04)
       };
       expect(() => validateStrategyConfig(invalid1)).toThrow();
 
@@ -83,7 +83,7 @@ describe("Range Configuration Optimization (Issue #41)", () => {
       const invalid3 = {
         ...DEFAULT_STRATEGY_CONFIG,
         minRangeWidth: 0.2,
-        defaultRangeWidth: 0.15, // Below minimum
+        defaultRangeWidth: 0.03, // Below minimum
       };
       expect(() => validateStrategyConfig(invalid3)).toThrow();
     });
