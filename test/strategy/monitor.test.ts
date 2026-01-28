@@ -180,8 +180,12 @@ describe("DeltaNeutralMonitor", () => {
 
   it("should recommend OPTIMIZE when fees are high", async () => {
     // Healthy delta but high fees
+    // Use a range width matching default (6% = ±3%) to avoid range width check triggering
+    // At tick 69080, ±3% ≈ ±300 ticks for 6% total width
     const highFeesPos = {
         ...mockUniswapPosition,
+        tickLower: 69080 - 300, // Tighter range matching default
+        tickUpper: 69080 + 300,
         tokensOwed0: 6000000n, // 6 USDC ($6) > $5 threshold
     };
 

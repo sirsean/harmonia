@@ -472,6 +472,19 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       const price = posCurrentPrice || currentPrice;
       const priceCenter = (priceLower + priceUpper) / 2;
       const rangeWidth = priceUpper - priceLower;
+      
+      // Check if current range width exceeds configured default (priority check)
+      // Calculate current range width as percentage of price
+      const currentRangeWidthPercent = rangeWidth / price;
+      if (currentRangeWidthPercent > this.config.defaultRangeWidth * 1.1) {
+        // Allow 10% tolerance to avoid constant rebalancing due to tick rounding
+        const currentWidthPercent = (currentRangeWidthPercent * 100).toFixed(1);
+        const defaultWidthPercent = (this.config.defaultRangeWidth * 100).toFixed(1);
+        return {
+          hasIssues: true,
+          reason: `Position ${position.tokenId} range width ${currentWidthPercent}% exceeds configured default ${defaultWidthPercent}% - optimization recommended to tighten range`,
+        };
+      }
 
       // Check if price is near range boundary
       const distanceToLower = (price - priceLower) / rangeWidth;
