@@ -410,11 +410,15 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       }
     }
 
-    // Priority 6: Range position issues (near edges or drifted from center)
+    // Priority 6: Range position issues (wide range, near edges, or drifted from center)
     const rangeIssues = this.checkRangeIssues(status, price);
     if (rangeIssues.hasIssues) {
-      // Only optimize if fees are worth collecting or benefit is sufficient
+      // Range width issues (exceeding default) should always trigger optimization
+      // Other range issues (near edges, drifted) require fees/benefit check
+      const isRangeWidthIssue = rangeIssues.reason.includes("range width") && rangeIssues.reason.includes("exceeds configured default");
+      
       if (
+        isRangeWidthIssue ||
         totalFeesUsd >= this.config.minOptimizationFeeThresholdUsd ||
         (estimatedBenefitUsd > 0n && gasCostUsd > 0n && estimatedBenefitUsd >= gasCostUsd)
       ) {

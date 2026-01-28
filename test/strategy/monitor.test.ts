@@ -132,7 +132,16 @@ describe("DeltaNeutralMonitor", () => {
   });
 
   it("should return NONE when strategy is healthy (neutral delta)", async () => {
+    // Use default range width (6% = ±3% ≈ ±300 ticks) to avoid range width check
+    const healthyPos = {
+        ...mockUniswapPosition,
+        tickLower: 69080 - 300, // Default range width
+        tickUpper: 69080 + 300,
+    };
     // First, get the LP delta by checking without GMX position
+    vi.mocked(uniswapReader.getPosition).mockResolvedValue(healthyPos);
+    vi.mocked(uniswapReader.getPositionWithFees).mockResolvedValue(healthyPos);
+    vi.mocked(uniswapReader.getActivePositionsForOwner).mockResolvedValue([{ tokenId: 123n, position: healthyPos }]);
     vi.mocked(gmxReader.getPosition).mockResolvedValue(undefined);
     const initialResult = await monitor.check();
     const lpDelta = initialResult.status.totalLpDelta;
@@ -151,7 +160,7 @@ describe("DeltaNeutralMonitor", () => {
     });
     
     const result = await monitor.check();
-    // With perfect hedge (netDelta ≈ 0), low fees, and in range, should return NONE
+    // With perfect hedge (netDelta ≈ 0), low fees, in range, and default range width, should return NONE
     expect(result.recommendation.action).toBe(StrategyAction.NONE);
   });
 
