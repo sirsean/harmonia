@@ -806,15 +806,22 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         );
       }
 
-      // Check and approve if needed
+      // Check and approve if needed - approve MAX_UINT256 to avoid re-approvals
+      const MAX_UINT256 = ethers.MaxUint256;
       if (allowance0 < finalAmount0 && finalAmount0 > 0n) {
         console.log(`  Approving ${token0Symbol}...`);
         // Let ethers manage nonce automatically
-        const approval = await token0Contract.approve(positionManager, finalAmount0);
+        const approval = await token0Contract.approve(positionManager, MAX_UINT256);
         // CRITICAL: Wait for approval before proceeding
-        await approval.wait();
+        const receipt = await approval.wait();
 
-        // Verify approval succeeded
+        // Verify transaction didn't revert
+        if (receipt.status !== 1) {
+          throw new Error(`Approval transaction reverted for ${token0Symbol}`);
+        }
+
+        // Verify approval succeeded - check with a small delay to ensure state is updated
+        await new Promise((resolve) => setTimeout(resolve, 500));
         const newAllowance0 = await token0Contract.allowance(account, positionManager);
         if (newAllowance0 < finalAmount0) {
           throw new Error(
@@ -828,11 +835,17 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       if (allowance1 < finalAmount1 && finalAmount1 > 0n) {
         console.log(`  Approving ${token1Symbol}...`);
         // Let ethers manage nonce automatically
-        const approval = await token1Contract.approve(positionManager, finalAmount1);
+        const approval = await token1Contract.approve(positionManager, MAX_UINT256);
         // CRITICAL: Wait for approval before proceeding
-        await approval.wait();
+        const receipt = await approval.wait();
 
-        // Verify approval succeeded
+        // Verify transaction didn't revert
+        if (receipt.status !== 1) {
+          throw new Error(`Approval transaction reverted for ${token1Symbol}`);
+        }
+
+        // Verify approval succeeded - check with a small delay to ensure state is updated
+        await new Promise((resolve) => setTimeout(resolve, 500));
         const newAllowance1 = await token1Contract.allowance(account, positionManager);
         if (newAllowance1 < finalAmount1) {
           throw new Error(
