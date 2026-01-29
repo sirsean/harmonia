@@ -69,4 +69,56 @@ export function calculateAPYFromSnapshots(snapshots: YieldSnapshot[]): bigint {
   return calculateAPY(first.value, last.value, last.timestamp - first.timestamp);
 }
 
+/**
+ * Calculate APR from net yield, position size, and time period
+ * APR = (Net Yield / Position Size) × (365 days / Time Period in days)
+ *
+ * @param netYieldUsd Net yield in USD (fees - costs), with 30 decimals
+ * @param averageNavUsd Average NAV (position size) in USD, with 30 decimals
+ * @param elapsedDays Number of days in the period
+ * @returns APR in basis points (1e18 precision)
+ */
+export function calculateAPRFromYield(
+  netYieldUsd: bigint,
+  averageNavUsd: bigint,
+  elapsedDays: number
+): bigint {
+  if (averageNavUsd <= 0n) {
+    throw new Error("averageNavUsd must be positive");
+  }
+  if (elapsedDays <= 0) {
+    throw new Error("elapsedDays must be positive");
+  }
+
+  // APR = (netYield / averageNav) × (365 / elapsedDays)
+  // Using PRECISION (1e18) for percentage representation
+  const daysInYear = 365n;
+  const elapsedDaysBigInt = BigInt(Math.floor(elapsedDays));
+  
+  // Calculate: (netYield * 365 * PRECISION) / (averageNav * elapsedDays)
+  const numerator = netYieldUsd * daysInYear * PRECISION;
+  const denominator = averageNavUsd * elapsedDaysBigInt;
+  
+  return numerator / denominator;
+}
+
+/**
+ * Calculate APR from net yield and elapsed time in milliseconds
+ * @param netYieldUsd Net yield in USD (fees - costs), with 30 decimals
+ * @param averageNavUsd Average NAV (position size) in USD, with 30 decimals
+ * @param elapsedMs Elapsed time in milliseconds
+ * @returns APR in basis points (1e18 precision)
+ */
+export function calculateAPRFromYieldMs(
+  netYieldUsd: bigint,
+  averageNavUsd: bigint,
+  elapsedMs: number
+): bigint {
+  const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
+  if (elapsedDays <= 0) {
+    throw new Error("elapsedMs must represent at least 1 day");
+  }
+  return calculateAPRFromYield(netYieldUsd, averageNavUsd, elapsedDays);
+}
+
 export { PRECISION, SECONDS_PER_YEAR };

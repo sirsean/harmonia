@@ -159,6 +159,21 @@ export class MonitoringDatabase {
 
     insertNav.run(timestamp, account, totalNavUsd.toString());
 
+    // Record funding fee snapshot if GMX position exists
+    // Note: pendingFundingRewards is shortTokenClaimableFundingAmountPerSize
+    // For shorts, this is typically negative (we pay funding), positive means we receive funding
+    if (status.gmx.positionSizeTokens > 0n) {
+      const fundingFeePerSize = status.gmx.pendingFundingRewards || 0n;
+      // Record the funding fee per size - actual costs will be calculated from deltas
+      this.recordFundingFee(
+        account,
+        snapshotId,
+        0n, // Will be calculated from deltas between snapshots
+        fundingFeePerSize,
+        status.gmx.positionSizeTokens
+      );
+    }
+
     return snapshotId;
   }
 
@@ -867,6 +882,272 @@ export class MonitoringDatabase {
     `);
 
     updateStmt.run(...values);
+  }
+
+  /**
+   * Record a fee collection event
+   */
+  recordFeeCollection(
+    account: string,
+    tokenId: string,
+    feesCollectedUsd: bigint,
+    feesAmount0?: bigint,
+    feesAmount1?: bigint
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO fee_collection_history (
+        timestamp, account, token_id, fees_collected_usd, fees_amount0, fees_amount1
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = insert.run(
+      timestamp,
+      account,
+      tokenId,
+      feesCollectedUsd.toString(),
+      feesAmount0?.toString() || null,
+      feesAmount1?.toString() || null
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Record a funding fee snapshot
+   */
+  recordFundingFee(
+    account: string,
+    snapshotId: number,
+    fundingFeeAmountUsd: bigint,
+    fundingFeePerSize: bigint,
+    positionSizeTokens: bigint
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO funding_fee_history (
+        timestamp, account, snapshot_id, funding_fee_amount_usd,
+        funding_fee_per_size, position_size_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = insert.run(
+      timestamp,
+      account,
+      snapshotId,
+      fundingFeeAmountUsd.toString(),
+      fundingFeePerSize.toString(),
+      positionSizeTokens.toString()
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Get total fees collected in a time period
+   */
+  getFeesCollected(
+    account: string,
+    startTime?: number,
+    endTime?: number
+  ): bigint {
+    let query = `
+      SELECT SUM(CAST(fees_collected_usd AS TEXT)) as total
+      FROM fee_collection_history
+      WHERE account = ?
+    `;
+    const params: any[] = [account];
+
+    if (startTime !== undefined) {
+      query += " AND timestamp >= ?";
+      params.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      query += " AND timestamp <= ?";
+      params.push(endTime);
+    }
+
+    const stmt = this.db.prepare(query);
+    const row = stmt.get(...params) as { total: string | null } | undefined;
+
+    return row?.total ? BigInt(row.total) : 0n;
+  }
+
+  /**
+   * Get total costs (funding fees + gas) in a time period
+   * 
+   * Note: Funding fees are calculated from deltas in funding_fee_per_size between snapshots.
+   * For shorts, negative funding fees mean we're paying (cost), positive means we're receiving (benefit).
+   * 
+   * TODO: Implement proper funding fee delta calculation once we have sufficient snapshot data
+   */
+  getTotalCosts(
+    account: string,
+    startTime?: number,
+    endTime?: number
+  ): bigint {
+    // For now, we'll primarily use gas costs
+    // Funding fee tracking requires calculating deltas between snapshots, which we'll implement
+    // once we have more historical data
+    
+    // Get gas costs
+    let gasQuery = `
+      SELECT SUM(CAST(gas_cost_usd AS TEXT)) as total
+      FROM operation_history
+      WHERE account = ? AND gas_cost_usd IS NOT NULL
+    `;
+    const gasParams: any[] = [account];
+
+    if (startTime !== undefined) {
+      gasQuery += " AND timestamp >= ?";
+      gasParams.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      gasQuery += " AND timestamp <= ?";
+      gasParams.push(endTime);
+    }
+
+    const gasStmt = this.db.prepare(gasQuery);
+    const gasRow = gasStmt.get(...gasParams) as { total: string | null } | undefined;
+    const gasCosts = gasRow?.total ? BigInt(gasRow.total) : 0n;
+
+    // TODO: Add funding fee calculation from snapshot deltas
+    // For now, return just gas costs
+    return gasCosts;
+  }
+
+  /**
+   * Get average NAV over a time period
+   */
+  getAverageNav(
+    account: string,
+    startTime?: number,
+    endTime?: number
+  ): bigint {
+    let query = `
+      SELECT total_nav_usd
+      FROM monitoring_snapshots
+      WHERE account = ?
+    `;
+    const params: any[] = [account];
+
+    if (startTime !== undefined) {
+      query += " AND timestamp >= ?";
+      params.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      query += " AND timestamp <= ?";
+      params.push(endTime);
+    }
+
+    query += " ORDER BY timestamp ASC";
+
+    const stmt = this.db.prepare(query);
+    const rows = stmt.all(...params) as Array<{ total_nav_usd: string }>;
+
+    if (rows.length === 0) {
+      return 0n;
+    }
+
+    // Calculate average
+    let sum = 0n;
+    for (const row of rows) {
+      sum += BigInt(row.total_nav_usd);
+    }
+
+    return sum / BigInt(rows.length);
+  }
+
+  /**
+   * Calculate and cache APR for a period
+   */
+  calculateAndCacheAPR(
+    account: string,
+    periodType: "daily" | "weekly" | "monthly" | "rolling_7d" | "rolling_30d" | "rolling_90d" | "lifetime",
+    periodStart: number,
+    periodEnd: number,
+    feesCollected: bigint,
+    costsIncurred: bigint,
+    averageNav: bigint,
+    aprBps: bigint
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO apr_calculations (
+        timestamp, account, period_type, period_start, period_end,
+        fees_collected_usd, costs_incurred_usd, net_yield_usd,
+        average_nav_usd, apr_bps
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const netYield = feesCollected - costsIncurred;
+
+    const result = insert.run(
+      timestamp,
+      account,
+      periodType,
+      periodStart,
+      periodEnd,
+      feesCollected.toString(),
+      costsIncurred.toString(),
+      netYield.toString(),
+      averageNav.toString(),
+      aprBps.toString()
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Get latest APR calculation for a period type
+   */
+  getLatestAPR(
+    account: string,
+    periodType: "daily" | "weekly" | "monthly" | "rolling_7d" | "rolling_30d" | "rolling_90d" | "lifetime"
+  ): {
+    periodStart: number;
+    periodEnd: number;
+    feesCollected: bigint;
+    costsIncurred: bigint;
+    netYield: bigint;
+    averageNav: bigint;
+    aprBps: bigint;
+  } | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM apr_calculations
+      WHERE account = ? AND period_type = ?
+      ORDER BY period_end DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(account, periodType) as
+      | {
+          period_start: number;
+          period_end: number;
+          fees_collected_usd: string;
+          costs_incurred_usd: string;
+          net_yield_usd: string;
+          average_nav_usd: string;
+          apr_bps: string;
+        }
+      | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      periodStart: row.period_start,
+      periodEnd: row.period_end,
+      feesCollected: BigInt(row.fees_collected_usd),
+      costsIncurred: BigInt(row.costs_incurred_usd),
+      netYield: BigInt(row.net_yield_usd),
+      averageNav: BigInt(row.average_nav_usd),
+      aprBps: BigInt(row.apr_bps),
+    };
   }
 
   /**

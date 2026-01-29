@@ -234,6 +234,80 @@ const migration004_state_persistence: Migration = {
 };
 
 /**
+ * Migration: Add APR tracking tables
+ */
+const migration005_apr_tracking: Migration = {
+  version: 5,
+  name: "apr_tracking",
+  up: (db: Database.Database) => {
+    // Track individual fee collection events
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS fee_collection_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        token_id TEXT NOT NULL,
+        fees_collected_usd TEXT NOT NULL,
+        fees_amount0 TEXT,
+        fees_amount1 TEXT,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
+    // Track GMX funding fee snapshots
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS funding_fee_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        snapshot_id INTEGER,
+        funding_fee_amount_usd TEXT NOT NULL,
+        funding_fee_per_size TEXT NOT NULL,
+        position_size_tokens TEXT NOT NULL,
+        created_at INTEGER DEFAULT (strftime('%s', 'now')),
+        FOREIGN KEY (snapshot_id) REFERENCES monitoring_snapshots(id)
+      )
+    `);
+
+    // APR calculation cache (for performance)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS apr_calculations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        period_type TEXT NOT NULL CHECK(period_type IN ('daily', 'weekly', 'monthly', 'rolling_7d', 'rolling_30d', 'rolling_90d', 'lifetime')),
+        period_start INTEGER NOT NULL,
+        period_end INTEGER NOT NULL,
+        fees_collected_usd TEXT NOT NULL,
+        costs_incurred_usd TEXT NOT NULL,
+        net_yield_usd TEXT NOT NULL,
+        average_nav_usd TEXT NOT NULL,
+        apr_bps INTEGER NOT NULL,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
+    // Indexes for performance
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_fee_collection_account_timestamp 
+      ON fee_collection_history(account, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_funding_fee_account_timestamp 
+      ON funding_fee_history(account, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_apr_calculations_account_period 
+      ON apr_calculations(account, period_type, period_end DESC);
+    `);
+  },
+  down: (db: Database.Database) => {
+    db.exec(`DROP INDEX IF EXISTS idx_apr_calculations_account_period`);
+    db.exec(`DROP INDEX IF EXISTS idx_funding_fee_account_timestamp`);
+    db.exec(`DROP INDEX IF EXISTS idx_fee_collection_account_timestamp`);
+    db.exec(`DROP TABLE IF EXISTS apr_calculations`);
+    db.exec(`DROP TABLE IF EXISTS funding_fee_history`);
+    db.exec(`DROP TABLE IF EXISTS fee_collection_history`);
+  },
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
@@ -241,6 +315,7 @@ export const migrations: Migration[] = [
   migration002_optimization_tracking,
   migration003_optimization_failures,
   migration004_state_persistence,
+  migration005_apr_tracking,
 ];
 
 /**

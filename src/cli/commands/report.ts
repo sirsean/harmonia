@@ -1,11 +1,12 @@
 import { Command } from "commander";
 import { addCommonOptions } from "./base";
-import { generateReport } from "./report-impl";
+import { generateReport, generateAPRReport } from "./report-impl";
 
 /**
  * Register the report command
  */
 export function registerReportCommand(program: Command): void {
+  // Main report command (daily report)
   addCommonOptions(
     program
       .command("report")
@@ -17,6 +18,20 @@ export function registerReportCommand(program: Command): void {
           account: options.account,
           date: options.date,
           reportsDir: options.reportsDir,
+        });
+      })
+  );
+
+  // Separate APR command
+  addCommonOptions(
+    program
+      .command("apr")
+      .description("Calculate and display APR metrics")
+      .option("--period <period>", "Time period: 7d, 30d, 90d, or lifetime (default: 30d)")
+      .action(async (options) => {
+        await generateAPRReport({
+          account: options.account,
+          period: options.period || "30d",
         });
       })
   );
