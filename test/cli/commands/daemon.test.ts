@@ -325,22 +325,29 @@ describe("daemon command", () => {
       dbPath: testDbPath,
     };
 
+    // Start daemon - it will begin initialization asynchronously
     const daemonPromise = daemon(options).catch(() => {
       // Expected to exit
     });
 
-    // Wait for initialization - give more time in CI
-    await vi.advanceTimersByTimeAsync(500);
-
-    // Daemon starts immediately, so first call happens right away
-    // Wait for the first check to complete (may take time for async operations)
-    // Use a retry mechanism to wait for the first call
-    let attempts = 0;
-    const maxAttempts = 10;
-    while (!mockCheckFn.mock.calls.length && attempts < maxAttempts) {
-      await vi.advanceTimersByTimeAsync(200);
-      attempts++;
-    }
+    // Wait for daemon initialization to complete and first check to be called
+    // The daemon initialization involves async operations that need to complete.
+    // Since all mocks resolve immediately, we just need to wait for the monitoring
+    // loop to start. We do this by waiting for the mock to be called.
+    // Use a small timeout to avoid infinite loops from setInterval checks.
+    const waitForFirstCall = async () => {
+      for (let i = 0; i < 100; i++) {
+        if (mockCheckFn.mock.calls.length > 0) {
+          return;
+        }
+        // Advance timers by a small amount and flush microtasks
+        await vi.advanceTimersByTimeAsync(10);
+        // Give event loop a chance to process
+        await Promise.resolve();
+      }
+    };
+    
+    await waitForFirstCall();
     
     // First call should have happened by now
     expect(mockCheckFn).toHaveBeenCalled();
@@ -353,6 +360,7 @@ describe("daemon command", () => {
 
     // Second call succeeds after backoff
     await vi.advanceTimersByTimeAsync(1000);
+    
     expect(mockCheckFn).toHaveBeenCalled();
 
     // Stop daemon
