@@ -431,9 +431,36 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     console.log(`  WETH: ${ethers.formatUnits(wethAmount, wethDecimals)}`);
     console.log(`  USDC: ${ethers.formatUnits(usdcAmount, usdcDecimals)}`);
 
+    // Calculate GMX collateral requirement if we're opening a GMX position
+    let gmxCollateralAmount = 0n;
+    if (allocation.gmxShortSizeUsd > 0n) {
+      // Create a temporary RebalanceManager to calculate collateral
+      const gmxRouter = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
+      const usdcContractForGmx = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer);
+      const rebalanceManager = new RebalanceManager(
+        gmxRouter as any,
+        usdcContractForGmx as any,
+        monitorConfig,
+        {
+          account,
+          market: ARBITRUM_MAINNET.gmxEthUsdMarket,
+          collateralTokenAddress: ARBITRUM_MAINNET.usdc,
+          orderVault: ARBITRUM_MAINNET.gmxOrderVault,
+        }
+      );
+      const { amount: collateralAmount } = rebalanceManager.calculateRequiredCollateral(
+        allocation.gmxShortSizeUsd,
+        1.0, // USDC price
+        6 // USDC decimals
+      );
+      gmxCollateralAmount = collateralAmount;
+      console.log(`  GMX collateral needed: ${ethers.formatUnits(gmxCollateralAmount, 6)} USDC`);
+    }
+
     // Check if we have enough tokens, swap if needed
-    const wethNeeded = wethAmount;
-    const usdcNeeded = usdcAmount;
+    // Account for both LP and GMX collateral requirements
+    const wethNeeded = wethAmount; // Only LP needs WETH
+    const usdcNeeded = usdcAmount + gmxCollateralAmount; // LP + GMX collateral
     const wethAvailable = wethBalance;
     const usdcAvailable = usdcBalance;
 
@@ -606,9 +633,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       if (wethShortfall > 0n) {
         console.log(`\nWould swap USDC for WETH to cover shortfall`);
       } else if (usdcShortfall > 0n) {
-        console.log(`\nWould swap WETH for USDC to cover shortfall`);
+        console.log(`\nWould swap WETH for USDC to cover shortfall (${ethers.formatUnits(usdcShortfall, usdcDecimals)} USDC needed)`);
       } else {
-        console.log(`\nToken amounts are sufficient for LP position.`);
+        console.log(`\nToken amounts are sufficient for LP position${gmxCollateralAmount > 0n ? " and GMX collateral" : ""}.`);
       }
     }
 
