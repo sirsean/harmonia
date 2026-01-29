@@ -633,9 +633,13 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       if (wethShortfall > 0n) {
         console.log(`\nWould swap USDC for WETH to cover shortfall`);
       } else if (usdcShortfall > 0n) {
-        console.log(`\nWould swap WETH for USDC to cover shortfall (${ethers.formatUnits(usdcShortfall, usdcDecimals)} USDC needed)`);
+        console.log(
+          `\nWould swap WETH for USDC to cover shortfall (${ethers.formatUnits(usdcShortfall, usdcDecimals)} USDC needed)`
+        );
       } else {
-        console.log(`\nToken amounts are sufficient for LP position${gmxCollateralAmount > 0n ? " and GMX collateral" : ""}.`);
+        console.log(
+          `\nToken amounts are sufficient for LP position${gmxCollateralAmount > 0n ? " and GMX collateral" : ""}.`
+        );
       }
     }
 
@@ -721,8 +725,12 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       console.log(`    ${token0Symbol}: ${ethers.formatUnits(finalAmount0, token0Decimals)}`);
       console.log(`    ${token1Symbol}: ${ethers.formatUnits(finalAmount1, token1Decimals)}`);
       if (gmxCollateralAmount > 0n) {
-        console.log(`  Required USDC for GMX collateral: ${ethers.formatUnits(gmxCollateralAmount, 6)}`);
-        console.log(`  Total USDC needed (LP + GMX): ${ethers.formatUnits(totalUsdcNeeded, isToken0Usdc ? token0Decimals : token1Decimals)}`);
+        console.log(
+          `  Required USDC for GMX collateral: ${ethers.formatUnits(gmxCollateralAmount, 6)}`
+        );
+        console.log(
+          `  Total USDC needed (LP + GMX): ${ethers.formatUnits(totalUsdcNeeded, isToken0Usdc ? token0Decimals : token1Decimals)}`
+        );
       }
 
       // Check balances accounting for both LP and GMX requirements
@@ -733,10 +741,10 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       // Both usdcForLp and gmxCollateralAmount should be in 6 decimals (USDC)
       // But usdcForLp might be in token0/token1 decimals, so normalize gmxCollateralAmount
       // to match usdcForLp's decimals for the comparison
-      const gmxCollateralNormalized = 
-        usdcDecimalsForCheck === 6 
-          ? gmxCollateralAmount 
-          : (gmxCollateralAmount * 10n ** BigInt(usdcDecimalsForCheck - 6));
+      const gmxCollateralNormalized =
+        usdcDecimalsForCheck === 6
+          ? gmxCollateralAmount
+          : gmxCollateralAmount * 10n ** BigInt(usdcDecimalsForCheck - 6);
       const totalUsdcNeededNormalized = usdcForLp + gmxCollateralNormalized;
 
       if (currentWeth < totalWethNeeded) {

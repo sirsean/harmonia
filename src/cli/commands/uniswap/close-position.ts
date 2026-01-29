@@ -54,20 +54,20 @@ export async function uniswapClosePosition(options: UniswapClosePositionOptions)
       amount1Min: 0n,
       deadline,
     });
-      console.log(`  Transaction submitted: ${decreaseTx.hash}`);
-      console.log(`  Waiting for confirmation...`);
-      const decreaseReceipt = (await decreaseTx.wait()) as { blockNumber: number };
-      console.log(`  ✅ Confirmed in block ${decreaseReceipt.blockNumber}`);
-      console.log(`  Explorer: https://arbiscan.io/tx/${decreaseTx.hash}`);
-      
-      // CRITICAL: Force ethers.js to refresh nonce by querying transaction count
-      // This prevents "nonce too low" errors when immediately sending the next transaction
-      if (signer.provider) {
-        await signer.provider.getTransactionCount(account, "pending");
-      }
-      
-      // Small additional delay to ensure state propagation
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    console.log(`  Transaction submitted: ${decreaseTx.hash}`);
+    console.log(`  Waiting for confirmation...`);
+    const decreaseReceipt = (await decreaseTx.wait()) as { blockNumber: number };
+    console.log(`  ✅ Confirmed in block ${decreaseReceipt.blockNumber}`);
+    console.log(`  Explorer: https://arbiscan.io/tx/${decreaseTx.hash}`);
+
+    // CRITICAL: Force ethers.js to refresh nonce by querying transaction count
+    // This prevents "nonce too low" errors when immediately sending the next transaction
+    if (signer.provider) {
+      await signer.provider.getTransactionCount(account, "pending");
+    }
+
+    // Small additional delay to ensure state propagation
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   console.log("\nCollecting fees and tokens...");
