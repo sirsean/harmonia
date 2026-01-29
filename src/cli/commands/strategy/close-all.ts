@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../../config/addresses";
 import { DeltaNeutralMonitor } from "../../../strategy/monitor";
-import { loadStrategyConfig } from "../../../config/strategy";
+import { loadStrategyConfig, StrategyConfig } from "../../../config/strategy";
 import { createPositionManager, getPosition } from "../../../modules/uniswap/reader";
 import { collectFees, decreaseLiquidity } from "../../../modules/uniswap/fees";
 import { createPositionManager as createPositionManagerWriter } from "../../../modules/uniswap/liquidity";
@@ -33,7 +33,7 @@ export async function closePositions(
   positionsToClose: Array<{ tokenId: string; liquidity: bigint }>,
   gmxPosition: { numbers: { sizeInUsd: bigint; collateralAmount: bigint } } | null,
   executeFlag: boolean,
-  monitorConfig: { defaultExecutionFee: bigint }
+  monitorConfig: StrategyConfig
 ): Promise<ClosePositionsResult> {
   if (positionsToClose.length === 0 && (!gmxPosition || gmxPosition.numbers.sizeInUsd === 0n)) {
     return { closedUniswapPositions: 0, closedGmxPosition: false };
@@ -61,8 +61,11 @@ export async function closePositions(
         throw new Error("Missing output price for GMX close order");
       }
 
-      // Acceptable price: current price + 1% slippage (for closing short, we're buying)
-      const acceptablePrice = (priceResult.outputPrice * 101n) / 100n;
+      // Acceptable price: current price + max slippage (for closing short, we're buying)
+      // Use maxSlippage from config (default 1%) for acceptable price tolerance
+      const slippageBps = BigInt(Math.round(monitorConfig.maxSlippage * 10000));
+      const slippageFactor = 10000n + slippageBps;
+      const acceptablePrice = (priceResult.outputPrice * slippageFactor) / 10000n;
       const executionFee = monitorConfig.defaultExecutionFee || ethers.parseEther("0.01");
 
       const router = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);

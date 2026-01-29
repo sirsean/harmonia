@@ -893,8 +893,14 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           throw new Error("Missing output price for GMX order");
         }
 
-        // Acceptable price: current - 1% slippage (for opening short, we're selling)
-        const acceptablePrice = (priceResult.outputPrice * 99n) / 100n;
+        // Acceptable price: current - max slippage (for opening short, we're selling)
+        // Use maxSlippage from config (default 1%) for acceptable price tolerance
+        // Convert maxSlippage to basis points: 0.01 = 1% = 100 bps
+        const slippageBps = BigInt(Math.round(monitorConfig.maxSlippage * 10000));
+        const slippageFactor = 10000n - slippageBps;
+        const acceptablePrice = (priceResult.outputPrice * slippageFactor) / 10000n;
+        
+        console.log(`  Acceptable price: ${ethers.formatUnits(acceptablePrice, 12)} (${monitorConfig.maxSlippage * 100}% slippage tolerance)`);
 
         // Approve USDC for GMX
         const usdcContractForGmx = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer);

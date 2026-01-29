@@ -105,6 +105,8 @@ vi.mock("../../../../src/config/strategy", () => ({
     estimatedOptimizationGasCostUsd: ethers.parseUnits("10", 30),
     maxPositionSizeUsd: ethers.parseUnits("100000", 30),
     targetLeverage: ethers.parseUnits("2", 18),
+    maxSlippage: 0.01, // 1%
+    slippageBuffer: 0.005, // 0.5%
   })),
 }));
 
