@@ -3,6 +3,9 @@ import * as uniswapFees from "../modules/uniswap/fees";
 import * as uniswapLiquidity from "../modules/uniswap/liquidity";
 import * as uniswapReader from "../modules/uniswap/reader";
 import { UniswapPositionManager, IERC20, UniswapV3Pool } from "../modules/uniswap/types";
+import { MonitoringDatabase } from "../utils/database";
+import { getLatestPrice } from "../modules/chainlink/price";
+import { ARBITRUM_MAINNET } from "../config/addresses";
 
 /**
  * Result of a compound operation
@@ -42,6 +45,10 @@ export interface CompoundConfig {
   spender: string;
   /** Whether to perform token approvals */
   performApproval?: boolean;
+  /** Optional database instance for recording fee collections */
+  db?: MonitoringDatabase;
+  /** Optional provider for getting token prices (required if db is provided) */
+  provider?: ethers.Provider;
   // Note: All transactions always wait for receipt - no option to disable
 }
 
@@ -106,6 +113,72 @@ export async function compoundFees(
   // CRITICAL: Always wait for receipt to ensure transaction is confirmed
   const receipt = await collectTx.wait();
   const collectTxHash = receipt.hash;
+
+  // Record fee collection in database if database is provided
+  if (config.db && config.provider && (amount0Collected > 0n || amount1Collected > 0n)) {
+    try {
+      // Get pool to determine token order
+      const token0Address = await pool.token0();
+      const token1Address = await pool.token1();
+      const isToken0Weth = token0Address.toLowerCase() === ARBITRUM_MAINNET.weth.toLowerCase();
+
+      // Get token decimals
+      // Cast to Contract to access decimals() method
+      const token0Contract = token0 as unknown as ethers.Contract;
+      const token1Contract = token1 as unknown as ethers.Contract;
+      const decimals0 = await token0Contract.decimals();
+      const decimals1 = await token1Contract.decimals();
+
+      // Get ETH price for USD conversion
+      const priceResult = await getLatestPrice(
+        ARBITRUM_MAINNET.chainlinkEthUsdFeed,
+        config.provider,
+        { outputDecimals: 12, maxStaleSeconds: 3600 }
+      );
+      const ethPriceUsd = priceResult.outputPrice
+        ? Number(ethers.formatUnits(priceResult.outputPrice, 12))
+        : 3000;
+
+      // Calculate USD value (30 decimals)
+      let feesCollectedUsd = 0n;
+      if (isToken0Weth) {
+        // token0 is WETH, token1 is USDC
+        const wethValueUsd =
+          amount0Collected > 0n
+            ? (amount0Collected * BigInt(Math.floor(ethPriceUsd * 1e12)) * 10n ** 18n) /
+              (10n ** BigInt(decimals0) * 10n ** 12n)
+            : 0n;
+        const usdcValueUsd =
+          amount1Collected > 0n ? (amount1Collected * 10n ** 30n) / 10n ** BigInt(decimals1) : 0n;
+        feesCollectedUsd = wethValueUsd + usdcValueUsd;
+      } else {
+        // token0 is USDC, token1 is WETH
+        const usdcValueUsd =
+          amount0Collected > 0n ? (amount0Collected * 10n ** 30n) / 10n ** BigInt(decimals0) : 0n;
+        const wethValueUsd =
+          amount1Collected > 0n
+            ? (amount1Collected * BigInt(Math.floor(ethPriceUsd * 1e12)) * 10n ** 18n) /
+              (10n ** BigInt(decimals1) * 10n ** 12n)
+            : 0n;
+        feesCollectedUsd = usdcValueUsd + wethValueUsd;
+      }
+
+      if (feesCollectedUsd > 0n) {
+        config.db.recordFeeCollection(
+          owner,
+          tokenId.toString(),
+          feesCollectedUsd,
+          amount0Collected,
+          amount1Collected
+        );
+      }
+    } catch (error: any) {
+      // Don't fail compound operation if fee recording fails
+      console.warn(
+        `Warning: Failed to record fee collection for token ${tokenId}: ${error.message}`
+      );
+    }
+  }
 
   // 3. Add liquidity back to position
   // Uniswap's increaseLiquidity will automatically calculate the correct ratio

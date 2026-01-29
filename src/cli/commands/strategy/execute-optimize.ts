@@ -341,13 +341,16 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     // Close positions using shared close function
     // Note: We calculate tokens before closing (above) so we can plan the new position
     // The closePositions function handles the actual closing logic
+    // Create database instance for recording fee collections (will be reused later for optimization recording)
+    const db = new MonitoringDatabase();
     await closePositions(
       account,
       signer,
       positionsToOptimize.map((pos) => ({ tokenId: pos.tokenId, liquidity: pos.liquidity })),
       gmxPosition || null,
       executeFlag,
-      monitorConfig
+      monitorConfig,
+      db
     );
 
     // Get actual balances after closing (for execution path)
@@ -899,8 +902,10 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         const slippageBps = BigInt(Math.round(monitorConfig.maxSlippage * 10000));
         const slippageFactor = 10000n - slippageBps;
         const acceptablePrice = (priceResult.outputPrice * slippageFactor) / 10000n;
-        
-        console.log(`  Acceptable price: ${ethers.formatUnits(acceptablePrice, 12)} (${monitorConfig.maxSlippage * 100}% slippage tolerance)`);
+
+        console.log(
+          `  Acceptable price: ${ethers.formatUnits(acceptablePrice, 12)} (${monitorConfig.maxSlippage * 100}% slippage tolerance)`
+        );
 
         // Approve USDC for GMX
         const usdcContractForGmx = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer);
@@ -958,9 +963,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       }
 
       // Record optimization in database using StateManager
+      // Reuse the database instance created earlier for fee recording
       let totalFeesUsd = 0n;
       try {
-        const db = new MonitoringDatabase();
         const stateManager = new StateManager(db);
         const gasCostUsd = monitorConfig.estimatedOptimizationGasCostUsd;
         // Calculate total fees from status
@@ -995,6 +1000,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         console.log(`  Optimization recorded in database`);
       } catch (error) {
         console.warn(`  Warning: Failed to record optimization in database: ${error}`);
+      } finally {
+        // Close database instance
+        db.close();
       }
 
       // Send success alert to Discord

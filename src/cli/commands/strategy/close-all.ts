@@ -10,6 +10,10 @@ import * as gmxOrders from "../../../modules/gmx/orders";
 import { getLatestPrice } from "../../../modules/chainlink/price";
 import { getSignerAndAccount } from "../base";
 import { sendErrorAlert, sendSuccessAlert } from "../../../utils/alerts";
+import { MonitoringDatabase } from "../../../utils/database";
+import { getUnclaimedFees } from "../../../modules/uniswap/fees";
+import * as uniswapReader from "../../../modules/uniswap/reader";
+import { ERC20_ABI } from "../../../utils/abis";
 
 const MAX_UINT128 = (1n << 128n) - 1n;
 
@@ -33,7 +37,8 @@ export async function closePositions(
   positionsToClose: Array<{ tokenId: string; liquidity: bigint }>,
   gmxPosition: { numbers: { sizeInUsd: bigint; collateralAmount: bigint } } | null,
   executeFlag: boolean,
-  monitorConfig: StrategyConfig
+  monitorConfig: StrategyConfig,
+  db?: MonitoringDatabase
 ): Promise<ClosePositionsResult> {
   if (positionsToClose.length === 0 && (!gmxPosition || gmxPosition.numbers.sizeInUsd === 0n)) {
     return { closedUniswapPositions: 0, closedGmxPosition: false };
@@ -163,6 +168,72 @@ export async function closePositions(
     // CRITICAL: Must collect after decreaseLiquidity to avoid stuck funds
     // CRITICAL: Must collect even if decreaseLiquidity failed (in case it partially succeeded)
     if (executeFlag) {
+      // Get unclaimed fees before collecting to record them
+      let feesAmount0 = 0n;
+      let feesAmount1 = 0n;
+      let feesCollectedUsd = 0n;
+
+      if (db) {
+        try {
+          const unclaimedFees = await getUnclaimedFees(manager, tokenId, account);
+          feesAmount0 = unclaimedFees.amount0;
+          feesAmount1 = unclaimedFees.amount1;
+
+          // Calculate USD value of fees
+          // Get pool to determine token order
+          const poolContract = uniswapReader.createPool(
+            ARBITRUM_MAINNET.uniswapV3EthUsdcPool,
+            signer.provider
+          );
+          const token0Address = await poolContract.token0();
+          const token1Address = await poolContract.token1();
+          const isToken0Weth = token0Address.toLowerCase() === ARBITRUM_MAINNET.weth.toLowerCase();
+
+          // Get token contracts and decimals
+          const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, signer.provider);
+          const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, signer.provider);
+          const [decimals0, decimals1] = await Promise.all([
+            token0Contract.decimals(),
+            token1Contract.decimals(),
+          ]);
+
+          // Get ETH price for USD conversion
+          const priceResult = await getLatestPrice(
+            ARBITRUM_MAINNET.chainlinkEthUsdFeed,
+            signer.provider,
+            { outputDecimals: 12, maxStaleSeconds: 3600 }
+          );
+          const ethPriceUsd = priceResult.outputPrice
+            ? Number(ethers.formatUnits(priceResult.outputPrice, 12))
+            : 3000;
+
+          // Calculate USD value (30 decimals)
+          if (isToken0Weth) {
+            // token0 is WETH, token1 is USDC
+            const wethValueUsd =
+              feesAmount0 > 0n
+                ? (feesAmount0 * BigInt(Math.floor(ethPriceUsd * 1e12)) * 10n ** 18n) /
+                  (10n ** BigInt(decimals0) * 10n ** 12n)
+                : 0n;
+            const usdcValueUsd =
+              feesAmount1 > 0n ? (feesAmount1 * 10n ** 30n) / 10n ** BigInt(decimals1) : 0n;
+            feesCollectedUsd = wethValueUsd + usdcValueUsd;
+          } else {
+            // token0 is USDC, token1 is WETH
+            const usdcValueUsd =
+              feesAmount0 > 0n ? (feesAmount0 * 10n ** 30n) / 10n ** BigInt(decimals0) : 0n;
+            const wethValueUsd =
+              feesAmount1 > 0n
+                ? (feesAmount1 * BigInt(Math.floor(ethPriceUsd * 1e12)) * 10n ** 18n) /
+                  (10n ** BigInt(decimals1) * 10n ** 12n)
+                : 0n;
+            feesCollectedUsd = usdcValueUsd + wethValueUsd;
+          }
+        } catch (error: any) {
+          console.warn(`  Warning: Failed to calculate fee USD value: ${error.message}`);
+        }
+      }
+
       console.log(`  Collecting fees and tokens...`);
       try {
         const collectTx = await collectFees(manager, {
@@ -177,6 +248,22 @@ export async function closePositions(
         console.log(
           `  Collect confirmed in block ${collectReceipt.blockNumber} - tokens transferred to wallet`
         );
+
+        // Record fee collection in database
+        if (db && feesCollectedUsd > 0n) {
+          try {
+            db.recordFeeCollection(
+              account,
+              pos.tokenId,
+              feesCollectedUsd,
+              feesAmount0,
+              feesAmount1
+            );
+            console.log(`  Recorded fee collection: $${ethers.formatUnits(feesCollectedUsd, 30)}`);
+          } catch (error: any) {
+            console.warn(`  Warning: Failed to record fee collection: ${error.message}`);
+          }
+        }
       } catch (error: any) {
         console.error(
           `  ERROR: Failed to collect fees/tokens for position ${pos.tokenId}:`,
@@ -332,7 +419,8 @@ export async function closeAll(options: CloseAllOptions = {}): Promise<void> {
       positionsToClose.map((pos) => ({ tokenId: pos.tokenId, liquidity: pos.liquidity })),
       gmxPosition || null,
       executeFlag,
-      monitorConfig
+      monitorConfig,
+      undefined // No database in closeAll - fee recording happens in executeOptimize
     );
 
     console.log(`\n✅ All positions closed successfully!`);
