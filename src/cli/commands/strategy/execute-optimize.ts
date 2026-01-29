@@ -645,7 +645,33 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
       const positionManager = ARBITRUM_MAINNET.uniswapV3PositionManager;
 
-      // Verify balances before proceeding
+      // Calculate GMX collateral requirement if we're opening a GMX position
+      let gmxCollateralAmount = 0n;
+      if (allocation.gmxShortSizeUsd > 0n) {
+        // Create a temporary RebalanceManager to calculate collateral
+        // We need to create the router and token contracts, but we can use a minimal config
+        const gmxRouter = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
+        const usdcContractForGmx = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer);
+        const rebalanceManager = new RebalanceManager(
+          gmxRouter as any,
+          usdcContractForGmx as any,
+          monitorConfig,
+          {
+            account,
+            market: ARBITRUM_MAINNET.gmxEthUsdMarket,
+            collateralTokenAddress: ARBITRUM_MAINNET.usdc,
+            orderVault: ARBITRUM_MAINNET.gmxOrderVault,
+          }
+        );
+        const { amount: collateralAmount } = rebalanceManager.calculateRequiredCollateral(
+          allocation.gmxShortSizeUsd,
+          1.0, // USDC price
+          6 // USDC decimals
+        );
+        gmxCollateralAmount = collateralAmount;
+      }
+
+      // Verify balances before proceeding - must account for both LP and GMX collateral
       const [currentBalance0, currentBalance1, allowance0, allowance1] = await Promise.all([
         token0Contract.balanceOf(account),
         token1Contract.balanceOf(account),
@@ -653,21 +679,47 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         token1Contract.allowance(account, positionManager),
       ]);
 
+      // Calculate total USDC needed (LP + GMX collateral)
+      const usdcForLp = isToken0Usdc ? finalAmount0 : finalAmount1;
+      const totalUsdcNeeded = usdcForLp + gmxCollateralAmount;
+
+      // Calculate total WETH needed (only for LP, GMX uses USDC collateral)
+      const wethForLp = isToken0Weth ? finalAmount0 : finalAmount1;
+      const totalWethNeeded = wethForLp;
+
       console.log(`  Current balances:`);
       console.log(`    ${token0Symbol}: ${ethers.formatUnits(currentBalance0, token0Decimals)}`);
       console.log(`    ${token1Symbol}: ${ethers.formatUnits(currentBalance1, token1Decimals)}`);
-      console.log(`  Required amounts:`);
+      console.log(`  Required amounts for LP:`);
       console.log(`    ${token0Symbol}: ${ethers.formatUnits(finalAmount0, token0Decimals)}`);
       console.log(`    ${token1Symbol}: ${ethers.formatUnits(finalAmount1, token1Decimals)}`);
+      if (gmxCollateralAmount > 0n) {
+        console.log(`  Required USDC for GMX collateral: ${ethers.formatUnits(gmxCollateralAmount, 6)}`);
+        console.log(`  Total USDC needed (LP + GMX): ${ethers.formatUnits(totalUsdcNeeded, isToken0Usdc ? token0Decimals : token1Decimals)}`);
+      }
 
-      if (currentBalance0 < finalAmount0) {
+      // Check balances accounting for both LP and GMX requirements
+      const currentWeth = isToken0Weth ? currentBalance0 : currentBalance1;
+      const currentUsdc = isToken0Usdc ? currentBalance0 : currentBalance1;
+      const usdcDecimalsForCheck = isToken0Usdc ? token0Decimals : token1Decimals;
+
+      // Both usdcForLp and gmxCollateralAmount should be in 6 decimals (USDC)
+      // But usdcForLp might be in token0/token1 decimals, so normalize gmxCollateralAmount
+      // to match usdcForLp's decimals for the comparison
+      const gmxCollateralNormalized = 
+        usdcDecimalsForCheck === 6 
+          ? gmxCollateralAmount 
+          : (gmxCollateralAmount * 10n ** BigInt(usdcDecimalsForCheck - 6));
+      const totalUsdcNeededNormalized = usdcForLp + gmxCollateralNormalized;
+
+      if (currentWeth < totalWethNeeded) {
         throw new Error(
-          `Insufficient ${token0Symbol} balance: have ${ethers.formatUnits(currentBalance0, token0Decimals)}, need ${ethers.formatUnits(finalAmount0, token0Decimals)}`
+          `Insufficient WETH balance: have ${ethers.formatUnits(currentWeth, wethDecimals)}, need ${ethers.formatUnits(totalWethNeeded, wethDecimals)} for LP position`
         );
       }
-      if (currentBalance1 < finalAmount1) {
+      if (currentUsdc < totalUsdcNeededNormalized) {
         throw new Error(
-          `Insufficient ${token1Symbol} balance: have ${ethers.formatUnits(currentBalance1, token1Decimals)}, need ${ethers.formatUnits(finalAmount1, token1Decimals)}`
+          `Insufficient USDC balance: have ${ethers.formatUnits(currentUsdc, usdcDecimalsForCheck)}, need ${ethers.formatUnits(totalUsdcNeededNormalized, usdcDecimalsForCheck)} (${ethers.formatUnits(usdcForLp, usdcDecimalsForCheck)} for LP + ${ethers.formatUnits(gmxCollateralAmount, 6)} for GMX collateral)`
         );
       }
 
