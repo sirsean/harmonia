@@ -4,12 +4,12 @@ import { DeltaNeutralMonitor } from "../../../strategy/monitor";
 import { loadStrategyConfig, DEFAULT_STRATEGY_CONFIG, PRECISION } from "../../../config/strategy";
 import { getDefaultRangeBounds } from "../../../config/markets";
 import { createPositionManager, getPosition } from "../../../modules/uniswap/reader";
-import { collectFees, decreaseLiquidity } from "../../../modules/uniswap/fees";
 import {
   createPositionManager as createPositionManagerWriter,
   mintPosition,
 } from "../../../modules/uniswap/liquidity";
 import { createPool, getPoolState } from "../../../modules/uniswap/reader";
+import { closePositions } from "./close-all";
 import {
   priceToTickWithDecimals,
   roundTickDown,
@@ -42,8 +42,6 @@ import {
 
 import { toBigInt } from "../../../utils/helpers";
 import { sendErrorAlert, sendSuccessAlert } from "../../../utils/alerts";
-
-const MAX_UINT128 = (1n << 128n) - 1n;
 
 export interface ExecuteOptimizeOptions {
   account?: string;
@@ -199,25 +197,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     // 4. Check for execution flag (default: dry-run)
     const executeFlag = options.execute ?? false;
 
-    // 5. Execute: Close old positions and open new one
-    if (!executeFlag) {
-      console.log("\n[DRY RUN] Optimization would be executed:");
-      console.log(`\n1. Collect fees and close ${positionsToOptimize.length} LP position(s):`);
-      for (const pos of positionsToOptimize) {
-        console.log(`   - Position ${pos.tokenId}: Collect fees and remove liquidity`);
-      }
-      console.log(`\n2. Close GMX short position (if exists)`);
-    } else {
-      console.log("\nExecuting optimization...");
-    }
-
-    const reader = createPositionManager(
-      ARBITRUM_MAINNET.uniswapV3PositionManager,
-      ethers.provider
-    );
-    const manager = createPositionManagerWriter(ARBITRUM_MAINNET.uniswapV3PositionManager, signer);
-
-    // Close GMX short position first (if exists)
+    // Get GMX position for closing and capital calculation
     const gmxReaderContract = gmxReader.createReader(ARBITRUM_MAINNET.gmxReader, ethers.provider);
     const gmxPosition = await gmxReader.getPosition(
       gmxReaderContract,
@@ -230,65 +210,27 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       }
     );
 
-    if (gmxPosition && gmxPosition.numbers.sizeInUsd > 0n) {
-      if (executeFlag) {
-        console.log(`\nClosing GMX short position...`);
-        console.log(`  Size: $${ethers.formatUnits(gmxPosition.numbers.sizeInUsd, 30)}`);
-
-        const priceResult = await getLatestPrice(
-          ARBITRUM_MAINNET.chainlinkEthUsdFeed,
-          ethers.provider,
-          {
-            outputDecimals: 12,
-            maxStaleSeconds: 3600,
-          }
-        );
-
-        if (!priceResult.outputPrice) {
-          throw new Error("Missing output price for GMX close order");
-        }
-
-        // Acceptable price: current price + 1% slippage (for closing short, we're buying)
-        const acceptablePrice = (priceResult.outputPrice * 101n) / 100n;
-        const executionFee = monitorConfig.defaultExecutionFee;
-
-        const router = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
-
-        const closeResult = await gmxOrders.createDecreaseOrder(
-          router,
-          {
-            account: account,
-            market: ARBITRUM_MAINNET.gmxEthUsdMarket,
-            collateralToken: ARBITRUM_MAINNET.usdc,
-            sizeDeltaUsd: gmxPosition.numbers.sizeInUsd,
-            acceptablePrice,
-            executionFee,
-            isLong: false,
-          },
-          {
-            orderVault: ARBITRUM_MAINNET.gmxOrderVault,
-            gasLimit: 4000000,
-            performStaticCall: false,
-          }
-        );
-
-        console.log(`  Close GMX order tx: ${closeResult.txHash}`);
-        // Wait for transaction confirmation - CRITICAL: must wait before proceeding
-        if (closeResult.tx) {
-          const txReceipt = (await closeResult.tx.wait()) as { blockNumber: number };
-          console.log(`  Transaction confirmed in block ${txReceipt.blockNumber}`);
-        } else {
-          throw new Error("GMX close transaction was not returned - cannot proceed safely");
-        }
+    // 5. Execute: Close old positions and open new one
+    if (!executeFlag) {
+      console.log("\n[DRY RUN] Optimization would be executed:");
+      console.log(`\n1. Collect fees and close ${positionsToOptimize.length} LP position(s):`);
+      for (const pos of positionsToOptimize) {
+        console.log(`   - Position ${pos.tokenId}: Collect fees and remove liquidity`);
+      }
+      if (gmxPosition && gmxPosition.numbers.sizeInUsd > 0n) {
+        console.log(`\n2. Close GMX short position`);
       } else {
-        console.log(`\nWould close GMX short position`);
-        console.log(`  Size: $${ethers.formatUnits(gmxPosition.numbers.sizeInUsd, 30)}`);
+        console.log(`\n2. No GMX position to close`);
       }
     } else {
-      if (!executeFlag) {
-        console.log(`\nNo GMX position to close`);
-      }
+      console.log("\nExecuting optimization...");
     }
+
+    // Create reader for position queries
+    const reader = createPositionManager(
+      ARBITRUM_MAINNET.uniswapV3PositionManager,
+      ethers.provider
+    );
 
     // Calculate what tokens we'll get back from closing positions BEFORE actually closing them
     // This is needed to properly calculate total capital
@@ -396,94 +338,17 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     // Note: We'll check total capital later - don't return early here
     // Even if no tokens from positions, we might have wallet balance or GMX collateral
 
-    // Close each LP position and collect tokens (if executing)
-    // CRITICAL: Process positions sequentially to avoid nonce conflicts
-    for (const pos of positionsToOptimize) {
-      const tokenId = BigInt(pos.tokenId);
-      if (executeFlag) {
-        console.log(`\nClosing position ${pos.tokenId}...`);
-      }
-
-      const position = await getPosition(reader, tokenId);
-
-      if (executeFlag) {
-        let decreaseSucceeded = false;
-
-        // Step 1: Remove liquidity if present
-        if (position.liquidity > 0n) {
-          const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
-          console.log(`  Removing liquidity: ${position.liquidity.toString()}`);
-
-          try {
-            // Let ethers manage nonce automatically - no manual nonce management
-            const decreaseTx = await decreaseLiquidity(manager, {
-              tokenId,
-              liquidity: position.liquidity,
-              amount0Min: 0n,
-              amount1Min: 0n,
-              deadline,
-            });
-            console.log(`  Decrease liquidity transaction submitted: ${decreaseTx.hash}`);
-            // CRITICAL: Wait for confirmation before proceeding to prevent stuck funds
-            await decreaseTx.wait();
-            console.log(`  Decrease liquidity confirmed`);
-            decreaseSucceeded = true;
-          } catch (error: any) {
-            console.error(
-              `  ERROR: Failed to decrease liquidity for position ${pos.tokenId}:`,
-              error.message
-            );
-            // Continue to try collecting anyway - there might be tokens/fees to collect
-            console.warn(
-              `  Attempting to collect fees/tokens despite decreaseLiquidity failure...`
-            );
-          }
-        } else {
-          console.log(`  Position has no liquidity; collecting fees only.`);
-        }
-
-        // Step 2: Always collect fees and tokens (even if liquidity was 0 or decreaseLiquidity failed)
-        // Note: decreaseLiquidity stores tokens in the position contract - collect() transfers them to wallet
-        // CRITICAL: Must collect after decreaseLiquidity to avoid stuck funds
-        // CRITICAL: Must collect even if decreaseLiquidity failed (in case it partially succeeded)
-        console.log(`  Collecting fees and tokens...`);
-        try {
-          // Let ethers manage nonce automatically - no manual nonce management
-          const collectTx = await collectFees(manager, {
-            tokenId,
-            recipient: account,
-            amount0Max: MAX_UINT128,
-            amount1Max: MAX_UINT128,
-          });
-          console.log(`  Collect transaction submitted: ${collectTx.hash}`);
-          // CRITICAL: Wait for confirmation before proceeding
-          await collectTx.wait();
-          console.log(`  Collect confirmed - tokens transferred to wallet`);
-        } catch (error: any) {
-          console.error(
-            `  ERROR: Failed to collect fees/tokens for position ${pos.tokenId}:`,
-            error.message
-          );
-          // If decreaseLiquidity succeeded but collect failed, funds are stuck!
-          if (decreaseSucceeded) {
-            throw new Error(
-              `CRITICAL: Position ${pos.tokenId} liquidity was removed but collection failed. ` +
-                `Funds may be stuck in position contract. Manual intervention required. ` +
-                `Original error: ${error.message}`
-            );
-          }
-          // If both failed, throw the error
-          throw error;
-        }
-      } else {
-        if (position.liquidity > 0n) {
-          console.log(`  Would remove liquidity: ${position.liquidity.toString()}`);
-        } else {
-          console.log(`  Position has no liquidity; would collect fees only.`);
-        }
-        console.log(`  Would collect fees`);
-      }
-    }
+    // Close positions using shared close function
+    // Note: We calculate tokens before closing (above) so we can plan the new position
+    // The closePositions function handles the actual closing logic
+    await closePositions(
+      account,
+      signer,
+      positionsToOptimize.map((pos) => ({ tokenId: pos.tokenId, liquidity: pos.liquidity })),
+      gmxPosition || null,
+      executeFlag,
+      monitorConfig
+    );
 
     // Get actual balances after closing (for execution path)
     // For dry-run, we use the calculated totals above
@@ -858,6 +723,12 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       }
 
       console.log(`  Minting LP position...`);
+
+      // Create position manager for minting
+      const manager = createPositionManagerWriter(
+        ARBITRUM_MAINNET.uniswapV3PositionManager,
+        signer
+      );
 
       // Let ethers manage nonce automatically - no manual nonce management
       const mintResult = await mintPosition(
