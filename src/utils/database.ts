@@ -946,11 +946,7 @@ export class MonitoringDatabase {
   /**
    * Get total fees collected in a time period
    */
-  getFeesCollected(
-    account: string,
-    startTime?: number,
-    endTime?: number
-  ): bigint {
+  getFeesCollected(account: string, startTime?: number, endTime?: number): bigint {
     let query = `
       SELECT SUM(CAST(fees_collected_usd AS TEXT)) as total
       FROM fee_collection_history
@@ -976,21 +972,17 @@ export class MonitoringDatabase {
 
   /**
    * Get total costs (funding fees + gas) in a time period
-   * 
+   *
    * Note: Funding fees are calculated from deltas in funding_fee_per_size between snapshots.
    * For shorts, negative funding fees mean we're paying (cost), positive means we're receiving (benefit).
-   * 
+   *
    * TODO: Implement proper funding fee delta calculation once we have sufficient snapshot data
    */
-  getTotalCosts(
-    account: string,
-    startTime?: number,
-    endTime?: number
-  ): bigint {
+  getTotalCosts(account: string, startTime?: number, endTime?: number): bigint {
     // For now, we'll primarily use gas costs
     // Funding fee tracking requires calculating deltas between snapshots, which we'll implement
     // once we have more historical data
-    
+
     // Get gas costs
     let gasQuery = `
       SELECT SUM(CAST(gas_cost_usd AS TEXT)) as total
@@ -1021,11 +1013,7 @@ export class MonitoringDatabase {
   /**
    * Get average NAV over a time period
    */
-  getAverageNav(
-    account: string,
-    startTime?: number,
-    endTime?: number
-  ): bigint {
+  getAverageNav(account: string, startTime?: number, endTime?: number): bigint {
     let query = `
       SELECT total_nav_usd
       FROM monitoring_snapshots
@@ -1066,7 +1054,14 @@ export class MonitoringDatabase {
    */
   calculateAndCacheAPR(
     account: string,
-    periodType: "daily" | "weekly" | "monthly" | "rolling_7d" | "rolling_30d" | "rolling_90d" | "lifetime",
+    periodType:
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "rolling_7d"
+      | "rolling_30d"
+      | "rolling_90d"
+      | "lifetime",
     periodStart: number,
     periodEnd: number,
     feesCollected: bigint,
@@ -1106,7 +1101,14 @@ export class MonitoringDatabase {
    */
   getLatestAPR(
     account: string,
-    periodType: "daily" | "weekly" | "monthly" | "rolling_7d" | "rolling_30d" | "rolling_90d" | "lifetime"
+    periodType:
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "rolling_7d"
+      | "rolling_30d"
+      | "rolling_90d"
+      | "lifetime"
   ): {
     periodStart: number;
     periodEnd: number;

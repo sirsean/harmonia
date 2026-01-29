@@ -127,9 +127,17 @@ export async function closePositions(
           });
           console.log(`  Decrease liquidity transaction submitted: ${decreaseTx.hash}`);
           // CRITICAL: Wait for confirmation before proceeding to prevent stuck funds
-          await decreaseTx.wait();
-          console.log(`  Decrease liquidity confirmed`);
+          const decreaseReceipt = (await decreaseTx.wait()) as { blockNumber: number };
+          console.log(`  Decrease liquidity confirmed in block ${decreaseReceipt.blockNumber}`);
           decreaseSucceeded = true;
+
+          // CRITICAL: Force ethers.js to refresh nonce by querying transaction count
+          // This prevents "nonce too low" errors when immediately sending the next transaction
+          // The query forces ethers.js to update its internal nonce cache
+          await signer.provider.getTransactionCount(account, "pending");
+
+          // Small additional delay to ensure state propagation
+          await new Promise((resolve) => setTimeout(resolve, 500));
         } catch (error: any) {
           console.error(
             `  ERROR: Failed to decrease liquidity for position ${pos.tokenId}:`,
@@ -162,8 +170,10 @@ export async function closePositions(
         });
         console.log(`  Collect transaction submitted: ${collectTx.hash}`);
         // CRITICAL: Wait for confirmation before proceeding
-        await collectTx.wait();
-        console.log(`  Collect confirmed - tokens transferred to wallet`);
+        const collectReceipt = await collectTx.wait();
+        console.log(
+          `  Collect confirmed in block ${collectReceipt.blockNumber} - tokens transferred to wallet`
+        );
       } catch (error: any) {
         console.error(
           `  ERROR: Failed to collect fees/tokens for position ${pos.tokenId}:`,

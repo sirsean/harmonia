@@ -44,7 +44,7 @@ export async function calculateAPRForPeriod(
   }
 
   const aprBps = calculateAPRFromYieldMs(netYield, averageNav, elapsedMs);
-  const aprPercent = Number(aprBps) / Number(PRECISION) * 100;
+  const aprPercent = (Number(aprBps) / Number(PRECISION)) * 100;
 
   return {
     periodStart: startTime,

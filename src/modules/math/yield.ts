@@ -94,11 +94,11 @@ export function calculateAPRFromYield(
   // Using PRECISION (1e18) for percentage representation
   const daysInYear = 365n;
   const elapsedDaysBigInt = BigInt(Math.floor(elapsedDays));
-  
+
   // Calculate: (netYield * 365 * PRECISION) / (averageNav * elapsedDays)
   const numerator = netYieldUsd * daysInYear * PRECISION;
   const denominator = averageNavUsd * elapsedDaysBigInt;
-  
+
   return numerator / denominator;
 }
 

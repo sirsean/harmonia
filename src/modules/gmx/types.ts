@@ -173,7 +173,6 @@ export interface GMXOrderExecutionConfig {
   orderVault: string;
   routerAddress?: string;
   gasLimit?: number;
-  nonce?: number;
   performStaticCall?: boolean;
 }
 
