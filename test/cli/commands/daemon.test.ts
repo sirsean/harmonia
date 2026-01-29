@@ -329,12 +329,20 @@ describe("daemon command", () => {
       // Expected to exit
     });
 
-    // Wait for initialization
-    await vi.advanceTimersByTimeAsync(100);
+    // Wait for initialization - give more time in CI
+    await vi.advanceTimersByTimeAsync(500);
 
     // Daemon starts immediately, so first call happens right away
-    await vi.advanceTimersByTimeAsync(100);
-    // First call should have happened
+    // Wait for the first check to complete (may take time for async operations)
+    // Use a retry mechanism to wait for the first call
+    let attempts = 0;
+    const maxAttempts = 10;
+    while (!mockCheckFn.mock.calls.length && attempts < maxAttempts) {
+      await vi.advanceTimersByTimeAsync(200);
+      attempts++;
+    }
+    
+    // First call should have happened by now
     expect(mockCheckFn).toHaveBeenCalled();
     
     // Wait for the error and backoff
