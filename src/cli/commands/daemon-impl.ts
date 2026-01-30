@@ -324,16 +324,19 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
 
           try {
             // Execute optimization
-            await executeOptimize({
+            const optimizeResult = await executeOptimize({
               account,
               execute: true,
             });
 
             // Optimization succeeded - reset failure counter
             consecutiveOptimizationFailures = 0;
-            logger.info("Auto-optimization completed successfully");
+            logger.info("Auto-optimization completed successfully", {
+              feesCollectedUsd: optimizeResult.feesCollectedUsd.toString(),
+            });
 
             // Send success alert for auto-optimization
+            // Use actual fees collected from optimization, not unclaimed fees from before
             await sendSuccessAlert(
               "✅ Auto-Optimization Complete",
               `Daemon successfully completed automatic optimization.`,
@@ -351,7 +354,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
                 },
                 {
                   name: "Fees Collected",
-                  value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
+                  value: `$${parseFloat(ethers.formatUnits(optimizeResult.feesCollectedUsd, 30)).toFixed(4)}`,
                   inline: true,
                 },
               ]

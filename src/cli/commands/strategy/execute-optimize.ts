@@ -62,7 +62,11 @@ export interface ExecuteOptimizeOptions {
  * Unlike `adjust-range`, this command always executes regardless of monitor recommendations.
  * This is useful when delta has drifted but LP is still technically "in range".
  */
-export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Promise<void> {
+export interface ExecuteOptimizeResult {
+  feesCollectedUsd: bigint;
+}
+
+export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Promise<ExecuteOptimizeResult> {
   const { signer, account } = await getSignerAndAccount(options.account);
 
   console.log("\n" + "=".repeat(60));
@@ -404,7 +408,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     // Check if we have sufficient capital
     if (totalCapitalUsd === 0n) {
       console.error("No capital available to create positions.");
-      return;
+      return { feesCollectedUsd: 0n };
     }
 
     // Calculate optimal allocation between LP and GMX hedge
@@ -1027,25 +1031,13 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
 
       // Record optimization in database using StateManager
       // Reuse the database instance created earlier for fee recording
-      let totalFeesUsd = 0n;
+      // Use actual fees collected from closing positions
+      const totalFeesUsd = closeResult.totalFeesCollectedUsd;
       let totalGasCostUsd = 0n;
       let gmxExecutionFeeUsd = 0n;
       try {
         const stateManager = new StateManager(db);
 
-        // Use actual fees collected from closing positions (if executed)
-        // Otherwise fall back to recommendation data for dry-run
-        if (executeFlag && closeResult.totalFeesCollectedUsd > 0n) {
-          totalFeesUsd = closeResult.totalFeesCollectedUsd;
-        } else {
-          // For dry-run, use recommendation data
-          for (const pos of status.uniswap) {
-            if (recommendation.data?.totalFeesUsd) {
-              totalFeesUsd = recommendation.data.totalFeesUsd;
-              break;
-            }
-          }
-        }
         const benefitUsd = totalFeesUsd; // Simplified - could calculate more accurately
 
         // Track actual gas costs from transaction receipts
@@ -1177,6 +1169,11 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         // Don't fail optimization if alert fails
         console.warn("Failed to send Discord alert:", alertError);
       }
+
+      // Return fees collected from execution
+      return {
+        feesCollectedUsd: totalFeesUsd,
+      };
     } else {
       console.log(`\n3. Open new LP position:`);
       console.log(`   - Range: ${lowerPrice.toFixed(6)} - ${upperPrice.toFixed(6)}`);
@@ -1192,6 +1189,8 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         `   - Total capital used: $${ethers.formatUnits(allocation.totalCapitalUsd, 30)}`
       );
       console.log("\nTo execute, run with --execute flag");
+      // Return 0 for dry-run
+      return { feesCollectedUsd: 0n };
     }
   } catch (error: any) {
     console.error("\nError during optimization:");
