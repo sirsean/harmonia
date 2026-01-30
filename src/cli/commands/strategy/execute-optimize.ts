@@ -347,7 +347,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     // Track transaction receipts for gas cost calculation
     const transactionReceipts: Array<{ gasUsed: bigint; gasPrice: bigint }> = [];
 
-    await closePositions(
+    const closeResult = await closePositions(
       account,
       signer,
       positionsToOptimize.map((pos) => ({ tokenId: pos.tokenId, liquidity: pos.liquidity })),
@@ -1033,12 +1033,17 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       try {
         const stateManager = new StateManager(db);
 
-        // Calculate total fees from status
-        for (const pos of status.uniswap) {
-          // Simplified fee calculation - use recommendation data if available
-          if (recommendation.data?.totalFeesUsd) {
-            totalFeesUsd = recommendation.data.totalFeesUsd;
-            break;
+        // Use actual fees collected from closing positions (if executed)
+        // Otherwise fall back to recommendation data for dry-run
+        if (executeFlag && closeResult.totalFeesCollectedUsd > 0n) {
+          totalFeesUsd = closeResult.totalFeesCollectedUsd;
+        } else {
+          // For dry-run, use recommendation data
+          for (const pos of status.uniswap) {
+            if (recommendation.data?.totalFeesUsd) {
+              totalFeesUsd = recommendation.data.totalFeesUsd;
+              break;
+            }
           }
         }
         const benefitUsd = totalFeesUsd; // Simplified - could calculate more accurately

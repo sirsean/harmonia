@@ -26,6 +26,7 @@ export interface CloseAllOptions {
 export interface ClosePositionsResult {
   closedUniswapPositions: number;
   closedGmxPosition: boolean;
+  totalFeesCollectedUsd: bigint; // Total fees collected from all closed positions
 }
 
 /**
@@ -41,8 +42,10 @@ export async function closePositions(
   db?: MonitoringDatabase
 ): Promise<ClosePositionsResult> {
   if (positionsToClose.length === 0 && (!gmxPosition || gmxPosition.numbers.sizeInUsd === 0n)) {
-    return { closedUniswapPositions: 0, closedGmxPosition: false };
+    return { closedUniswapPositions: 0, closedGmxPosition: false, totalFeesCollectedUsd: 0n };
   }
+
+  let totalFeesCollectedUsd = 0n;
 
   const reader = createPositionManager(ARBITRUM_MAINNET.uniswapV3PositionManager, signer.provider);
   const manager = createPositionManagerWriter(ARBITRUM_MAINNET.uniswapV3PositionManager, signer);
@@ -262,6 +265,7 @@ export async function closePositions(
               feesAmount0,
               feesAmount1
             );
+            totalFeesCollectedUsd += feesCollectedUsd;
             console.log(`  Recorded fee collection: $${ethers.formatUnits(feesCollectedUsd, 30)}`);
           } catch (error: any) {
             console.warn(`  Warning: Failed to record fee collection: ${error.message}`);
@@ -296,6 +300,7 @@ export async function closePositions(
   return {
     closedUniswapPositions: positionsToClose.length,
     closedGmxPosition: gmxPosition ? gmxPosition.numbers.sizeInUsd > 0n : false,
+    totalFeesCollectedUsd,
   };
 }
 
