@@ -549,13 +549,14 @@ export class MonitoringDatabase {
     account: string,
     operationType: "rebalance" | "compound" | "range_adjustment" | "optimization",
     gasCostUsd?: bigint,
-    operationData?: Record<string, any>
+    operationData?: Record<string, any>,
+    gmxExecutionFeeUsd?: bigint
   ): number {
     const timestamp = Date.now();
     const insert = this.db.prepare(`
       INSERT INTO operation_history (
-        timestamp, account, operation_type, gas_cost_usd, operation_data
-      ) VALUES (?, ?, ?, ?, ?)
+        timestamp, account, operation_type, gas_cost_usd, gmx_execution_fee_usd, operation_data
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     const result = insert.run(
@@ -563,6 +564,7 @@ export class MonitoringDatabase {
       account,
       operationType,
       gasCostUsd?.toString() || null,
+      gmxExecutionFeeUsd?.toString() || null,
       operationData ? JSON.stringify(operationData) : null
     );
 
@@ -599,10 +601,11 @@ export class MonitoringDatabase {
     timestamp: number;
     operationType: string;
     gasCostUsd?: string;
+    gmxExecutionFeeUsd?: string;
     operationData?: Record<string, any>;
   }> {
     let query = `
-      SELECT id, timestamp, operation_type, gas_cost_usd, operation_data
+      SELECT id, timestamp, operation_type, gas_cost_usd, gmx_execution_fee_usd, operation_data
       FROM operation_history
       WHERE account = ?
     `;
@@ -626,6 +629,7 @@ export class MonitoringDatabase {
       timestamp: number;
       operation_type: string;
       gas_cost_usd?: string;
+      gmx_execution_fee_usd?: string;
       operation_data?: string;
     }>;
 
@@ -634,6 +638,7 @@ export class MonitoringDatabase {
       timestamp: row.timestamp,
       operationType: row.operation_type,
       gasCostUsd: row.gas_cost_usd || undefined,
+      gmxExecutionFeeUsd: row.gmx_execution_fee_usd || undefined,
       operationData: row.operation_data ? JSON.parse(row.operation_data) : undefined,
     }));
   }
@@ -979,35 +984,40 @@ export class MonitoringDatabase {
    * TODO: Implement proper funding fee delta calculation once we have sufficient snapshot data
    */
   getTotalCosts(account: string, startTime?: number, endTime?: number): bigint {
-    // For now, we'll primarily use gas costs
-    // Funding fee tracking requires calculating deltas between snapshots, which we'll implement
-    // once we have more historical data
-
-    // Get gas costs
-    let gasQuery = `
-      SELECT SUM(CAST(gas_cost_usd AS TEXT)) as total
+    // Get gas costs and GMX execution fees
+    let query = `
+      SELECT 
+        SUM(CAST(gas_cost_usd AS TEXT)) as total_gas,
+        SUM(CAST(gmx_execution_fee_usd AS TEXT)) as total_gmx_fees
       FROM operation_history
-      WHERE account = ? AND gas_cost_usd IS NOT NULL
+      WHERE account = ?
     `;
-    const gasParams: any[] = [account];
+    const params: any[] = [account];
 
     if (startTime !== undefined) {
-      gasQuery += " AND timestamp >= ?";
-      gasParams.push(startTime);
+      query += " AND timestamp >= ?";
+      params.push(startTime);
     }
 
     if (endTime !== undefined) {
-      gasQuery += " AND timestamp <= ?";
-      gasParams.push(endTime);
+      query += " AND timestamp <= ?";
+      params.push(endTime);
     }
 
-    const gasStmt = this.db.prepare(gasQuery);
-    const gasRow = gasStmt.get(...gasParams) as { total: string | null } | undefined;
-    const gasCosts = gasRow?.total ? BigInt(gasRow.total) : 0n;
+    const stmt = this.db.prepare(query);
+    const row = stmt.get(...params) as
+      | {
+          total_gas: string | null;
+          total_gmx_fees: string | null;
+        }
+      | undefined;
+
+    const gasCosts = row?.total_gas ? BigInt(row.total_gas) : 0n;
+    const gmxFees = row?.total_gmx_fees ? BigInt(row.total_gmx_fees) : 0n;
 
     // TODO: Add funding fee calculation from snapshot deltas
-    // For now, return just gas costs
-    return gasCosts;
+    // For now, return gas costs + GMX execution fees
+    return gasCosts + gmxFees;
   }
 
   /**

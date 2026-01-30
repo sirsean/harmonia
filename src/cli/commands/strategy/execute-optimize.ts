@@ -343,6 +343,10 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     // The closePositions function handles the actual closing logic
     // Create database instance for recording fee collections (will be reused later for optimization recording)
     const db = new MonitoringDatabase();
+
+    // Track transaction receipts for gas cost calculation
+    const transactionReceipts: Array<{ gasUsed: bigint; gasPrice: bigint }> = [];
+
     await closePositions(
       account,
       signer,
@@ -537,7 +541,18 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
             amountIn
           );
           // CRITICAL: Wait for approval before proceeding
-          await approval.wait();
+          const approvalReceipt = await approval.wait();
+          if (
+            executeFlag &&
+            approvalReceipt &&
+            approvalReceipt.gasUsed &&
+            approvalReceipt.gasPrice
+          ) {
+            transactionReceipts.push({
+              gasUsed: approvalReceipt.gasUsed,
+              gasPrice: approvalReceipt.gasPrice,
+            });
+          }
         }
         // Let ethers manage nonce automatically
         const swapTx = await swapRouter.exactInputSingle({
@@ -608,7 +623,18 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
             amountIn
           );
           // CRITICAL: Wait for approval before proceeding
-          await approval.wait();
+          const approvalReceipt = await approval.wait();
+          if (
+            executeFlag &&
+            approvalReceipt &&
+            approvalReceipt.gasUsed &&
+            approvalReceipt.gasPrice
+          ) {
+            transactionReceipts.push({
+              gasUsed: approvalReceipt.gasUsed,
+              gasPrice: approvalReceipt.gasPrice,
+            });
+          }
         }
         // Let ethers manage nonce automatically
         const swapTx = await swapRouter.exactInputSingle({
@@ -774,6 +800,12 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         if (receipt.status !== 1) {
           throw new Error(`Approval transaction reverted for ${token0Symbol}`);
         }
+        if (executeFlag && receipt && receipt.gasUsed && receipt.gasPrice) {
+          transactionReceipts.push({
+            gasUsed: receipt.gasUsed,
+            gasPrice: receipt.gasPrice,
+          });
+        }
 
         // Verify approval succeeded - check with a small delay to ensure state is updated
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -797,6 +829,12 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         // Verify transaction didn't revert
         if (receipt.status !== 1) {
           throw new Error(`Approval transaction reverted for ${token1Symbol}`);
+        }
+        if (executeFlag && receipt && receipt.gasUsed && receipt.gasPrice) {
+          transactionReceipts.push({
+            gasUsed: receipt.gasUsed,
+            gasPrice: receipt.gasPrice,
+          });
         }
 
         // Verify approval succeeded - check with a small delay to ensure state is updated
@@ -849,6 +887,20 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         console.log(`  LP position minted. Tx: ${mintResult.txHash}`);
         // Transaction already waited for receipt (always waits)
         console.log(`  LP position confirmed`);
+        // Get receipt for gas cost tracking
+        if (executeFlag && signer.provider) {
+          try {
+            const mintReceipt = await signer.provider.getTransactionReceipt(mintResult.txHash);
+            if (mintReceipt && mintReceipt.gasUsed && mintReceipt.gasPrice) {
+              transactionReceipts.push({
+                gasUsed: mintReceipt.gasUsed,
+                gasPrice: mintReceipt.gasPrice,
+              });
+            }
+          } catch (error) {
+            // Receipt might not be available yet, that's okay
+          }
+        }
       }
 
       // Open GMX hedge position
@@ -947,8 +999,19 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         console.log(`  GMX short order created. Tx: ${gmxResult.txHash}`);
         // CRITICAL: Wait for GMX transaction confirmation before proceeding
         if (gmxResult.tx) {
-          const gmxReceipt = (await gmxResult.tx.wait()) as { blockNumber: number };
-          console.log(`  GMX order confirmed in block ${gmxReceipt.blockNumber}`);
+          const gmxReceipt = await gmxResult.tx.wait();
+          console.log(`  GMX order confirmed in block ${(gmxReceipt as any).blockNumber}`);
+          if (
+            executeFlag &&
+            gmxReceipt &&
+            (gmxReceipt as any).gasUsed &&
+            (gmxReceipt as any).gasPrice
+          ) {
+            transactionReceipts.push({
+              gasUsed: (gmxReceipt as any).gasUsed,
+              gasPrice: (gmxReceipt as any).gasPrice,
+            });
+          }
         } else {
           throw new Error("GMX order transaction was not returned - cannot proceed safely");
         }
@@ -965,9 +1028,11 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       // Record optimization in database using StateManager
       // Reuse the database instance created earlier for fee recording
       let totalFeesUsd = 0n;
+      let totalGasCostUsd = 0n;
+      let gmxExecutionFeeUsd = 0n;
       try {
         const stateManager = new StateManager(db);
-        const gasCostUsd = monitorConfig.estimatedOptimizationGasCostUsd;
+
         // Calculate total fees from status
         for (const pos of status.uniswap) {
           // Simplified fee calculation - use recommendation data if available
@@ -978,16 +1043,63 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         }
         const benefitUsd = totalFeesUsd; // Simplified - could calculate more accurately
 
+        // Track actual gas costs from transaction receipts
+        // Get ETH price for USD conversion
+        const ethPriceResult = await getLatestPrice(
+          ARBITRUM_MAINNET.chainlinkEthUsdFeed,
+          signer.provider!,
+          { outputDecimals: 12, maxStaleSeconds: 3600 }
+        );
+        const ethPriceUsd = ethPriceResult.outputPrice
+          ? Number(ethers.formatUnits(ethPriceResult.outputPrice, 12))
+          : 3000;
+
+        // Calculate total gas cost from transaction receipts
+        let totalGasCostWei = 0n;
+        for (const receipt of transactionReceipts) {
+          totalGasCostWei += receipt.gasUsed * receipt.gasPrice;
+        }
+
+        // Convert gas cost to USD (30 decimals)
+        // gasCostWei is in wei, ethPriceUsd is in USD per ETH
+        // We need: (gasCostWei / 1e18) * ethPriceUsd * 1e30
+        const gasCostEth = Number(ethers.formatEther(totalGasCostWei));
+        const gasCostUsdFloat = gasCostEth * ethPriceUsd;
+        totalGasCostUsd = ethers.parseUnits(gasCostUsdFloat.toFixed(18), 30);
+
+        // GMX execution fee: ~0.00011 ETH (net after refund)
+        // This is the actual cost, not the full execution fee sent
+        const gmxExecutionFeeEth = ethers.parseEther("0.00011");
+        gmxExecutionFeeUsd =
+          (gmxExecutionFeeEth * BigInt(Math.floor(ethPriceUsd * 1e12)) * 10n ** 18n) /
+          (10n ** 18n * 10n ** 12n);
+
+        // Only add GMX execution fee if we actually created a GMX order
+        const actualGmxExecutionFeeUsd = allocation.gmxShortSizeUsd > 0n ? gmxExecutionFeeUsd : 0n;
+
         // Record optimization operation via StateManager (tracks operation history and metrics)
-        await stateManager.recordOperation(account, "optimization", gasCostUsd, {
-          deltaDrift: status.deltaDrift,
-          totalFeesUsd: totalFeesUsd.toString(),
-          benefitUsd: benefitUsd.toString(),
-          anyOutOfRange: recommendation.data?.anyOutOfRange || false,
-        });
+        await stateManager.recordOperation(
+          account,
+          "optimization",
+          totalGasCostUsd,
+          {
+            deltaDrift: status.deltaDrift,
+            totalFeesUsd: totalFeesUsd.toString(),
+            benefitUsd: benefitUsd.toString(),
+            anyOutOfRange: recommendation.data?.anyOutOfRange || false,
+          },
+          actualGmxExecutionFeeUsd
+        );
 
         // Also record in optimization_history table for backward compatibility
-        db.recordOptimization(account, status.deltaDrift, totalFeesUsd, gasCostUsd, benefitUsd);
+        // Use total costs (gas + GMX execution fee) for gas_cost_usd field
+        db.recordOptimization(
+          account,
+          status.deltaDrift,
+          totalFeesUsd,
+          totalGasCostUsd + actualGmxExecutionFeeUsd,
+          benefitUsd
+        );
 
         // Update fees collected metric if fees were collected
         if (totalFeesUsd > 0n) {

@@ -308,6 +308,42 @@ const migration005_apr_tracking: Migration = {
 };
 
 /**
+ * Migration: Add GMX execution fee tracking and clean up old estimates
+ */
+const migration006_cost_tracking: Migration = {
+  version: 6,
+  name: "cost_tracking",
+  up: (db: Database.Database) => {
+    // Check if column already exists (in case migration runs twice)
+    const tableInfo = db.prepare("PRAGMA table_info(operation_history)").all() as Array<{
+      name: string;
+    }>;
+    const hasGmxFeeColumn = tableInfo.some((col) => col.name === "gmx_execution_fee_usd");
+
+    if (!hasGmxFeeColumn) {
+      // Add gmx_execution_fee_usd column to operation_history
+      db.exec(`
+        ALTER TABLE operation_history 
+        ADD COLUMN gmx_execution_fee_usd TEXT
+      `);
+    }
+
+    // Delete old $2 estimates (estimatedOptimizationGasCostUsd)
+    // These are way too high and will throw off calculations
+    // We'll replace them with actual gas costs going forward
+    db.exec(`
+      UPDATE operation_history 
+      SET gas_cost_usd = NULL 
+      WHERE gas_cost_usd = '2000000000000000000000000000000'
+    `);
+  },
+  down: (db: Database.Database) => {
+    // Remove the column (SQLite doesn't support DROP COLUMN, so we'd need to recreate the table)
+    // For now, just leave it - the column can stay but won't be used
+  },
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
@@ -316,6 +352,7 @@ export const migrations: Migration[] = [
   migration003_optimization_failures,
   migration004_state_persistence,
   migration005_apr_tracking,
+  migration006_cost_tracking,
 ];
 
 /**
