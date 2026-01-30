@@ -11,6 +11,7 @@ import {
   IERC20,
 } from "./types";
 import { GMX_ROUTER_ABI } from "../../utils/abis";
+import { refreshNonce } from "../../utils/helpers";
 
 export function createRouter(address: string, signer: ethers.Signer): GMXRouter {
   return new ethers.Contract(address, GMX_ROUTER_ABI, signer) as unknown as GMXRouter;
@@ -123,6 +124,8 @@ export async function ensureAllowance(
   const approval = await token.approve(spender, amount);
   // CRITICAL: Wait for approval before proceeding
   await approval.wait();
+  // Note: Nonce refresh is handled by the calling function (createIncreaseOrder/createDecreaseOrder)
+  // to ensure we have access to the router's provider
   return true;
 }
 
@@ -150,6 +153,14 @@ export async function createIncreaseOrder(
   const routerAddress = config.routerAddress ?? routerAddressFromInterface(router);
   // Always ensure allowance - let ethers manage nonces automatically
   await ensureAllowance(token, request.account, routerAddress, request.collateralAmount);
+
+  // CRITICAL: Refresh nonce after approval before order creation
+  // Get provider from router (which has the signer)
+  const routerContract = router as unknown as ethers.Contract;
+  const provider = routerContract.runner?.provider;
+  if (provider && typeof provider === "object" && "getTransactionCount" in provider) {
+    await refreshNonce(provider as ethers.Provider, request.account);
+  }
 
   const multicallData = buildMulticallData(router.interface, {
     orderVault: config.orderVault,

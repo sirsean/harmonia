@@ -6,6 +6,7 @@ import { UniswapPositionManager, IERC20, UniswapV3Pool } from "../modules/uniswa
 import { MonitoringDatabase } from "../utils/database";
 import { getLatestPrice } from "../modules/chainlink/price";
 import { ARBITRUM_MAINNET } from "../config/addresses";
+import { refreshNonce } from "../utils/helpers";
 
 /**
  * Result of a compound operation
@@ -113,6 +114,11 @@ export async function compoundFees(
   // CRITICAL: Always wait for receipt to ensure transaction is confirmed
   const receipt = await collectTx.wait();
   const collectTxHash = receipt.hash;
+
+  // CRITICAL: Refresh nonce after collectFees before increaseLiquidity
+  if (config.provider) {
+    await refreshNonce(config.provider, owner);
+  }
 
   // Record fee collection in database if database is provided
   if (config.db && config.provider && (amount0Collected > 0n || amount1Collected > 0n)) {

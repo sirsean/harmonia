@@ -566,6 +566,8 @@ export async function executeOptimize(
               gasPrice: approvalReceipt.gasPrice,
             });
           }
+          // CRITICAL: Refresh nonce after approval before swap
+          await refreshNonce(signer.provider, account);
         }
         // Let ethers manage nonce automatically
         const swapTx = await swapRouter.exactInputSingle({
@@ -650,6 +652,8 @@ export async function executeOptimize(
               gasPrice: approvalReceipt.gasPrice,
             });
           }
+          // CRITICAL: Refresh nonce after approval before swap
+          await refreshNonce(signer.provider, account);
         }
         // Let ethers manage nonce automatically
         const swapTx = await swapRouter.exactInputSingle({
@@ -824,6 +828,8 @@ export async function executeOptimize(
           });
         }
 
+        // CRITICAL: Refresh nonce after approval before next transaction
+        await refreshNonce(signer.provider, account);
         // Verify approval succeeded - check with a small delay to ensure state is updated
         await new Promise((resolve) => setTimeout(resolve, 500));
         const newAllowance0 = await token0Contract.allowance(account, positionManager);
@@ -854,6 +860,8 @@ export async function executeOptimize(
           });
         }
 
+        // CRITICAL: Refresh nonce after approval before mint
+        await refreshNonce(signer.provider, account);
         // Verify approval succeeded - check with a small delay to ensure state is updated
         await new Promise((resolve) => setTimeout(resolve, 500));
         const newAllowance1 = await token1Contract.allowance(account, positionManager);
@@ -904,6 +912,8 @@ export async function executeOptimize(
         console.log(`  LP position minted. Tx: ${mintResult.txHash}`);
         // Transaction already waited for receipt (always waits)
         console.log(`  LP position confirmed`);
+        // CRITICAL: Refresh nonce after mint before GMX operations
+        await refreshNonce(signer.provider, account);
         // Get receipt for gas cost tracking
         if (executeFlag && signer.provider) {
           try {
@@ -991,6 +1001,8 @@ export async function executeOptimize(
           );
           // CRITICAL: Wait for approval before proceeding
           await approval.wait();
+          // CRITICAL: Refresh nonce after approval before GMX order
+          await refreshNonce(signer.provider, account);
         }
 
         // Let ethers manage nonce automatically - no manual nonce management

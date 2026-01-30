@@ -251,6 +251,9 @@ export async function closePositions(
           `  Collect confirmed in block ${collectReceipt.blockNumber} - tokens transferred to wallet`
         );
 
+        // CRITICAL: Refresh nonce after collect before processing next position (if multiple)
+        await refreshNonce(signer.provider, account);
+
         // Record fee collection in database
         if (db && feesCollectedUsd > 0n) {
           try {
