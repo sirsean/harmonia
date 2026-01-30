@@ -66,7 +66,9 @@ export interface ExecuteOptimizeResult {
   feesCollectedUsd: bigint;
 }
 
-export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Promise<ExecuteOptimizeResult> {
+export async function executeOptimize(
+  options: ExecuteOptimizeOptions = {}
+): Promise<ExecuteOptimizeResult> {
   const { signer, account } = await getSignerAndAccount(options.account);
 
   console.log("\n" + "=".repeat(60));
