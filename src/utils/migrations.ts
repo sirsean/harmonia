@@ -331,15 +331,53 @@ const migration006_cost_tracking: Migration = {
     // Delete old $2 estimates (estimatedOptimizationGasCostUsd)
     // These are way too high and will throw off calculations
     // We'll replace them with actual gas costs going forward
-    db.exec(`
+    // The value is stored as: BigInt(2) * PRECISION.GMX_USD = 2 * 10^30
+    // Delete any gas_cost_usd values that are >= $1 (1000000000000000000000000000000) 
+    // as these are clearly estimates, not actual gas costs
+    // Actual gas costs should be much smaller (~$0.05 = 50000000000000000000000000000)
+    // Use numeric comparison - SQLite can compare TEXT as numbers if both are numeric strings
+    // This is idempotent - safe to run multiple times
+    const updateStmt = db.prepare(`
       UPDATE operation_history 
       SET gas_cost_usd = NULL 
-      WHERE gas_cost_usd = '2000000000000000000000000000000'
+      WHERE gas_cost_usd IS NOT NULL 
+      AND CAST(gas_cost_usd AS REAL) >= 1000000000000000000000000000000.0
     `);
+    const result = updateStmt.run();
+    if (result.changes > 0) {
+      console.log(`[Migration 006] Deleted ${result.changes} old cost estimates`);
+    }
   },
   down: (db: Database.Database) => {
     // Remove the column (SQLite doesn't support DROP COLUMN, so we'd need to recreate the table)
     // For now, just leave it - the column can stay but won't be used
+  },
+};
+
+/**
+ * Migration: Cleanup old cost estimates (idempotent, can run multiple times)
+ * This is a follow-up to migration 006 to ensure all old estimates are deleted
+ */
+const migration007_cleanup_old_costs: Migration = {
+  version: 7,
+  name: "cleanup_old_costs",
+  up: (db: Database.Database) => {
+    // Delete any gas_cost_usd values that are >= $1
+    // This is idempotent and can be run multiple times safely
+    // Use numeric comparison - SQLite can compare TEXT as numbers if both are numeric strings
+    const updateStmt = db.prepare(`
+      UPDATE operation_history 
+      SET gas_cost_usd = NULL 
+      WHERE gas_cost_usd IS NOT NULL 
+      AND CAST(gas_cost_usd AS REAL) >= 1000000000000000000000000000000.0
+    `);
+    const result = updateStmt.run();
+    if (result.changes > 0) {
+      console.log(`[Migration 007] Deleted ${result.changes} old cost estimates`);
+    }
+  },
+  down: (db: Database.Database) => {
+    // No rollback needed - this is just a cleanup
   },
 };
 
@@ -353,6 +391,7 @@ export const migrations: Migration[] = [
   migration004_state_persistence,
   migration005_apr_tracking,
   migration006_cost_tracking,
+  migration007_cleanup_old_costs,
 ];
 
 /**
@@ -404,13 +443,19 @@ export function migrate(db: Database.Database): void {
   // Begin transaction
   const transaction = db.transaction(() => {
     for (const migration of pendingMigrations) {
-      migration.up(db);
+      try {
+        migration.up(db);
 
-      // Record migration
-      db.prepare("INSERT INTO schema_migrations (version, name) VALUES (?, ?)").run(
-        migration.version,
-        migration.name
-      );
+        // Record migration
+        db.prepare("INSERT INTO schema_migrations (version, name) VALUES (?, ?)").run(
+          migration.version,
+          migration.name
+        );
+      } catch (error: any) {
+        // If migration fails, log error but don't fail silently
+        console.error(`Migration ${migration.version} (${migration.name}) failed:`, error);
+        throw error;
+      }
     }
   });
 
