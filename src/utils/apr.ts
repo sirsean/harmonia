@@ -51,19 +51,93 @@ export async function calculateAPRForPeriod(
     // This handles the test case where we have position data but no operations yet
   }
 
-  const netYield = feesCollected - costsIncurred;
-  const elapsedMs = endTime - startTime;
+  // Get actual data period (time between first and last snapshot/fee/cost in the window)
+  // This ensures APR is calculated based on actual data duration, not window size
+  const snapshots = db.getSnapshots(account, startTime, endTime);
+  const feeCollections = db
+    .getDb()
+    .prepare(
+      `
+    SELECT MIN(timestamp) as first_ts, MAX(timestamp) as last_ts
+    FROM fee_collection_history
+    WHERE account = ? AND timestamp >= ? AND timestamp <= ?
+  `
+    )
+    .get(account, startTime, endTime) as
+    | { first_ts: number | null; last_ts: number | null }
+    | undefined;
 
-  if (elapsedMs <= 0) {
+  const operations = db
+    .getDb()
+    .prepare(
+      `
+    SELECT MIN(timestamp) as first_ts, MAX(timestamp) as last_ts
+    FROM operation_history
+    WHERE account = ? AND timestamp >= ? AND timestamp <= ?
+  `
+    )
+    .get(account, startTime, endTime) as
+    | { first_ts: number | null; last_ts: number | null }
+    | undefined;
+
+  // Find the actual start and end of data in this period
+  let actualStart = endTime;
+  let actualEnd = startTime;
+
+  if (snapshots.length > 0) {
+    const firstSnapshot = snapshots[snapshots.length - 1]; // Oldest
+    const lastSnapshot = snapshots[0]; // Newest
+    actualStart = Math.min(actualStart, firstSnapshot.timestamp);
+    actualEnd = Math.max(actualEnd, lastSnapshot.timestamp);
+  }
+
+  if (feeCollections?.first_ts) {
+    actualStart = Math.min(actualStart, feeCollections.first_ts);
+  }
+  if (feeCollections?.last_ts) {
+    actualEnd = Math.max(actualEnd, feeCollections.last_ts);
+  }
+  if (operations?.first_ts) {
+    actualStart = Math.min(actualStart, operations.first_ts);
+  }
+  if (operations?.last_ts) {
+    actualEnd = Math.max(actualEnd, operations.last_ts);
+  }
+
+  // Use actual data period for APR calculation
+  const actualElapsedMs = actualEnd - actualStart;
+
+  // If we have fees/costs but very short actual period, use window size as fallback
+  // This handles edge cases where data exists but period is very short (e.g., test scenarios)
+  const windowElapsedMs = endTime - startTime;
+  const minDataPeriodMs = 60 * 60 * 1000; // 1 hour minimum
+
+  let elapsedMsForCalculation: number;
+  if (actualElapsedMs >= minDataPeriodMs) {
+    // Use actual data period if it's substantial (>= 1 hour)
+    elapsedMsForCalculation = actualElapsedMs;
+  } else if (snapshots.length > 0 || feesCollected > 0n || costsIncurred > 0n) {
+    // If we have snapshots/fees/costs but short period, use window size as fallback
+    // This ensures we can calculate APR even with limited data (e.g., test scenarios)
+    elapsedMsForCalculation = windowElapsedMs;
+  } else {
+    // No data at all - can't calculate APR
+    return null;
+  }
+
+  if (elapsedMsForCalculation <= 0) {
     return null; // Invalid time period
   }
 
-  const aprBps = calculateAPRFromYieldMs(netYield, averageNav, elapsedMs);
+  const netYield = feesCollected - costsIncurred;
+
+  // Use calculated elapsed time (actual period if sufficient, otherwise window)
+  const aprBps = calculateAPRFromYieldMs(netYield, averageNav, elapsedMsForCalculation);
   const aprPercent = (Number(aprBps) / Number(PRECISION)) * 100;
 
   return {
-    periodStart: startTime,
-    periodEnd: endTime,
+    periodStart: actualStart, // Return actual data period, not window
+    periodEnd: actualEnd,
     feesCollected,
     costsIncurred,
     netYield,
