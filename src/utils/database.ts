@@ -1050,13 +1050,33 @@ export class MonitoringDatabase {
       return 0n;
     }
 
-    // Calculate average
-    let sum = 0n;
-    for (const row of rows) {
-      sum += BigInt(row.total_nav_usd);
+    // Filter out snapshots with very low NAV (likely during position transitions)
+    // These snapshots occur when positions are being closed/reopened and don't
+    // represent the typical position size during the period
+    const navValues = rows.map((row) => BigInt(row.total_nav_usd));
+
+    // Find the maximum NAV in the period to use as a reference
+    const maxNav = navValues.reduce((max, nav) => (nav > max ? nav : max), 0n);
+
+    // Exclude snapshots with NAV < $100 or < 20% of max NAV
+    // This filters out transition periods while keeping normal operational snapshots
+    const MIN_NAV_THRESHOLD = 100n * 10n ** 30n; // $100 in 30 decimals
+    const MIN_NAV_PERCENTAGE = (maxNav * 20n) / 100n; // 20% of max NAV
+    const effectiveThreshold =
+      MIN_NAV_THRESHOLD > MIN_NAV_PERCENTAGE ? MIN_NAV_THRESHOLD : MIN_NAV_PERCENTAGE;
+
+    const validNavValues = navValues.filter((nav) => nav >= effectiveThreshold);
+
+    if (validNavValues.length === 0) {
+      // If all snapshots were filtered out, fall back to all snapshots
+      // (shouldn't happen in practice, but handle gracefully)
+      const sum = navValues.reduce((acc, nav) => acc + nav, 0n);
+      return sum / BigInt(navValues.length);
     }
 
-    return sum / BigInt(rows.length);
+    // Calculate average of valid snapshots
+    const sum = validNavValues.reduce((acc, nav) => acc + nav, 0n);
+    return sum / BigInt(validNavValues.length);
   }
 
   /**
