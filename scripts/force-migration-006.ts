@@ -29,9 +29,9 @@ if (!migration006) {
 }
 
 // Run just the cleanup part (idempotent)
-const tableInfo = db
-  .prepare("PRAGMA table_info(operation_history)")
-  .all() as Array<{ name: string }>;
+const tableInfo = db.prepare("PRAGMA table_info(operation_history)").all() as Array<{
+  name: string;
+}>;
 const hasGmxFeeColumn = tableInfo.some((col) => col.name === "gmx_execution_fee_usd");
 
 if (!hasGmxFeeColumn) {

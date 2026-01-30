@@ -74,7 +74,7 @@ if (estimates.length > 0) {
   `);
   const result = deleteStmt.run();
   console.log(`Updated ${result.changes} records`);
-  
+
   // Verify deletion
   const verifyStmt = db.prepare(`
     SELECT COUNT(*) as count

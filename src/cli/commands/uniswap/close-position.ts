@@ -51,46 +51,24 @@ export async function uniswapClosePosition(options: UniswapClosePositionOptions)
   // Create database instance for recording fee collections
   const db = new MonitoringDatabase();
   try {
-    if (position.liquidity > 0n) {
-      const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
-      console.log("Removing liquidity...");
-      const decreaseTx = await decreaseLiquidity(manager, {
-        tokenId,
-        liquidity: position.liquidity,
-        amount0Min: 0n,
-        amount1Min: 0n,
-        deadline,
-      });
-      console.log(`  Transaction submitted: ${decreaseTx.hash}`);
-      console.log(`  Waiting for confirmation...`);
-      const decreaseReceipt = (await decreaseTx.wait()) as { blockNumber: number };
-      console.log(`  ✅ Confirmed in block ${decreaseReceipt.blockNumber}`);
-      console.log(`  Explorer: https://arbiscan.io/tx/${decreaseTx.hash}`);
-
-      // CRITICAL: Force ethers.js to refresh nonce by querying transaction count
-      // This prevents "nonce too low" errors when immediately sending the next transaction
-      if (signer.provider) {
-        await signer.provider.getTransactionCount(account, "pending");
-      }
-
-      // Small additional delay to ensure state propagation
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    // Get unclaimed fees before collecting to record them
+    // Get unclaimed fees BEFORE decreasing liquidity
+    // After decreaseLiquidity, collect() will return both fees AND liquidity tokens
+    // We only want to record the fees portion
     let feesAmount0 = 0n;
     let feesAmount1 = 0n;
     let feesCollectedUsd = 0n;
 
     try {
+      if (!signer.provider) {
+        throw new Error("Provider is required for fee recording");
+      }
+
+      // Get fees before decreaseLiquidity - at this point, getUnclaimedFees only returns fees
       const unclaimedFees = await getUnclaimedFees(manager, tokenId, account);
       feesAmount0 = unclaimedFees.amount0;
       feesAmount1 = unclaimedFees.amount1;
 
       // Calculate USD value of fees
-      if (!signer.provider) {
-        throw new Error("Provider is required for fee recording");
-      }
 
       // Get pool to determine token order
       const poolContract = uniswapReader.createPool(

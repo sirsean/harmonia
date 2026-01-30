@@ -332,7 +332,7 @@ const migration006_cost_tracking: Migration = {
     // These are way too high and will throw off calculations
     // We'll replace them with actual gas costs going forward
     // The value is stored as: BigInt(2) * PRECISION.GMX_USD = 2 * 10^30
-    // Delete any gas_cost_usd values that are >= $1 (1000000000000000000000000000000) 
+    // Delete any gas_cost_usd values that are >= $1 (1000000000000000000000000000000)
     // as these are clearly estimates, not actual gas costs
     // Actual gas costs should be much smaller (~$0.05 = 50000000000000000000000000000)
     // Use numeric comparison - SQLite can compare TEXT as numbers if both are numeric strings

@@ -32,8 +32,23 @@ export async function calculateAPRForPeriod(
   const costsIncurred = db.getTotalCosts(account, startTime, endTime);
   const averageNav = db.getAverageNav(account, startTime, endTime);
 
+  // Only calculate APR if we have position data
   if (averageNav === 0n) {
     return null; // No position data available
+  }
+
+  // Check if there's any actual activity in this period
+  // If no fees and no costs, check if there are snapshots in the period
+  // (This prevents showing metrics for periods where the strategy wasn't running)
+  // However, if there are costs but no fees, that's still activity (negative APR is valid)
+  if (feesCollected === 0n && costsIncurred === 0n) {
+    // Check if there are any snapshots in this period to confirm there was activity
+    const snapshots = db.getSnapshots(account, startTime, endTime);
+    if (snapshots.length === 0) {
+      return null; // No activity in this period (no fees, no costs, no snapshots)
+    }
+    // If there are snapshots but no fees/costs, we can still calculate 0% APR
+    // This handles the test case where we have position data but no operations yet
   }
 
   const netYield = feesCollected - costsIncurred;
