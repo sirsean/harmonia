@@ -14,6 +14,7 @@ import { MonitoringDatabase } from "../../../utils/database";
 import { getUnclaimedFees } from "../../../modules/uniswap/fees";
 import * as uniswapReader from "../../../modules/uniswap/reader";
 import { ERC20_ABI } from "../../../utils/abis";
+import { refreshNonce } from "../../../utils/helpers";
 
 const MAX_UINT128 = (1n << 128n) - 1n;
 
@@ -211,13 +212,8 @@ export async function closePositions(
           console.log(`  Decrease liquidity confirmed in block ${decreaseReceipt.blockNumber}`);
           decreaseSucceeded = true;
 
-          // CRITICAL: Force ethers.js to refresh nonce by querying transaction count
-          // This prevents "nonce too low" errors when immediately sending the next transaction
-          // The query forces ethers.js to update its internal nonce cache
-          await signer.provider.getTransactionCount(account, "pending");
-
-          // Small additional delay to ensure state propagation
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          // CRITICAL: Refresh nonce to prevent "nonce too low" errors
+          await refreshNonce(signer.provider, account);
         } catch (error: any) {
           console.error(
             `  ERROR: Failed to decrease liquidity for position ${pos.tokenId}:`,

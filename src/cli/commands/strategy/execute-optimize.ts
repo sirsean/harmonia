@@ -40,7 +40,7 @@ import {
   UNISWAP_QUOTER_ABI,
 } from "../../../utils/abis";
 
-import { toBigInt } from "../../../utils/helpers";
+import { toBigInt, refreshNonce } from "../../../utils/helpers";
 import { sendErrorAlert, sendSuccessAlert } from "../../../utils/alerts";
 
 export interface ExecuteOptimizeOptions {
@@ -366,10 +366,8 @@ export async function executeOptimize(
     // CRITICAL: Refresh nonce after closing positions to prevent "nonce too low" errors
     // Closing positions may have sent multiple transactions (decrease liquidity, collect fees, GMX orders)
     // We need to refresh the nonce before proceeding with swaps
-    if (executeFlag && signer.provider) {
-      await signer.provider.getTransactionCount(account, "pending");
-      // Small delay to ensure state propagation
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    if (executeFlag) {
+      await refreshNonce(signer.provider, account);
     }
 
     // Get actual balances after closing (for execution path)
@@ -584,11 +582,7 @@ export async function executeOptimize(
         // CRITICAL: Wait for swap confirmation before proceeding
         const swapReceipt = await swapTx.wait();
         // CRITICAL: Refresh nonce after swap to prevent "nonce too low" errors
-        if (signer.provider) {
-          await signer.provider.getTransactionCount(account, "pending");
-          // Small delay to ensure state propagation
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
+        await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),
@@ -672,11 +666,7 @@ export async function executeOptimize(
         // CRITICAL: Wait for swap confirmation before proceeding
         const swapReceipt = await swapTx.wait();
         // CRITICAL: Refresh nonce after swap to prevent "nonce too low" errors
-        if (signer.provider) {
-          await signer.provider.getTransactionCount(account, "pending");
-          // Small delay to ensure state propagation
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
+        await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),

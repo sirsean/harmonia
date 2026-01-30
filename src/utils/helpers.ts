@@ -4,6 +4,36 @@
  * These utilities are used across CLI commands, modules, and scripts.
  */
 
+import { ethers } from "ethers";
+
+/**
+ * Refresh the transaction nonce for an account to prevent "nonce too low" errors
+ *
+ * After sending transactions, ethers.js may cache the nonce. This function
+ * forces a refresh by querying the provider, and adds a small delay to ensure
+ * state propagation on the blockchain.
+ *
+ * @param provider - The ethers provider instance
+ * @param account - The account address to refresh nonce for
+ * @param delayMs - Delay in milliseconds after refresh (default: 500ms)
+ */
+export async function refreshNonce(
+  provider: ethers.Provider | null | undefined,
+  account: string,
+  delayMs: number = 500
+): Promise<void> {
+  if (!provider) {
+    return;
+  }
+
+  // Force ethers.js to refresh nonce by querying transaction count
+  // This prevents "nonce too low" errors when immediately sending the next transaction
+  await provider.getTransactionCount(account, "pending");
+
+  // Small delay to ensure state propagation on the blockchain
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
 /**
  * Convert various value types to bigint
  *
