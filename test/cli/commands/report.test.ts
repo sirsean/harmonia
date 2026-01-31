@@ -219,7 +219,7 @@ describe("Report Implementation", () => {
 
     const summary = generateDiscordSummary(report);
     
-    expect(summary.title).toBe("Harmonia : 2026-01-26");
+    expect(summary.title).toBe("📊 Harmonia : 2026-01-26");
     expect(summary.message).toBe("");
     
     // Check fields

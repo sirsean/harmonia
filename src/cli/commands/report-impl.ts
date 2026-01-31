@@ -212,7 +212,7 @@ export function generateDiscordSummary(report: DailyReport): {
     statusEmoji = "⚠️";
   }
 
-  const title = `Harmonia : ${report.date}`;
+  const title = `📊 Harmonia : ${report.date}`;
   const message = ""; // Empty message as requested
 
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [
