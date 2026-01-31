@@ -8,6 +8,7 @@ import { getSignerAndAccount } from "./base";
 import { ERC20_ABI } from "../../utils/abis";
 import { MonitoringDatabase } from "../../utils/database";
 import { getLogger } from "../../utils/logger";
+import { getAPRMetrics } from "../../utils/apr";
 import { executeOptimize } from "./strategy/execute-optimize";
 import { StrategyAction } from "../../strategy/types";
 import {
@@ -152,13 +153,39 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
     try {
       logger.info("Generating daily report", { account });
 
+      // Get wallet balances
+      const [balance0, balance1] = await Promise.all([
+        token0Contract.balanceOf(account),
+        token1Contract.balanceOf(account),
+      ]);
+
+      const walletBalances = {
+        balance0: `${ethers.formatUnits(balance0, decimals0)} ${symbol0}`,
+        balance1: `${ethers.formatUnits(balance1, decimals1)} ${symbol1}`,
+      };
+
+      // Get APR metrics
+      let aprMetricsData: { apr1d?: number; apr7d?: number; apr30d?: number } = {};
+      try {
+        const metrics = await getAPRMetrics(db, account);
+        aprMetricsData = {
+          apr1d: metrics.rolling1d?.aprPercent,
+          apr7d: metrics.rolling7d?.aprPercent,
+          apr30d: metrics.rolling30d?.aprPercent,
+        };
+      } catch (error) {
+        logger.warn("Failed to fetch APR metrics for report", { error });
+      }
+
       // Generate report
       const report = generateDailyReport(
         account,
         status,
         recommendation,
         totalLpValueUsd,
-        totalFeesUsd
+        totalFeesUsd,
+        aprMetricsData,
+        walletBalances
       );
 
       // Save report to file
@@ -295,38 +322,12 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
             totalFeesUsd: totalFeesUsd.toString(),
           });
 
-          // Send alert that auto-optimization is starting
-          await sendInfoAlert(
-            "🔄 Auto-Optimization Triggered",
-            `Daemon is automatically optimizing the strategy position.`,
-            [
-              { name: "Account", value: account, inline: false },
-              { name: "Reason", value: recommendation.reason, inline: false },
-              {
-                name: "Total NAV",
-                value: `$${parseFloat(ethers.formatUnits(totalNavUsd, 30)).toFixed(4)}`,
-                inline: true,
-              },
-              {
-                name: "Delta Drift",
-                value: `${(status.deltaDrift * 100).toFixed(2)}%`,
-                inline: true,
-              },
-              {
-                name: "Unclaimed Fees",
-                value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
-                inline: true,
-              },
-            ]
-          ).catch((alertError) => {
-            logger.warn("Failed to send Discord alert", { error: alertError.message });
-          });
-
           try {
             // Execute optimization
             const optimizeResult = await executeOptimize({
               account,
               execute: true,
+              suppressAlert: true,
             });
 
             // Optimization succeeded - reset failure counter
@@ -335,30 +336,45 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               feesCollectedUsd: optimizeResult.feesCollectedUsd.toString(),
             });
 
+            // Fetch APR metrics for the report
+            let apr1d: number | undefined;
+            let apr7d: number | undefined;
+            try {
+              const metrics = await getAPRMetrics(db, account);
+              apr1d = metrics.rolling1d?.aprPercent;
+              apr7d = metrics.rolling7d?.aprPercent;
+            } catch (error) {
+              logger.warn("Failed to fetch APR metrics for optimization alert", { error });
+            }
+
             // Send success alert for auto-optimization
             // Use actual fees collected from optimization, not unclaimed fees from before
-            await sendSuccessAlert(
-              "✅ Auto-Optimization Complete",
-              `Daemon successfully completed automatic optimization.`,
-              [
-                { name: "Account", value: account, inline: false },
-                {
-                  name: "Total NAV",
-                  value: `$${parseFloat(ethers.formatUnits(totalNavUsd, 30)).toFixed(4)}`,
-                  inline: true,
-                },
-                {
-                  name: "Delta Drift Before",
-                  value: `${(status.deltaDrift * 100).toFixed(2)}%`,
-                  inline: true,
-                },
-                {
-                  name: "Fees Collected",
-                  value: `$${parseFloat(ethers.formatUnits(optimizeResult.feesCollectedUsd, 30)).toFixed(4)}`,
-                  inline: true,
-                },
-              ]
-            ).catch((alertError) => {
+            const fields = [
+              {
+                name: "Total NAV",
+                value: `$${parseFloat(ethers.formatUnits(totalNavUsd, 30)).toFixed(4)}`,
+                inline: true,
+              },
+              {
+                name: "Delta Drift Before",
+                value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+                inline: true,
+              },
+              {
+                name: "Fees Collected",
+                value: `$${parseFloat(ethers.formatUnits(optimizeResult.feesCollectedUsd, 30)).toFixed(4)}`,
+                inline: true,
+              },
+            ];
+
+            if (apr1d !== undefined) {
+              fields.push({ name: "1d APR", value: `${apr1d.toFixed(2)}%`, inline: true });
+            }
+            if (apr7d !== undefined) {
+              fields.push({ name: "7d APR", value: `${apr7d.toFixed(2)}%`, inline: true });
+            }
+
+            await sendSuccessAlert("✅ Harmonia : Optimized", "", fields).catch((alertError) => {
               logger.warn("Failed to send Discord alert", { error: alertError.message });
             });
 

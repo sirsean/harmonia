@@ -132,13 +132,42 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
     totalFeesUsd += calculateUsdValue(totalFees1, Number(decimals1), 1.0);
   }
 
+  // Get wallet balances
+  const [balance0, balance1] = await Promise.all([
+    token0Contract.balanceOf(account),
+    token1Contract.balanceOf(account),
+  ]);
+
+  const walletBalances = {
+    balance0: `${ethers.formatUnits(balance0, decimals0)} ${symbol0}`,
+    balance1: `${ethers.formatUnits(balance1, decimals1)} ${symbol1}`,
+  };
+
+  // Get APR metrics
+  const db = new MonitoringDatabase();
+  let aprMetricsData: { apr1d?: number; apr7d?: number; apr30d?: number } = {};
+  try {
+    const metrics = await getAPRMetrics(db, account);
+    aprMetricsData = {
+      apr1d: metrics.rolling1d?.aprPercent,
+      apr7d: metrics.rolling7d?.aprPercent,
+      apr30d: metrics.rolling30d?.aprPercent,
+    };
+  } catch (error) {
+    logger.warn("Failed to fetch APR metrics for report", { error });
+  } finally {
+    db.close();
+  }
+
   // Generate report
   const report = generateDailyReport(
     account,
     status,
     recommendation,
     totalLpValueUsd,
-    totalFeesUsd
+    totalFeesUsd,
+    aprMetricsData,
+    walletBalances
   );
 
   // Override date if specified
@@ -183,8 +212,8 @@ export function generateDiscordSummary(report: DailyReport): {
     statusEmoji = "⚠️";
   }
 
-  const title = `${statusEmoji} Daily Report - ${report.date}`;
-  const message = `Daily position summary and health report generated.`;
+  const title = `📊 Harmonia : ${report.date}`;
+  const message = ""; // Empty message as requested
 
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [
     {
@@ -202,22 +231,35 @@ export function generateDiscordSummary(report: DailyReport): {
       value: `$${feesUsd.toFixed(4)}`,
       inline: true,
     },
-    {
-      name: "LP Positions",
-      value: `${report.positions.uniswap.length} active`,
-      inline: true,
-    },
-    {
-      name: "GMX Position",
-      value: `${report.positions.gmx.positionSizeTokens} ETH (Short)`,
-      inline: true,
-    },
-    {
-      name: "Recommendation",
-      value: report.summary.recommendation,
-      inline: true,
-    },
   ];
+
+  if (
+    report.metrics.apr1d !== undefined ||
+    report.metrics.apr7d !== undefined ||
+    report.metrics.apr30d !== undefined
+  ) {
+    const aprParts = [];
+    if (report.metrics.apr1d !== undefined)
+      aprParts.push(`1d: ${report.metrics.apr1d.toFixed(2)}%`);
+    if (report.metrics.apr7d !== undefined)
+      aprParts.push(`7d: ${report.metrics.apr7d.toFixed(2)}%`);
+    if (report.metrics.apr30d !== undefined)
+      aprParts.push(`30d: ${report.metrics.apr30d.toFixed(2)}%`);
+
+    fields.push({
+      name: "APR",
+      value: aprParts.join(" | "),
+      inline: true,
+    });
+  }
+
+  if (report.summary.walletBalance0 && report.summary.walletBalance1) {
+    fields.push({
+      name: "Wallet Balances",
+      value: `${report.summary.walletBalance0}\n${report.summary.walletBalance1}`,
+      inline: false,
+    });
+  }
 
   return { title, message, fields };
 }

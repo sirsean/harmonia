@@ -32,6 +32,7 @@ import {
 import { getSignerAndAccount } from "../base";
 import { MonitoringDatabase } from "../../../utils/database";
 import { StateManager } from "../../../utils/state";
+import { getAPRMetrics } from "../../../utils/apr";
 import { IERC20 as UniswapIERC20 } from "../../../modules/uniswap/types";
 import {
   ERC20_ABI,
@@ -51,6 +52,7 @@ export interface ExecuteOptimizeOptions {
   priceUpper?: number;
   slippageBps?: bigint;
   execute?: boolean;
+  suppressAlert?: boolean;
 }
 
 /**
@@ -721,7 +723,28 @@ export async function executeOptimize(
 
     // Open new LP position and GMX hedge
     if (executeFlag) {
+      // Check if we have non-zero amounts to mint
+      if (finalAmount0 === 0n && finalAmount1 === 0n) {
+        console.warn(
+          "⚠️  Warning: Both finalAmount0 and finalAmount1 are 0. Skipping LP minting to avoid revert."
+        );
+        // We can still proceed with GMX hedge if applicable, or just return
+        if (allocation.gmxShortSizeUsd === 0n) {
+          return { feesCollectedUsd: closeResult.totalFeesCollectedUsd };
+        }
+      }
+
       console.log(`\nOpening new LP position...`);
+      console.log(`  Minting params:`, {
+        token0,
+        token1,
+        fee: 500,
+        tickLower,
+        tickUpper,
+        amount0Desired: finalAmount0.toString(),
+        amount1Desired: finalAmount1.toString(),
+        recipient: account,
+      });
 
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
       const positionManager = ARBITRUM_MAINNET.uniswapV3PositionManager;
@@ -752,182 +775,190 @@ export async function executeOptimize(
         gmxCollateralAmount = collateralAmount;
       }
 
-      // Verify balances before proceeding - must account for both LP and GMX collateral
-      const [currentBalance0, currentBalance1, allowance0, allowance1] = await Promise.all([
-        token0Contract.balanceOf(account),
-        token1Contract.balanceOf(account),
-        token0Contract.allowance(account, positionManager),
-        token1Contract.allowance(account, positionManager),
-      ]);
+      let mintResult: { txHash?: string } = {};
 
-      // Calculate total USDC needed (LP + GMX collateral)
-      const usdcForLp = isToken0Usdc ? finalAmount0 : finalAmount1;
-      const totalUsdcNeeded = usdcForLp + gmxCollateralAmount;
+      if (finalAmount0 > 0n || finalAmount1 > 0n) {
+        // Verify balances before proceeding - must account for both LP and GMX collateral
+        const [currentBalance0, currentBalance1, allowance0, allowance1] = await Promise.all([
+          token0Contract.balanceOf(account),
+          token1Contract.balanceOf(account),
+          token0Contract.allowance(account, positionManager),
+          token1Contract.allowance(account, positionManager),
+        ]);
 
-      // Calculate total WETH needed (only for LP, GMX uses USDC collateral)
-      const wethForLp = isToken0Weth ? finalAmount0 : finalAmount1;
-      const totalWethNeeded = wethForLp;
+        // Calculate total USDC needed (LP + GMX collateral)
+        const usdcForLp = isToken0Usdc ? finalAmount0 : finalAmount1;
+        const totalUsdcNeeded = usdcForLp + gmxCollateralAmount;
 
-      console.log(`  Current balances:`);
-      console.log(`    ${token0Symbol}: ${ethers.formatUnits(currentBalance0, token0Decimals)}`);
-      console.log(`    ${token1Symbol}: ${ethers.formatUnits(currentBalance1, token1Decimals)}`);
-      console.log(`  Required amounts for LP:`);
-      console.log(`    ${token0Symbol}: ${ethers.formatUnits(finalAmount0, token0Decimals)}`);
-      console.log(`    ${token1Symbol}: ${ethers.formatUnits(finalAmount1, token1Decimals)}`);
-      if (gmxCollateralAmount > 0n) {
-        console.log(
-          `  Required USDC for GMX collateral: ${ethers.formatUnits(gmxCollateralAmount, 6)}`
-        );
-        console.log(
-          `  Total USDC needed (LP + GMX): ${ethers.formatUnits(totalUsdcNeeded, isToken0Usdc ? token0Decimals : token1Decimals)}`
-        );
-      }
+        // Calculate total WETH needed (only for LP, GMX uses USDC collateral)
+        const wethForLp = isToken0Weth ? finalAmount0 : finalAmount1;
+        const totalWethNeeded = wethForLp;
 
-      // Check balances accounting for both LP and GMX requirements
-      const currentWeth = isToken0Weth ? currentBalance0 : currentBalance1;
-      const currentUsdc = isToken0Usdc ? currentBalance0 : currentBalance1;
-      const usdcDecimalsForCheck = isToken0Usdc ? token0Decimals : token1Decimals;
-
-      // Both usdcForLp and gmxCollateralAmount should be in 6 decimals (USDC)
-      // But usdcForLp might be in token0/token1 decimals, so normalize gmxCollateralAmount
-      // to match usdcForLp's decimals for the comparison
-      const gmxCollateralNormalized =
-        usdcDecimalsForCheck === 6
-          ? gmxCollateralAmount
-          : gmxCollateralAmount * 10n ** BigInt(usdcDecimalsForCheck - 6);
-      const totalUsdcNeededNormalized = usdcForLp + gmxCollateralNormalized;
-
-      if (currentWeth < totalWethNeeded) {
-        throw new Error(
-          `Insufficient WETH balance: have ${ethers.formatUnits(currentWeth, wethDecimals)}, need ${ethers.formatUnits(totalWethNeeded, wethDecimals)} for LP position`
-        );
-      }
-      if (currentUsdc < totalUsdcNeededNormalized) {
-        throw new Error(
-          `Insufficient USDC balance: have ${ethers.formatUnits(currentUsdc, usdcDecimalsForCheck)}, need ${ethers.formatUnits(totalUsdcNeededNormalized, usdcDecimalsForCheck)} (${ethers.formatUnits(usdcForLp, usdcDecimalsForCheck)} for LP + ${ethers.formatUnits(gmxCollateralAmount, 6)} for GMX collateral)`
-        );
-      }
-
-      // Check and approve if needed - approve MAX_UINT256 to avoid re-approvals
-      const MAX_UINT256 = ethers.MaxUint256;
-      if (allowance0 < finalAmount0 && finalAmount0 > 0n) {
-        console.log(`  Approving ${token0Symbol}...`);
-        // Let ethers manage nonce automatically
-        const approval = await token0Contract.approve(positionManager, MAX_UINT256);
-        // CRITICAL: Wait for approval before proceeding
-        const receipt = await approval.wait();
-
-        // Verify transaction didn't revert
-        if (receipt.status !== 1) {
-          throw new Error(`Approval transaction reverted for ${token0Symbol}`);
-        }
-        if (executeFlag && receipt && receipt.gasUsed && receipt.gasPrice) {
-          transactionReceipts.push({
-            gasUsed: receipt.gasUsed,
-            gasPrice: receipt.gasPrice,
-          });
-        }
-
-        // CRITICAL: Refresh nonce after approval before next transaction
-        await refreshNonce(signer.provider, account);
-        // Verify approval succeeded - check with a small delay to ensure state is updated
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const newAllowance0 = await token0Contract.allowance(account, positionManager);
-        if (newAllowance0 < finalAmount0) {
-          throw new Error(
-            `Approval failed for ${token0Symbol}: allowance is ${ethers.formatUnits(newAllowance0, token0Decimals)}, need ${ethers.formatUnits(finalAmount0, token0Decimals)}`
+        console.log(`  Current balances:`);
+        console.log(`    ${token0Symbol}: ${ethers.formatUnits(currentBalance0, token0Decimals)}`);
+        console.log(`    ${token1Symbol}: ${ethers.formatUnits(currentBalance1, token1Decimals)}`);
+        console.log(`  Required amounts for LP:`);
+        console.log(`    ${token0Symbol}: ${ethers.formatUnits(finalAmount0, token0Decimals)}`);
+        console.log(`    ${token1Symbol}: ${ethers.formatUnits(finalAmount1, token1Decimals)}`);
+        if (gmxCollateralAmount > 0n) {
+          console.log(
+            `  Required USDC for GMX collateral: ${ethers.formatUnits(gmxCollateralAmount, 6)}`
+          );
+          console.log(
+            `  Total USDC needed (LP + GMX): ${ethers.formatUnits(totalUsdcNeeded, isToken0Usdc ? token0Decimals : token1Decimals)}`
           );
         }
-        console.log(
-          `  ✓ Approved ${token0Symbol}: ${ethers.formatUnits(newAllowance0, token0Decimals)}`
-        );
-      }
-      if (allowance1 < finalAmount1 && finalAmount1 > 0n) {
-        console.log(`  Approving ${token1Symbol}...`);
-        // Let ethers manage nonce automatically
-        const approval = await token1Contract.approve(positionManager, MAX_UINT256);
-        // CRITICAL: Wait for approval before proceeding
-        const receipt = await approval.wait();
 
-        // Verify transaction didn't revert
-        if (receipt.status !== 1) {
-          throw new Error(`Approval transaction reverted for ${token1Symbol}`);
-        }
-        if (executeFlag && receipt && receipt.gasUsed && receipt.gasPrice) {
-          transactionReceipts.push({
-            gasUsed: receipt.gasUsed,
-            gasPrice: receipt.gasPrice,
-          });
-        }
+        // Check balances accounting for both LP and GMX requirements
+        const currentWeth = isToken0Weth ? currentBalance0 : currentBalance1;
+        const currentUsdc = isToken0Usdc ? currentBalance0 : currentBalance1;
+        const usdcDecimalsForCheck = isToken0Usdc ? token0Decimals : token1Decimals;
 
-        // CRITICAL: Refresh nonce after approval before mint
-        await refreshNonce(signer.provider, account);
-        // Verify approval succeeded - check with a small delay to ensure state is updated
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const newAllowance1 = await token1Contract.allowance(account, positionManager);
-        if (newAllowance1 < finalAmount1) {
+        // Both usdcForLp and gmxCollateralAmount should be in 6 decimals (USDC)
+        // But usdcForLp might be in token0/token1 decimals, so normalize gmxCollateralAmount
+        // to match usdcForLp's decimals for the comparison
+        const gmxCollateralNormalized =
+          usdcDecimalsForCheck === 6
+            ? gmxCollateralAmount
+            : gmxCollateralAmount * 10n ** BigInt(usdcDecimalsForCheck - 6);
+        const totalUsdcNeededNormalized = usdcForLp + gmxCollateralNormalized;
+
+        if (currentWeth < totalWethNeeded) {
           throw new Error(
-            `Approval failed for ${token1Symbol}: allowance is ${ethers.formatUnits(newAllowance1, token1Decimals)}, need ${ethers.formatUnits(finalAmount1, token1Decimals)}`
+            `Insufficient WETH balance: have ${ethers.formatUnits(currentWeth, wethDecimals)}, need ${ethers.formatUnits(totalWethNeeded, wethDecimals)} for LP position`
           );
         }
-        console.log(
-          `  ✓ Approved ${token1Symbol}: ${ethers.formatUnits(newAllowance1, token1Decimals)}`
-        );
-      }
-
-      console.log(`  Minting LP position...`);
-
-      // Create position manager for minting
-      const manager = createPositionManagerWriter(
-        ARBITRUM_MAINNET.uniswapV3PositionManager,
-        signer
-      );
-
-      // Let ethers manage nonce automatically - no manual nonce management
-      const mintResult = await mintPosition(
-        manager,
-        token0Contract as unknown as UniswapIERC20,
-        token1Contract as unknown as UniswapIERC20,
-        {
-          token0,
-          token1,
-          fee: 500, // 0.05% fee tier
-          tickLower,
-          tickUpper,
-          amount0Desired: finalAmount0,
-          amount1Desired: finalAmount1,
-          amount0Min: 0n,
-          amount1Min: 0n,
-          recipient: account,
-          deadline,
-        },
-        {
-          owner: account,
-          spender: positionManager,
-          performApproval: false,
+        if (currentUsdc < totalUsdcNeededNormalized) {
+          throw new Error(
+            `Insufficient USDC balance: have ${ethers.formatUnits(currentUsdc, usdcDecimalsForCheck)}, need ${ethers.formatUnits(totalUsdcNeededNormalized, usdcDecimalsForCheck)} (${ethers.formatUnits(usdcForLp, usdcDecimalsForCheck)} for LP + ${ethers.formatUnits(gmxCollateralAmount, 6)} for GMX collateral)`
+          );
         }
-      );
 
-      if (mintResult.txHash) {
-        console.log(`  LP position minted. Tx: ${mintResult.txHash}`);
-        // Transaction already waited for receipt (always waits)
-        console.log(`  LP position confirmed`);
-        // CRITICAL: Refresh nonce after mint before GMX operations
-        await refreshNonce(signer.provider, account);
-        // Get receipt for gas cost tracking
-        if (executeFlag && signer.provider) {
-          try {
-            const mintReceipt = await signer.provider.getTransactionReceipt(mintResult.txHash);
-            if (mintReceipt && mintReceipt.gasUsed && mintReceipt.gasPrice) {
-              transactionReceipts.push({
-                gasUsed: mintReceipt.gasUsed,
-                gasPrice: mintReceipt.gasPrice,
-              });
+        // Check and approve if needed - approve MAX_UINT256 to avoid re-approvals
+        const MAX_UINT256 = ethers.MaxUint256;
+        if (allowance0 < finalAmount0 && finalAmount0 > 0n) {
+          console.log(`  Approving ${token0Symbol}...`);
+          // Let ethers manage nonce automatically
+          const approval = await token0Contract.approve(positionManager, MAX_UINT256);
+          // CRITICAL: Wait for approval before proceeding
+          const receipt = await approval.wait();
+
+          // Verify transaction didn't revert
+          if (receipt.status !== 1) {
+            throw new Error(`Approval transaction reverted for ${token0Symbol}`);
+          }
+          if (executeFlag && receipt && receipt.gasUsed && receipt.gasPrice) {
+            transactionReceipts.push({
+              gasUsed: receipt.gasUsed,
+              gasPrice: receipt.gasPrice,
+            });
+          }
+
+          // CRITICAL: Refresh nonce after approval before next transaction
+          await refreshNonce(signer.provider, account);
+          // Verify approval succeeded - check with a small delay to ensure state is updated
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const newAllowance0 = await token0Contract.allowance(account, positionManager);
+          if (newAllowance0 < finalAmount0) {
+            throw new Error(
+              `Approval failed for ${token0Symbol}: allowance is ${ethers.formatUnits(newAllowance0, token0Decimals)}, need ${ethers.formatUnits(finalAmount0, token0Decimals)}`
+            );
+          }
+          console.log(
+            `  ✓ Approved ${token0Symbol}: ${ethers.formatUnits(newAllowance0, token0Decimals)}`
+          );
+        }
+        if (allowance1 < finalAmount1 && finalAmount1 > 0n) {
+          console.log(`  Approving ${token1Symbol}...`);
+          // Let ethers manage nonce automatically
+          const approval = await token1Contract.approve(positionManager, MAX_UINT256);
+          // CRITICAL: Wait for approval before proceeding
+          const receipt = await approval.wait();
+
+          // Verify transaction didn't revert
+          if (receipt.status !== 1) {
+            throw new Error(`Approval transaction reverted for ${token1Symbol}`);
+          }
+          if (executeFlag && receipt && receipt.gasUsed && receipt.gasPrice) {
+            transactionReceipts.push({
+              gasUsed: receipt.gasUsed,
+              gasPrice: receipt.gasPrice,
+            });
+          }
+
+          // CRITICAL: Refresh nonce after approval before mint
+          await refreshNonce(signer.provider, account);
+          // Verify approval succeeded - check with a small delay to ensure state is updated
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const newAllowance1 = await token1Contract.allowance(account, positionManager);
+          if (newAllowance1 < finalAmount1) {
+            throw new Error(
+              `Approval failed for ${token1Symbol}: allowance is ${ethers.formatUnits(newAllowance1, token1Decimals)}, need ${ethers.formatUnits(finalAmount1, token1Decimals)}`
+            );
+          }
+          console.log(
+            `  ✓ Approved ${token1Symbol}: ${ethers.formatUnits(newAllowance1, token1Decimals)}`
+          );
+        }
+
+        console.log(`  Minting LP position...`);
+
+        // Create position manager for minting
+        const manager = createPositionManagerWriter(
+          ARBITRUM_MAINNET.uniswapV3PositionManager,
+          signer
+        );
+
+        // Let ethers manage nonce automatically - no manual nonce management
+        const actualMintResult = await mintPosition(
+          manager,
+          token0Contract as unknown as UniswapIERC20,
+          token1Contract as unknown as UniswapIERC20,
+          {
+            token0,
+            token1,
+            fee: 500, // 0.05% fee tier
+            tickLower,
+            tickUpper,
+            amount0Desired: finalAmount0,
+            amount1Desired: finalAmount1,
+            amount0Min: 0n,
+            amount1Min: 0n,
+            recipient: account,
+            deadline,
+          },
+          {
+            owner: account,
+            spender: positionManager,
+            performApproval: false,
+          }
+        );
+
+        mintResult = actualMintResult;
+
+        if (mintResult.txHash) {
+          console.log(`  LP position minted. Tx: ${mintResult.txHash}`);
+          // Transaction already waited for receipt (always waits)
+          console.log(`  LP position confirmed`);
+          // CRITICAL: Refresh nonce after mint before GMX operations
+          await refreshNonce(signer.provider, account);
+          // Get receipt for gas cost tracking
+          if (executeFlag && signer.provider) {
+            try {
+              const mintReceipt = await signer.provider.getTransactionReceipt(mintResult.txHash);
+              if (mintReceipt && mintReceipt.gasUsed && mintReceipt.gasPrice) {
+                transactionReceipts.push({
+                  gasUsed: mintReceipt.gasUsed,
+                  gasPrice: mintReceipt.gasPrice,
+                });
+              }
+            } catch (error) {
+              // Receipt might not be available yet, that's okay
             }
-          } catch (error) {
-            // Receipt might not be available yet, that's okay
           }
         }
+      } else {
+        console.log("  Skipping minting because token amounts are 0");
       }
 
       // Open GMX hedge position
@@ -1140,59 +1171,80 @@ export async function executeOptimize(
       }
 
       // Send success alert to Discord
-      try {
-        const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-          {
-            name: "Account",
-            value: account,
-            inline: false,
-          },
-          {
-            name: "LP Position",
-            value: mintResult.txHash || "minted",
-            inline: true,
-          },
-          {
-            name: "LP Size",
-            value: `$${parseFloat(ethers.formatUnits(allocation.lpSizeUsd, 30)).toFixed(4)}`,
-            inline: true,
-          },
-          {
-            name: "GMX Short Size",
-            value: `$${parseFloat(ethers.formatUnits(allocation.gmxShortSizeUsd, 30)).toFixed(4)}`,
-            inline: true,
-          },
-          {
-            name: "Delta Drift Before",
-            value: `${(status.deltaDrift * 100).toFixed(2)}%`,
-            inline: true,
-          },
-        ];
+      if (!options.suppressAlert) {
+        try {
+          // Fetch APR metrics
+          let apr1d: number | undefined;
+          let apr7d: number | undefined;
+          try {
+            const metrics = await getAPRMetrics(db, account);
+            apr1d = metrics.rolling1d?.aprPercent;
+            apr7d = metrics.rolling7d?.aprPercent;
+          } catch (error) {
+            console.warn("Failed to fetch APR metrics for alert", error);
+          }
 
-        if (totalFeesUsd > 0n) {
+          // Get updated wallet balances
+          const [balance0, balance1] = await Promise.all([
+            token0Contract.balanceOf(account),
+            token1Contract.balanceOf(account),
+          ]);
+          const balance0Str = `${ethers.formatUnits(balance0, token0Decimals)} ${token0Symbol}`;
+          const balance1Str = `${ethers.formatUnits(balance1, token1Decimals)} ${token1Symbol}`;
+
+          // Calculate total NAV
+          // Use current prices and balances
+          const ethPriceResult = await getLatestPrice(
+            ARBITRUM_MAINNET.chainlinkEthUsdFeed,
+            signer.provider!,
+            { outputDecimals: 12, maxStaleSeconds: 3600 }
+          );
+          const ethPriceUsd = ethPriceResult.outputPrice
+            ? Number(ethers.formatUnits(ethPriceResult.outputPrice, 12))
+            : 3000;
+
+          // Simplified NAV calculation for the alert (just LP + GMX capital)
+          // For a precise NAV we'd need the full monitor check, but this is sufficient for the alert context
+          const lpValueUsd = allocation.lpSizeUsd;
+          const gmxValueUsd = allocation.gmxCollateralUsd; // Approx net value
+          const totalNavUsd = lpValueUsd + gmxValueUsd;
+
+          const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+            {
+              name: "Total NAV",
+              value: `$${parseFloat(ethers.formatUnits(totalNavUsd, 30)).toFixed(4)}`,
+              inline: true,
+            },
+            {
+              name: "Delta Drift Before",
+              value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+              inline: true,
+            },
+            {
+              name: "Fees Collected",
+              value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
+              inline: true,
+            },
+          ];
+
+          if (apr1d !== undefined) {
+            fields.push({ name: "1d APR", value: `${apr1d.toFixed(2)}%`, inline: true });
+          }
+          if (apr7d !== undefined) {
+            fields.push({ name: "7d APR", value: `${apr7d.toFixed(2)}%`, inline: true });
+          }
+
           fields.push({
-            name: "Fees Collected",
-            value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
-            inline: true,
-          });
-        }
-
-        if (allocation.gmxShortSizeUsd > 0n && gmxResult?.txHash) {
-          fields.push({
-            name: "GMX Order",
-            value: gmxResult.txHash,
+            name: "Wallet Balances",
+            value: `${balance0Str}\n${balance1Str}`,
             inline: false,
           });
-        }
 
-        await sendSuccessAlert(
-          "✅ Strategy Optimization Complete",
-          `Successfully optimized delta-neutral position. LP position created and GMX hedge adjusted.`,
-          fields
-        );
-      } catch (alertError) {
-        // Don't fail optimization if alert fails
-        console.warn("Failed to send Discord alert:", alertError);
+          await sendSuccessAlert("✅ Harmonia : Optimized", "", fields);
+        } catch (alertError) {
+          // Don't fail optimization if alert fails
+          console.warn("Failed to send Discord alert:", alertError);
+        }
       }
 
       // Return fees collected from execution

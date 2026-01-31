@@ -655,6 +655,7 @@ describe("daemon command", () => {
       expect(executeOptimizeFn).toHaveBeenCalledWith({
         account: "0x1234567890123456789012345678901234567890",
         execute: true,
+        suppressAlert: true,
       });
 
       exitSpy.mockRestore();

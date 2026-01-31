@@ -88,9 +88,11 @@ export async function sendErrorAlert(
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [];
 
   if (error instanceof Error) {
+    const errorMessage =
+      error.message.length > 1000 ? error.message.substring(0, 1000) + "..." : error.message;
     fields.push({
       name: "Error Details",
-      value: `\`\`\`${error.message}\`\`\``,
+      value: `\`\`\`${errorMessage}\`\`\``,
       inline: false,
     });
     if (error.stack) {
@@ -104,9 +106,12 @@ export async function sendErrorAlert(
       });
     }
   } else if (error) {
+    const errorString = String(error);
+    const truncatedError =
+      errorString.length > 1000 ? errorString.substring(0, 1000) + "..." : errorString;
     fields.push({
       name: "Error Details",
-      value: String(error),
+      value: `\`\`\`${truncatedError}\`\`\``,
       inline: false,
     });
   }

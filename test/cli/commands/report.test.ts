@@ -92,7 +92,7 @@ vi.mock("../../../src/modules/uniswap/reader", () => ({
 }));
 
 vi.mock("../../../src/utils/reports", () => ({
-  generateDailyReport: vi.fn((account, status, recommendation, totalLpValueUsd, totalFeesUsd) => ({
+  generateDailyReport: vi.fn((account, status, recommendation, totalLpValueUsd, totalFeesUsd, aprMetrics, walletBalances) => ({
     date: new Date().toISOString().split("T")[0],
     timestamp: Date.now(),
     account,
@@ -103,6 +103,8 @@ vi.mock("../../../src/utils/reports", () => ({
       netDelta: "0.0",
       deltaDrift: 0,
       recommendation: "NONE",
+      walletBalance0: walletBalances?.balance0,
+      walletBalance1: walletBalances?.balance1,
     },
     positions: {
       uniswap: [],
@@ -117,6 +119,9 @@ vi.mock("../../../src/utils/reports", () => ({
       totalLpDelta: "1.0",
       totalFeesUsd: "10.0",
       deltaDriftPercent: 0,
+      apr1d: aprMetrics?.apr1d,
+      apr7d: aprMetrics?.apr7d,
+      apr30d: aprMetrics?.apr30d,
     },
   })),
   saveDailyReport: vi.fn((report) => `reports/${report.date}.json`),
@@ -177,6 +182,8 @@ describe("Report Implementation", () => {
         netDelta: "0.1",
         deltaDrift: 0.03,
         recommendation: "NONE",
+        walletBalance0: "1.5 WETH",
+        walletBalance1: "2000.0 USDC",
       },
       positions: {
         uniswap: [
@@ -204,61 +211,41 @@ describe("Report Implementation", () => {
         totalLpDelta: "1.0",
         totalFeesUsd: "10.50",
         deltaDriftPercent: 3.0,
+        apr1d: 12.5,
+        apr7d: 15.2,
+        apr30d: 14.8,
       },
     };
 
     const summary = generateDiscordSummary(report);
     
-    expect(summary.title).toContain("Daily Report");
-    expect(summary.title).toContain("2026-01-26");
-    expect(summary.message).toBe("Daily position summary and health report generated.");
-    expect(summary.fields).toHaveLength(6);
+    expect(summary.title).toBe("📊 Harmonia : 2026-01-26");
+    expect(summary.message).toBe("");
+    
+    // Check fields
+    // 1. Total Net Value
+    // 2. Delta Drift
+    // 3. Unclaimed Fees
+    // 4. APR
+    // 5. Wallet Balances
+    expect(summary.fields).toHaveLength(5);
+    
     expect(summary.fields[0].name).toBe("Total Net Value");
+    expect(summary.fields[0].value).toBe("$1500.7500");
+    
     expect(summary.fields[1].name).toBe("Delta Drift");
+    expect(summary.fields[1].value).toBe("3.00%");
+    
     expect(summary.fields[2].name).toBe("Unclaimed Fees");
-  });
+    expect(summary.fields[2].value).toBe("$10.5000");
 
-  it("should use correct emoji for different delta drift levels", async () => {
-    const { generateDiscordSummary } = await import("../../../src/cli/commands/report-impl");
-    
-    // Low delta drift (healthy)
-    const healthyReport = {
-      date: "2026-01-26",
-      timestamp: Date.now(),
-      account: "0x123",
-      summary: {
-        totalLpValueUsd: "1000",
-        totalGmxValueUsd: "500",
-        totalNetValueUsd: "1500",
-        netDelta: "0.1",
-        deltaDrift: 0.03, // 3%
-        recommendation: "NONE",
-      },
-      positions: { uniswap: [], gmx: { positionSizeTokens: "1", collateralAmount: "500", netValueUsd: "500", delta: "-1" } },
-      metrics: { totalLpDelta: "1", totalFeesUsd: "10", deltaDriftPercent: 3.0 },
-    };
-    
-    const healthySummary = generateDiscordSummary(healthyReport);
-    expect(healthySummary.title).toContain("✅");
+    expect(summary.fields[3].name).toBe("APR");
+    expect(summary.fields[3].value).toContain("1d: 12.50%");
+    expect(summary.fields[3].value).toContain("7d: 15.20%");
+    expect(summary.fields[3].value).toContain("30d: 14.80%");
 
-    // Medium delta drift (warning)
-    const warningReport = {
-      ...healthyReport,
-      summary: { ...healthyReport.summary, deltaDrift: 0.1 }, // 10%
-      metrics: { ...healthyReport.metrics, deltaDriftPercent: 10.0 },
-    };
-    
-    const warningSummary = generateDiscordSummary(warningReport);
-    expect(warningSummary.title).toContain("⚠️");
-
-    // High delta drift (emergency)
-    const emergencyReport = {
-      ...healthyReport,
-      summary: { ...healthyReport.summary, deltaDrift: 0.25 }, // 25%
-      metrics: { ...healthyReport.metrics, deltaDriftPercent: 25.0 },
-    };
-    
-    const emergencySummary = generateDiscordSummary(emergencyReport);
-    expect(emergencySummary.title).toContain("🚨");
+    expect(summary.fields[4].name).toBe("Wallet Balances");
+    expect(summary.fields[4].value).toContain("1.5 WETH");
+    expect(summary.fields[4].value).toContain("2000.0 USDC");
   });
 });

@@ -20,6 +20,8 @@ export interface DailyReport {
     netDelta: string;
     deltaDrift: number;
     recommendation: string;
+    walletBalance0?: string; // e.g. "1.23 WETH"
+    walletBalance1?: string; // e.g. "1000.00 USDC"
   };
   positions: {
     uniswap: Array<{
@@ -45,6 +47,9 @@ export interface DailyReport {
     totalLpDelta: string;
     totalFeesUsd: string;
     deltaDriftPercent: number;
+    apr1d?: number;
+    apr7d?: number;
+    apr30d?: number;
   };
 }
 
@@ -56,7 +61,16 @@ export function generateDailyReport(
   status: StrategyStatus,
   recommendation: Recommendation,
   totalLpValueUsd: bigint,
-  totalFeesUsd: bigint
+  totalFeesUsd: bigint,
+  aprMetrics?: {
+    apr1d?: number;
+    apr7d?: number;
+    apr30d?: number;
+  },
+  walletBalances?: {
+    balance0: string;
+    balance1: string;
+  }
 ): DailyReport {
   const totalNetValueUsd = totalLpValueUsd + status.gmx.netValueUsd;
 
@@ -71,6 +85,8 @@ export function generateDailyReport(
       netDelta: ethers.formatEther(status.netDelta),
       deltaDrift: status.deltaDrift,
       recommendation: recommendation.action,
+      walletBalance0: walletBalances?.balance0,
+      walletBalance1: walletBalances?.balance1,
     },
     positions: {
       uniswap: status.uniswap.map((pos) => ({
@@ -96,6 +112,9 @@ export function generateDailyReport(
       totalLpDelta: ethers.formatEther(status.totalLpDelta),
       totalFeesUsd: ethers.formatUnits(totalFeesUsd, 30),
       deltaDriftPercent: status.deltaDrift * 100,
+      apr1d: aprMetrics?.apr1d,
+      apr7d: aprMetrics?.apr7d,
+      apr30d: aprMetrics?.apr30d,
     },
   };
 
@@ -181,6 +200,13 @@ export function formatReportSummary(report: DailyReport): string {
   lines.push(`Net Delta: ${report.summary.netDelta} ETH`);
   lines.push(`Delta Drift: ${(report.summary.deltaDrift * 100).toFixed(2)}%`);
   lines.push(`Recommendation: ${report.summary.recommendation}`);
+
+  if (report.summary.walletBalance0 || report.summary.walletBalance1) {
+    lines.push("");
+    lines.push(`Wallet Balances:`);
+    if (report.summary.walletBalance0) lines.push(`  ${report.summary.walletBalance0}`);
+    if (report.summary.walletBalance1) lines.push(`  ${report.summary.walletBalance1}`);
+  }
   lines.push("");
 
   lines.push("UNISWAP POSITIONS");
@@ -215,6 +241,21 @@ export function formatReportSummary(report: DailyReport): string {
   lines.push(`Total LP Delta: ${report.metrics.totalLpDelta} ETH`);
   lines.push(`Total Fees USD: $${report.metrics.totalFeesUsd}`);
   lines.push(`Delta Drift: ${report.metrics.deltaDriftPercent.toFixed(2)}%`);
+
+  if (
+    report.metrics.apr1d !== undefined ||
+    report.metrics.apr7d !== undefined ||
+    report.metrics.apr30d !== undefined
+  ) {
+    lines.push("");
+    lines.push("APR:");
+    if (report.metrics.apr1d !== undefined)
+      lines.push(`  1d:  ${report.metrics.apr1d.toFixed(2)}%`);
+    if (report.metrics.apr7d !== undefined)
+      lines.push(`  7d:  ${report.metrics.apr7d.toFixed(2)}%`);
+    if (report.metrics.apr30d !== undefined)
+      lines.push(`  30d: ${report.metrics.apr30d.toFixed(2)}%`);
+  }
   lines.push("");
 
   lines.push("=".repeat(80));
