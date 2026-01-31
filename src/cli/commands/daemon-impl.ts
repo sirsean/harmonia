@@ -351,7 +351,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
 
             await sendSuccessAlert(
               "✅ Auto-Optimization Complete",
-              `Daemon successfully completed automatic optimization.`,
+              "",
               fields
             ).catch((alertError) => {
               logger.warn("Failed to send Discord alert", { error: alertError.message });
