@@ -230,7 +230,7 @@ describe("Discord Alerts", () => {
       const body = JSON.parse(call[1].body);
       expect(body.embeds[0].fields).toHaveLength(1);
       expect(body.embeds[0].fields[0].name).toBe("Error Details");
-      expect(body.embeds[0].fields[0].value).toBe("String error");
+      expect(body.embeds[0].fields[0].value).toBe("```String error```");
     });
 
     it("should truncate long stack traces", async () => {
@@ -252,6 +252,28 @@ describe("Discord Alerts", () => {
       const actualStackLength = stackTraceValue.replace(/```/g, "").length - 3; // Remove code block markers and "..."
       expect(actualStackLength).toBeLessThanOrEqual(1000);
       expect(stackTraceValue).toContain("...");
+    });
+
+    it("should truncate long error messages", async () => {
+      process.env.DISCORD_CHANNEL_ID = "123456789";
+      process.env.DISCORD_APP_TOKEN = "test_bot_token";
+
+      const mockResponse = { ok: true, status: 200 };
+      (global.fetch as any).mockResolvedValueOnce(mockResponse);
+
+      const longMessage = "A".repeat(2000);
+      const error = new Error(longMessage);
+
+      await sendErrorAlert("Test Error", "Something went wrong", error);
+
+      const call = (global.fetch as any).mock.calls[0];
+      const body = JSON.parse(call[1].body);
+      
+      const errorMessageValue = body.embeds[0].fields[0].value;
+      // Should be truncated
+      const actualMessageLength = errorMessageValue.replace(/```/g, "").length - 3;
+      expect(actualMessageLength).toBeLessThanOrEqual(1000);
+      expect(errorMessageValue).toContain("...");
     });
 
     it("should handle error without stack trace", async () => {
