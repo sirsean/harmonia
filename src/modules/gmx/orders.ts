@@ -11,6 +11,7 @@ import {
   IERC20,
 } from "./types";
 import { GMX_ROUTER_ABI } from "../../utils/abis";
+import { refreshNonce } from "../../utils/helpers";
 
 export function createRouter(address: string, signer: ethers.Signer): GMXRouter {
   return new ethers.Contract(address, GMX_ROUTER_ABI, signer) as unknown as GMXRouter;
@@ -123,6 +124,8 @@ export async function ensureAllowance(
   const approval = await token.approve(spender, amount);
   // CRITICAL: Wait for approval before proceeding
   await approval.wait();
+  // Note: Nonce refresh is handled by the calling function (createIncreaseOrder/createDecreaseOrder)
+  // to ensure we have access to the router's provider
   return true;
 }
 
@@ -151,6 +154,14 @@ export async function createIncreaseOrder(
   // Always ensure allowance - let ethers manage nonces automatically
   await ensureAllowance(token, request.account, routerAddress, request.collateralAmount);
 
+  // CRITICAL: Refresh nonce after approval before order creation
+  // Get provider from router (which has the signer)
+  const routerContract = router as unknown as ethers.Contract;
+  const provider = routerContract.runner?.provider;
+  if (provider && typeof provider === "object" && "getTransactionCount" in provider) {
+    await refreshNonce(provider as ethers.Provider, request.account);
+  }
+
   const multicallData = buildMulticallData(router.interface, {
     orderVault: config.orderVault,
     orderParams,
@@ -162,16 +173,12 @@ export async function createIncreaseOrder(
   const performStaticCall = config.performStaticCall ?? true;
   await maybeStaticCall(router, multicallData, request.executionFee, performStaticCall);
 
-  // Build transaction options - only include nonce if provided (let ethers manage it otherwise)
-  const txOptions: { value: bigint; gasLimit?: number; nonce?: number } = {
+  // Build transaction options - let ethers manage nonce automatically
+  const txOptions: { value: bigint; gasLimit?: number } = {
     value: request.executionFee,
   };
   if (config.gasLimit) {
     txOptions.gasLimit = config.gasLimit;
-  }
-  // Only include nonce if explicitly provided - otherwise let ethers manage it
-  if (config.nonce !== undefined) {
-    txOptions.nonce = config.nonce;
   }
 
   const tx = await router.multicall(multicallData, txOptions);
@@ -200,16 +207,12 @@ export async function createDecreaseOrder(
   const performStaticCall = config.performStaticCall ?? true;
   await maybeStaticCall(router, multicallData, request.executionFee, performStaticCall);
 
-  // Build transaction options - only include nonce if provided (let ethers manage it otherwise)
-  const txOptions: { value: bigint; gasLimit?: number; nonce?: number } = {
+  // Build transaction options - let ethers manage nonce automatically
+  const txOptions: { value: bigint; gasLimit?: number } = {
     value: request.executionFee,
   };
   if (config.gasLimit) {
     txOptions.gasLimit = config.gasLimit;
-  }
-  // Only include nonce if explicitly provided - otherwise let ethers manage it
-  if (config.nonce !== undefined) {
-    txOptions.nonce = config.nonce;
   }
 
   const tx = await router.multicall(multicallData, txOptions);

@@ -620,7 +620,7 @@ describe("daemon command", () => {
       };
       mockCheckFn.mockResolvedValue({ status, recommendation });
       const { executeOptimize } = await import("../../../src/cli/commands/strategy/execute-optimize");
-      vi.mocked(executeOptimize).mockResolvedValue(undefined);
+      vi.mocked(executeOptimize).mockResolvedValue({ feesCollectedUsd: 0n });
 
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
         throw new Error("process.exit called");
@@ -861,7 +861,7 @@ describe("daemon command", () => {
         resolveOptimization = resolve;
       });
       const { executeOptimize } = await import("../../../src/cli/commands/strategy/execute-optimize");
-      vi.mocked(executeOptimize).mockImplementation(() => optimizationPromise);
+      vi.mocked(executeOptimize).mockImplementation(() => optimizationPromise.then(() => ({ feesCollectedUsd: 0n })));
 
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
         throw new Error("process.exit called");
@@ -912,12 +912,12 @@ describe("daemon command", () => {
       let callCount = 0;
       mockCheckFn.mockResolvedValue({ status, recommendation });
       const { executeOptimize } = await import("../../../src/cli/commands/strategy/execute-optimize");
-      vi.mocked(executeOptimize).mockImplementation(() => {
+      vi.mocked(executeOptimize).mockImplementation(async () => {
         callCount++;
         if (callCount === 1) {
-          return Promise.reject(new Error("First optimization fails"));
+          throw new Error("First optimization fails");
         }
-        return Promise.resolve(undefined);
+        return { feesCollectedUsd: 0n };
       });
 
       const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {

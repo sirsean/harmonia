@@ -234,6 +234,154 @@ const migration004_state_persistence: Migration = {
 };
 
 /**
+ * Migration: Add APR tracking tables
+ */
+const migration005_apr_tracking: Migration = {
+  version: 5,
+  name: "apr_tracking",
+  up: (db: Database.Database) => {
+    // Track individual fee collection events
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS fee_collection_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        token_id TEXT NOT NULL,
+        fees_collected_usd TEXT NOT NULL,
+        fees_amount0 TEXT,
+        fees_amount1 TEXT,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
+    // Track GMX funding fee snapshots
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS funding_fee_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        snapshot_id INTEGER,
+        funding_fee_amount_usd TEXT NOT NULL,
+        funding_fee_per_size TEXT NOT NULL,
+        position_size_tokens TEXT NOT NULL,
+        created_at INTEGER DEFAULT (strftime('%s', 'now')),
+        FOREIGN KEY (snapshot_id) REFERENCES monitoring_snapshots(id)
+      )
+    `);
+
+    // APR calculation cache (for performance)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS apr_calculations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        period_type TEXT NOT NULL CHECK(period_type IN ('daily', 'weekly', 'monthly', 'rolling_7d', 'rolling_30d', 'rolling_90d', 'lifetime')),
+        period_start INTEGER NOT NULL,
+        period_end INTEGER NOT NULL,
+        fees_collected_usd TEXT NOT NULL,
+        costs_incurred_usd TEXT NOT NULL,
+        net_yield_usd TEXT NOT NULL,
+        average_nav_usd TEXT NOT NULL,
+        apr_bps INTEGER NOT NULL,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
+    // Indexes for performance
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_fee_collection_account_timestamp 
+      ON fee_collection_history(account, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_funding_fee_account_timestamp 
+      ON funding_fee_history(account, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_apr_calculations_account_period 
+      ON apr_calculations(account, period_type, period_end DESC);
+    `);
+  },
+  down: (db: Database.Database) => {
+    db.exec(`DROP INDEX IF EXISTS idx_apr_calculations_account_period`);
+    db.exec(`DROP INDEX IF EXISTS idx_funding_fee_account_timestamp`);
+    db.exec(`DROP INDEX IF EXISTS idx_fee_collection_account_timestamp`);
+    db.exec(`DROP TABLE IF EXISTS apr_calculations`);
+    db.exec(`DROP TABLE IF EXISTS funding_fee_history`);
+    db.exec(`DROP TABLE IF EXISTS fee_collection_history`);
+  },
+};
+
+/**
+ * Migration: Add GMX execution fee tracking and clean up old estimates
+ */
+const migration006_cost_tracking: Migration = {
+  version: 6,
+  name: "cost_tracking",
+  up: (db: Database.Database) => {
+    // Check if column already exists (in case migration runs twice)
+    const tableInfo = db.prepare("PRAGMA table_info(operation_history)").all() as Array<{
+      name: string;
+    }>;
+    const hasGmxFeeColumn = tableInfo.some((col) => col.name === "gmx_execution_fee_usd");
+
+    if (!hasGmxFeeColumn) {
+      // Add gmx_execution_fee_usd column to operation_history
+      db.exec(`
+        ALTER TABLE operation_history 
+        ADD COLUMN gmx_execution_fee_usd TEXT
+      `);
+    }
+
+    // Delete old $2 estimates (estimatedOptimizationGasCostUsd)
+    // These are way too high and will throw off calculations
+    // We'll replace them with actual gas costs going forward
+    // The value is stored as: BigInt(2) * PRECISION.GMX_USD = 2 * 10^30
+    // Delete any gas_cost_usd values that are >= $1 (1000000000000000000000000000000)
+    // as these are clearly estimates, not actual gas costs
+    // Actual gas costs should be much smaller (~$0.05 = 50000000000000000000000000000)
+    // Use numeric comparison - SQLite can compare TEXT as numbers if both are numeric strings
+    // This is idempotent - safe to run multiple times
+    const updateStmt = db.prepare(`
+      UPDATE operation_history 
+      SET gas_cost_usd = NULL 
+      WHERE gas_cost_usd IS NOT NULL 
+      AND CAST(gas_cost_usd AS REAL) >= 1000000000000000000000000000000.0
+    `);
+    const result = updateStmt.run();
+    if (result.changes > 0) {
+      console.log(`[Migration 006] Deleted ${result.changes} old cost estimates`);
+    }
+  },
+  down: (db: Database.Database) => {
+    // Remove the column (SQLite doesn't support DROP COLUMN, so we'd need to recreate the table)
+    // For now, just leave it - the column can stay but won't be used
+  },
+};
+
+/**
+ * Migration: Cleanup old cost estimates (idempotent, can run multiple times)
+ * This is a follow-up to migration 006 to ensure all old estimates are deleted
+ */
+const migration007_cleanup_old_costs: Migration = {
+  version: 7,
+  name: "cleanup_old_costs",
+  up: (db: Database.Database) => {
+    // Delete any gas_cost_usd values that are >= $1
+    // This is idempotent and can be run multiple times safely
+    // Use numeric comparison - SQLite can compare TEXT as numbers if both are numeric strings
+    const updateStmt = db.prepare(`
+      UPDATE operation_history 
+      SET gas_cost_usd = NULL 
+      WHERE gas_cost_usd IS NOT NULL 
+      AND CAST(gas_cost_usd AS REAL) >= 1000000000000000000000000000000.0
+    `);
+    const result = updateStmt.run();
+    if (result.changes > 0) {
+      console.log(`[Migration 007] Deleted ${result.changes} old cost estimates`);
+    }
+  },
+  down: (db: Database.Database) => {
+    // No rollback needed - this is just a cleanup
+  },
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
@@ -241,6 +389,9 @@ export const migrations: Migration[] = [
   migration002_optimization_tracking,
   migration003_optimization_failures,
   migration004_state_persistence,
+  migration005_apr_tracking,
+  migration006_cost_tracking,
+  migration007_cleanup_old_costs,
 ];
 
 /**
@@ -292,13 +443,19 @@ export function migrate(db: Database.Database): void {
   // Begin transaction
   const transaction = db.transaction(() => {
     for (const migration of pendingMigrations) {
-      migration.up(db);
+      try {
+        migration.up(db);
 
-      // Record migration
-      db.prepare("INSERT INTO schema_migrations (version, name) VALUES (?, ?)").run(
-        migration.version,
-        migration.name
-      );
+        // Record migration
+        db.prepare("INSERT INTO schema_migrations (version, name) VALUES (?, ?)").run(
+          migration.version,
+          migration.name
+        );
+      } catch (error: any) {
+        // If migration fails, log error but don't fail silently
+        console.error(`Migration ${migration.version} (${migration.name}) failed:`, error);
+        throw error;
+      }
     }
   });
 

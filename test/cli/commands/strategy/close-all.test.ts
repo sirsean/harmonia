@@ -11,6 +11,7 @@ vi.mock("hardhat", () => ({
         getAddress: vi.fn(() => Promise.resolve("0x1234567890123456789012345678901234567890")),
         provider: {
           getBlockNumber: vi.fn(() => Promise.resolve(1000)),
+          getTransactionCount: vi.fn(() => Promise.resolve(0)),
         },
       },
     ]),
@@ -64,6 +65,7 @@ vi.mock("../../../../src/cli/commands/base", () => ({
       getAddress: vi.fn(() => Promise.resolve("0x1234567890123456789012345678901234567890")),
       provider: {
         getBlockNumber: vi.fn(() => Promise.resolve(1000)),
+        getTransactionCount: vi.fn(() => Promise.resolve(0)),
       },
     };
     return {
@@ -105,6 +107,8 @@ vi.mock("../../../../src/config/strategy", () => ({
     estimatedOptimizationGasCostUsd: ethers.parseUnits("10", 30),
     maxPositionSizeUsd: ethers.parseUnits("100000", 30),
     targetLeverage: ethers.parseUnits("2", 18),
+    maxSlippage: 0.01, // 1%
+    slippageBuffer: 0.005, // 0.5%
   })),
 }));
 

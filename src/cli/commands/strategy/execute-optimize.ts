@@ -40,7 +40,7 @@ import {
   UNISWAP_QUOTER_ABI,
 } from "../../../utils/abis";
 
-import { toBigInt } from "../../../utils/helpers";
+import { toBigInt, refreshNonce } from "../../../utils/helpers";
 import { sendErrorAlert, sendSuccessAlert } from "../../../utils/alerts";
 
 export interface ExecuteOptimizeOptions {
@@ -62,7 +62,13 @@ export interface ExecuteOptimizeOptions {
  * Unlike `adjust-range`, this command always executes regardless of monitor recommendations.
  * This is useful when delta has drifted but LP is still technically "in range".
  */
-export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Promise<void> {
+export interface ExecuteOptimizeResult {
+  feesCollectedUsd: bigint;
+}
+
+export async function executeOptimize(
+  options: ExecuteOptimizeOptions = {}
+): Promise<ExecuteOptimizeResult> {
   const { signer, account } = await getSignerAndAccount(options.account);
 
   console.log("\n" + "=".repeat(60));
@@ -341,14 +347,28 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     // Close positions using shared close function
     // Note: We calculate tokens before closing (above) so we can plan the new position
     // The closePositions function handles the actual closing logic
-    await closePositions(
+    // Create database instance for recording fee collections (will be reused later for optimization recording)
+    const db = new MonitoringDatabase();
+
+    // Track transaction receipts for gas cost calculation
+    const transactionReceipts: Array<{ gasUsed: bigint; gasPrice: bigint }> = [];
+
+    const closeResult = await closePositions(
       account,
       signer,
       positionsToOptimize.map((pos) => ({ tokenId: pos.tokenId, liquidity: pos.liquidity })),
       gmxPosition || null,
       executeFlag,
-      monitorConfig
+      monitorConfig,
+      db
     );
+
+    // CRITICAL: Refresh nonce after closing positions to prevent "nonce too low" errors
+    // Closing positions may have sent multiple transactions (decrease liquidity, collect fees, GMX orders)
+    // We need to refresh the nonce before proceeding with swaps
+    if (executeFlag) {
+      await refreshNonce(signer.provider, account);
+    }
 
     // Get actual balances after closing (for execution path)
     // For dry-run, we use the calculated totals above
@@ -397,7 +417,7 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     // Check if we have sufficient capital
     if (totalCapitalUsd === 0n) {
       console.error("No capital available to create positions.");
-      return;
+      return { feesCollectedUsd: 0n };
     }
 
     // Calculate optimal allocation between LP and GMX hedge
@@ -431,9 +451,36 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
     console.log(`  WETH: ${ethers.formatUnits(wethAmount, wethDecimals)}`);
     console.log(`  USDC: ${ethers.formatUnits(usdcAmount, usdcDecimals)}`);
 
+    // Calculate GMX collateral requirement if we're opening a GMX position
+    let gmxCollateralAmount = 0n;
+    if (allocation.gmxShortSizeUsd > 0n) {
+      // Create a temporary RebalanceManager to calculate collateral
+      const gmxRouter = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
+      const usdcContractForGmx = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer);
+      const rebalanceManager = new RebalanceManager(
+        gmxRouter as any,
+        usdcContractForGmx as any,
+        monitorConfig,
+        {
+          account,
+          market: ARBITRUM_MAINNET.gmxEthUsdMarket,
+          collateralTokenAddress: ARBITRUM_MAINNET.usdc,
+          orderVault: ARBITRUM_MAINNET.gmxOrderVault,
+        }
+      );
+      const { amount: collateralAmount } = rebalanceManager.calculateRequiredCollateral(
+        allocation.gmxShortSizeUsd,
+        1.0, // USDC price
+        6 // USDC decimals
+      );
+      gmxCollateralAmount = collateralAmount;
+      console.log(`  GMX collateral needed: ${ethers.formatUnits(gmxCollateralAmount, 6)} USDC`);
+    }
+
     // Check if we have enough tokens, swap if needed
-    const wethNeeded = wethAmount;
-    const usdcNeeded = usdcAmount;
+    // Account for both LP and GMX collateral requirements
+    const wethNeeded = wethAmount; // Only LP needs WETH
+    const usdcNeeded = usdcAmount + gmxCollateralAmount; // LP + GMX collateral
     const wethAvailable = wethBalance;
     const usdcAvailable = usdcBalance;
 
@@ -507,7 +554,20 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
             amountIn
           );
           // CRITICAL: Wait for approval before proceeding
-          await approval.wait();
+          const approvalReceipt = await approval.wait();
+          if (
+            executeFlag &&
+            approvalReceipt &&
+            approvalReceipt.gasUsed &&
+            approvalReceipt.gasPrice
+          ) {
+            transactionReceipts.push({
+              gasUsed: approvalReceipt.gasUsed,
+              gasPrice: approvalReceipt.gasPrice,
+            });
+          }
+          // CRITICAL: Refresh nonce after approval before swap
+          await refreshNonce(signer.provider, account);
         }
         // Let ethers manage nonce automatically
         const swapTx = await swapRouter.exactInputSingle({
@@ -522,7 +582,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         });
         console.log(`  Swap tx: ${swapTx.hash}`);
         // CRITICAL: Wait for swap confirmation before proceeding
-        await swapTx.wait();
+        const swapReceipt = await swapTx.wait();
+        // CRITICAL: Refresh nonce after swap to prevent "nonce too low" errors
+        await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),
@@ -578,7 +640,20 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
             amountIn
           );
           // CRITICAL: Wait for approval before proceeding
-          await approval.wait();
+          const approvalReceipt = await approval.wait();
+          if (
+            executeFlag &&
+            approvalReceipt &&
+            approvalReceipt.gasUsed &&
+            approvalReceipt.gasPrice
+          ) {
+            transactionReceipts.push({
+              gasUsed: approvalReceipt.gasUsed,
+              gasPrice: approvalReceipt.gasPrice,
+            });
+          }
+          // CRITICAL: Refresh nonce after approval before swap
+          await refreshNonce(signer.provider, account);
         }
         // Let ethers manage nonce automatically
         const swapTx = await swapRouter.exactInputSingle({
@@ -593,7 +668,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         });
         console.log(`  Swap tx: ${swapTx.hash}`);
         // CRITICAL: Wait for swap confirmation before proceeding
-        await swapTx.wait();
+        const swapReceipt = await swapTx.wait();
+        // CRITICAL: Refresh nonce after swap to prevent "nonce too low" errors
+        await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),
@@ -606,9 +683,13 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       if (wethShortfall > 0n) {
         console.log(`\nWould swap USDC for WETH to cover shortfall`);
       } else if (usdcShortfall > 0n) {
-        console.log(`\nWould swap WETH for USDC to cover shortfall`);
+        console.log(
+          `\nWould swap WETH for USDC to cover shortfall (${ethers.formatUnits(usdcShortfall, usdcDecimals)} USDC needed)`
+        );
       } else {
-        console.log(`\nToken amounts are sufficient for LP position.`);
+        console.log(
+          `\nToken amounts are sufficient for LP position${gmxCollateralAmount > 0n ? " and GMX collateral" : ""}.`
+        );
       }
     }
 
@@ -645,7 +726,33 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
       const positionManager = ARBITRUM_MAINNET.uniswapV3PositionManager;
 
-      // Verify balances before proceeding
+      // Calculate GMX collateral requirement if we're opening a GMX position
+      let gmxCollateralAmount = 0n;
+      if (allocation.gmxShortSizeUsd > 0n) {
+        // Create a temporary RebalanceManager to calculate collateral
+        // We need to create the router and token contracts, but we can use a minimal config
+        const gmxRouter = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
+        const usdcContractForGmx = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer);
+        const rebalanceManager = new RebalanceManager(
+          gmxRouter as any,
+          usdcContractForGmx as any,
+          monitorConfig,
+          {
+            account,
+            market: ARBITRUM_MAINNET.gmxEthUsdMarket,
+            collateralTokenAddress: ARBITRUM_MAINNET.usdc,
+            orderVault: ARBITRUM_MAINNET.gmxOrderVault,
+          }
+        );
+        const { amount: collateralAmount } = rebalanceManager.calculateRequiredCollateral(
+          allocation.gmxShortSizeUsd,
+          1.0, // USDC price
+          6 // USDC decimals
+        );
+        gmxCollateralAmount = collateralAmount;
+      }
+
+      // Verify balances before proceeding - must account for both LP and GMX collateral
       const [currentBalance0, currentBalance1, allowance0, allowance1] = await Promise.all([
         token0Contract.balanceOf(account),
         token1Contract.balanceOf(account),
@@ -653,21 +760,51 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         token1Contract.allowance(account, positionManager),
       ]);
 
+      // Calculate total USDC needed (LP + GMX collateral)
+      const usdcForLp = isToken0Usdc ? finalAmount0 : finalAmount1;
+      const totalUsdcNeeded = usdcForLp + gmxCollateralAmount;
+
+      // Calculate total WETH needed (only for LP, GMX uses USDC collateral)
+      const wethForLp = isToken0Weth ? finalAmount0 : finalAmount1;
+      const totalWethNeeded = wethForLp;
+
       console.log(`  Current balances:`);
       console.log(`    ${token0Symbol}: ${ethers.formatUnits(currentBalance0, token0Decimals)}`);
       console.log(`    ${token1Symbol}: ${ethers.formatUnits(currentBalance1, token1Decimals)}`);
-      console.log(`  Required amounts:`);
+      console.log(`  Required amounts for LP:`);
       console.log(`    ${token0Symbol}: ${ethers.formatUnits(finalAmount0, token0Decimals)}`);
       console.log(`    ${token1Symbol}: ${ethers.formatUnits(finalAmount1, token1Decimals)}`);
-
-      if (currentBalance0 < finalAmount0) {
-        throw new Error(
-          `Insufficient ${token0Symbol} balance: have ${ethers.formatUnits(currentBalance0, token0Decimals)}, need ${ethers.formatUnits(finalAmount0, token0Decimals)}`
+      if (gmxCollateralAmount > 0n) {
+        console.log(
+          `  Required USDC for GMX collateral: ${ethers.formatUnits(gmxCollateralAmount, 6)}`
+        );
+        console.log(
+          `  Total USDC needed (LP + GMX): ${ethers.formatUnits(totalUsdcNeeded, isToken0Usdc ? token0Decimals : token1Decimals)}`
         );
       }
-      if (currentBalance1 < finalAmount1) {
+
+      // Check balances accounting for both LP and GMX requirements
+      const currentWeth = isToken0Weth ? currentBalance0 : currentBalance1;
+      const currentUsdc = isToken0Usdc ? currentBalance0 : currentBalance1;
+      const usdcDecimalsForCheck = isToken0Usdc ? token0Decimals : token1Decimals;
+
+      // Both usdcForLp and gmxCollateralAmount should be in 6 decimals (USDC)
+      // But usdcForLp might be in token0/token1 decimals, so normalize gmxCollateralAmount
+      // to match usdcForLp's decimals for the comparison
+      const gmxCollateralNormalized =
+        usdcDecimalsForCheck === 6
+          ? gmxCollateralAmount
+          : gmxCollateralAmount * 10n ** BigInt(usdcDecimalsForCheck - 6);
+      const totalUsdcNeededNormalized = usdcForLp + gmxCollateralNormalized;
+
+      if (currentWeth < totalWethNeeded) {
         throw new Error(
-          `Insufficient ${token1Symbol} balance: have ${ethers.formatUnits(currentBalance1, token1Decimals)}, need ${ethers.formatUnits(finalAmount1, token1Decimals)}`
+          `Insufficient WETH balance: have ${ethers.formatUnits(currentWeth, wethDecimals)}, need ${ethers.formatUnits(totalWethNeeded, wethDecimals)} for LP position`
+        );
+      }
+      if (currentUsdc < totalUsdcNeededNormalized) {
+        throw new Error(
+          `Insufficient USDC balance: have ${ethers.formatUnits(currentUsdc, usdcDecimalsForCheck)}, need ${ethers.formatUnits(totalUsdcNeededNormalized, usdcDecimalsForCheck)} (${ethers.formatUnits(usdcForLp, usdcDecimalsForCheck)} for LP + ${ethers.formatUnits(gmxCollateralAmount, 6)} for GMX collateral)`
         );
       }
 
@@ -684,7 +821,15 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         if (receipt.status !== 1) {
           throw new Error(`Approval transaction reverted for ${token0Symbol}`);
         }
+        if (executeFlag && receipt && receipt.gasUsed && receipt.gasPrice) {
+          transactionReceipts.push({
+            gasUsed: receipt.gasUsed,
+            gasPrice: receipt.gasPrice,
+          });
+        }
 
+        // CRITICAL: Refresh nonce after approval before next transaction
+        await refreshNonce(signer.provider, account);
         // Verify approval succeeded - check with a small delay to ensure state is updated
         await new Promise((resolve) => setTimeout(resolve, 500));
         const newAllowance0 = await token0Contract.allowance(account, positionManager);
@@ -708,7 +853,15 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         if (receipt.status !== 1) {
           throw new Error(`Approval transaction reverted for ${token1Symbol}`);
         }
+        if (executeFlag && receipt && receipt.gasUsed && receipt.gasPrice) {
+          transactionReceipts.push({
+            gasUsed: receipt.gasUsed,
+            gasPrice: receipt.gasPrice,
+          });
+        }
 
+        // CRITICAL: Refresh nonce after approval before mint
+        await refreshNonce(signer.provider, account);
         // Verify approval succeeded - check with a small delay to ensure state is updated
         await new Promise((resolve) => setTimeout(resolve, 500));
         const newAllowance1 = await token1Contract.allowance(account, positionManager);
@@ -759,6 +912,22 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         console.log(`  LP position minted. Tx: ${mintResult.txHash}`);
         // Transaction already waited for receipt (always waits)
         console.log(`  LP position confirmed`);
+        // CRITICAL: Refresh nonce after mint before GMX operations
+        await refreshNonce(signer.provider, account);
+        // Get receipt for gas cost tracking
+        if (executeFlag && signer.provider) {
+          try {
+            const mintReceipt = await signer.provider.getTransactionReceipt(mintResult.txHash);
+            if (mintReceipt && mintReceipt.gasUsed && mintReceipt.gasPrice) {
+              transactionReceipts.push({
+                gasUsed: mintReceipt.gasUsed,
+                gasPrice: mintReceipt.gasPrice,
+              });
+            }
+          } catch (error) {
+            // Receipt might not be available yet, that's okay
+          }
+        }
       }
 
       // Open GMX hedge position
@@ -806,8 +975,16 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           throw new Error("Missing output price for GMX order");
         }
 
-        // Acceptable price: current - 1% slippage (for opening short, we're selling)
-        const acceptablePrice = (priceResult.outputPrice * 99n) / 100n;
+        // Acceptable price: current - max slippage (for opening short, we're selling)
+        // Use maxSlippage from config (default 1%) for acceptable price tolerance
+        // Convert maxSlippage to basis points: 0.01 = 1% = 100 bps
+        const slippageBps = BigInt(Math.round(monitorConfig.maxSlippage * 10000));
+        const slippageFactor = 10000n - slippageBps;
+        const acceptablePrice = (priceResult.outputPrice * slippageFactor) / 10000n;
+
+        console.log(
+          `  Acceptable price: ${ethers.formatUnits(acceptablePrice, 12)} (${monitorConfig.maxSlippage * 100}% slippage tolerance)`
+        );
 
         // Approve USDC for GMX
         const usdcContractForGmx = new ethers.Contract(ARBITRUM_MAINNET.usdc, ERC20_ABI, signer);
@@ -824,6 +1001,8 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
           );
           // CRITICAL: Wait for approval before proceeding
           await approval.wait();
+          // CRITICAL: Refresh nonce after approval before GMX order
+          await refreshNonce(signer.provider, account);
         }
 
         // Let ethers manage nonce automatically - no manual nonce management
@@ -849,8 +1028,19 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         console.log(`  GMX short order created. Tx: ${gmxResult.txHash}`);
         // CRITICAL: Wait for GMX transaction confirmation before proceeding
         if (gmxResult.tx) {
-          const gmxReceipt = (await gmxResult.tx.wait()) as { blockNumber: number };
-          console.log(`  GMX order confirmed in block ${gmxReceipt.blockNumber}`);
+          const gmxReceipt = await gmxResult.tx.wait();
+          console.log(`  GMX order confirmed in block ${(gmxReceipt as any).blockNumber}`);
+          if (
+            executeFlag &&
+            gmxReceipt &&
+            (gmxReceipt as any).gasUsed &&
+            (gmxReceipt as any).gasPrice
+          ) {
+            transactionReceipts.push({
+              gasUsed: (gmxReceipt as any).gasUsed,
+              gasPrice: (gmxReceipt as any).gasPrice,
+            });
+          }
         } else {
           throw new Error("GMX order transaction was not returned - cannot proceed safely");
         }
@@ -865,31 +1055,73 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
       }
 
       // Record optimization in database using StateManager
-      let totalFeesUsd = 0n;
+      // Reuse the database instance created earlier for fee recording
+      // Use actual fees collected from closing positions
+      const totalFeesUsd = closeResult.totalFeesCollectedUsd;
+      let totalGasCostUsd = 0n;
+      let gmxExecutionFeeUsd = 0n;
       try {
-        const db = new MonitoringDatabase();
         const stateManager = new StateManager(db);
-        const gasCostUsd = monitorConfig.estimatedOptimizationGasCostUsd;
-        // Calculate total fees from status
-        for (const pos of status.uniswap) {
-          // Simplified fee calculation - use recommendation data if available
-          if (recommendation.data?.totalFeesUsd) {
-            totalFeesUsd = recommendation.data.totalFeesUsd;
-            break;
-          }
-        }
+
         const benefitUsd = totalFeesUsd; // Simplified - could calculate more accurately
 
+        // Track actual gas costs from transaction receipts
+        // Get ETH price for USD conversion
+        const ethPriceResult = await getLatestPrice(
+          ARBITRUM_MAINNET.chainlinkEthUsdFeed,
+          signer.provider!,
+          { outputDecimals: 12, maxStaleSeconds: 3600 }
+        );
+        const ethPriceUsd = ethPriceResult.outputPrice
+          ? Number(ethers.formatUnits(ethPriceResult.outputPrice, 12))
+          : 3000;
+
+        // Calculate total gas cost from transaction receipts
+        let totalGasCostWei = 0n;
+        for (const receipt of transactionReceipts) {
+          totalGasCostWei += receipt.gasUsed * receipt.gasPrice;
+        }
+
+        // Convert gas cost to USD (30 decimals)
+        // gasCostWei is in wei, ethPriceUsd is in USD per ETH
+        // We need: (gasCostWei / 1e18) * ethPriceUsd * 1e30
+        const gasCostEth = Number(ethers.formatEther(totalGasCostWei));
+        const gasCostUsdFloat = gasCostEth * ethPriceUsd;
+        totalGasCostUsd = ethers.parseUnits(gasCostUsdFloat.toFixed(18), 30);
+
+        // GMX execution fee: ~0.00011 ETH (net after refund)
+        // This is the actual cost, not the full execution fee sent
+        const gmxExecutionFeeEth = ethers.parseEther("0.00011");
+        gmxExecutionFeeUsd =
+          (gmxExecutionFeeEth * BigInt(Math.floor(ethPriceUsd * 1e12)) * 10n ** 18n) /
+          (10n ** 18n * 10n ** 12n);
+
+        // Only add GMX execution fee if we actually created a GMX order
+        const actualGmxExecutionFeeUsd = allocation.gmxShortSizeUsd > 0n ? gmxExecutionFeeUsd : 0n;
+
         // Record optimization operation via StateManager (tracks operation history and metrics)
-        await stateManager.recordOperation(account, "optimization", gasCostUsd, {
-          deltaDrift: status.deltaDrift,
-          totalFeesUsd: totalFeesUsd.toString(),
-          benefitUsd: benefitUsd.toString(),
-          anyOutOfRange: recommendation.data?.anyOutOfRange || false,
-        });
+        await stateManager.recordOperation(
+          account,
+          "optimization",
+          totalGasCostUsd,
+          {
+            deltaDrift: status.deltaDrift,
+            totalFeesUsd: totalFeesUsd.toString(),
+            benefitUsd: benefitUsd.toString(),
+            anyOutOfRange: recommendation.data?.anyOutOfRange || false,
+          },
+          actualGmxExecutionFeeUsd
+        );
 
         // Also record in optimization_history table for backward compatibility
-        db.recordOptimization(account, status.deltaDrift, totalFeesUsd, gasCostUsd, benefitUsd);
+        // Use total costs (gas + GMX execution fee) for gas_cost_usd field
+        db.recordOptimization(
+          account,
+          status.deltaDrift,
+          totalFeesUsd,
+          totalGasCostUsd + actualGmxExecutionFeeUsd,
+          benefitUsd
+        );
 
         // Update fees collected metric if fees were collected
         if (totalFeesUsd > 0n) {
@@ -902,6 +1134,9 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         console.log(`  Optimization recorded in database`);
       } catch (error) {
         console.warn(`  Warning: Failed to record optimization in database: ${error}`);
+      } finally {
+        // Close database instance
+        db.close();
       }
 
       // Send success alert to Discord
@@ -959,6 +1194,11 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         // Don't fail optimization if alert fails
         console.warn("Failed to send Discord alert:", alertError);
       }
+
+      // Return fees collected from execution
+      return {
+        feesCollectedUsd: totalFeesUsd,
+      };
     } else {
       console.log(`\n3. Open new LP position:`);
       console.log(`   - Range: ${lowerPrice.toFixed(6)} - ${upperPrice.toFixed(6)}`);
@@ -974,6 +1214,8 @@ export async function executeOptimize(options: ExecuteOptimizeOptions = {}): Pro
         `   - Total capital used: $${ethers.formatUnits(allocation.totalCapitalUsd, 30)}`
       );
       console.log("\nTo execute, run with --execute flag");
+      // Return 0 for dry-run
+      return { feesCollectedUsd: 0n };
     }
   } catch (error: any) {
     console.error("\nError during optimization:");

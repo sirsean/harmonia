@@ -194,6 +194,25 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       ? gmxPosition.numbers.shortTokenClaimableFundingAmountPerSize
       : 0n;
 
+    // Calculate funding fee amount (negative for costs)
+    // Note: shortTokenClaimableFundingAmountPerSize is typically negative for shorts (we pay funding)
+    // We'll track the absolute value as a cost
+    let fundingFeeAmountUsd = 0n;
+    if (gmxPosition && gmxPosition.numbers.sizeInTokens > 0n) {
+      // fundingFeeAmountPerSize is cumulative funding fees paid per unit of size
+      // Convert to USD value (30 decimals)
+      const sizeInTokensScaled = gmxPosition.numbers.sizeInTokens;
+      // fundingFeeAmountPerSize is in USD (30 decimals) per token (scaled)
+      // For accurate tracking, we'd need to track changes over time
+      // For now, we'll use the claimable funding as an approximation
+      // Note: This is an approximation - actual funding fees should be tracked as deltas
+      if (gmxPosition.numbers.fundingFeeAmountPerSize !== 0n) {
+        // This is a cumulative value, so we'd need to track deltas
+        // For now, we'll record it but actual calculation should track changes
+        fundingFeeAmountUsd = gmxPosition.numbers.fundingFeeAmountPerSize;
+      }
+    }
+
     // Estimate GMX Net Value
     let gmxNetValue = 0n;
     let gmxCollateralAmount = 0n;

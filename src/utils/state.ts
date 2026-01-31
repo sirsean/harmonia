@@ -76,9 +76,16 @@ export class StateManager {
     account: string,
     type: "rebalance" | "compound" | "range_adjustment" | "optimization",
     gasCostUsd?: bigint,
-    operationData?: Record<string, any>
+    operationData?: Record<string, any>,
+    gmxExecutionFeeUsd?: bigint
   ): Promise<number> {
-    const operationId = this.db.recordOperation(account, type, gasCostUsd, operationData);
+    const operationId = this.db.recordOperation(
+      account,
+      type,
+      gasCostUsd,
+      operationData,
+      gmxExecutionFeeUsd
+    );
 
     // Update metrics
     const metrics = this.db.getMetrics(account);

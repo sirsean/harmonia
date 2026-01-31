@@ -159,6 +159,21 @@ export class MonitoringDatabase {
 
     insertNav.run(timestamp, account, totalNavUsd.toString());
 
+    // Record funding fee snapshot if GMX position exists
+    // Note: pendingFundingRewards is shortTokenClaimableFundingAmountPerSize
+    // For shorts, this is typically negative (we pay funding), positive means we receive funding
+    if (status.gmx.positionSizeTokens > 0n) {
+      const fundingFeePerSize = status.gmx.pendingFundingRewards || 0n;
+      // Record the funding fee per size - actual costs will be calculated from deltas
+      this.recordFundingFee(
+        account,
+        snapshotId,
+        0n, // Will be calculated from deltas between snapshots
+        fundingFeePerSize,
+        status.gmx.positionSizeTokens
+      );
+    }
+
     return snapshotId;
   }
 
@@ -534,13 +549,14 @@ export class MonitoringDatabase {
     account: string,
     operationType: "rebalance" | "compound" | "range_adjustment" | "optimization",
     gasCostUsd?: bigint,
-    operationData?: Record<string, any>
+    operationData?: Record<string, any>,
+    gmxExecutionFeeUsd?: bigint
   ): number {
     const timestamp = Date.now();
     const insert = this.db.prepare(`
       INSERT INTO operation_history (
-        timestamp, account, operation_type, gas_cost_usd, operation_data
-      ) VALUES (?, ?, ?, ?, ?)
+        timestamp, account, operation_type, gas_cost_usd, gmx_execution_fee_usd, operation_data
+      ) VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     const result = insert.run(
@@ -548,6 +564,7 @@ export class MonitoringDatabase {
       account,
       operationType,
       gasCostUsd?.toString() || null,
+      gmxExecutionFeeUsd?.toString() || null,
       operationData ? JSON.stringify(operationData) : null
     );
 
@@ -584,10 +601,11 @@ export class MonitoringDatabase {
     timestamp: number;
     operationType: string;
     gasCostUsd?: string;
+    gmxExecutionFeeUsd?: string;
     operationData?: Record<string, any>;
   }> {
     let query = `
-      SELECT id, timestamp, operation_type, gas_cost_usd, operation_data
+      SELECT id, timestamp, operation_type, gas_cost_usd, gmx_execution_fee_usd, operation_data
       FROM operation_history
       WHERE account = ?
     `;
@@ -611,6 +629,7 @@ export class MonitoringDatabase {
       timestamp: number;
       operation_type: string;
       gas_cost_usd?: string;
+      gmx_execution_fee_usd?: string;
       operation_data?: string;
     }>;
 
@@ -619,6 +638,7 @@ export class MonitoringDatabase {
       timestamp: row.timestamp,
       operationType: row.operation_type,
       gasCostUsd: row.gas_cost_usd || undefined,
+      gmxExecutionFeeUsd: row.gmx_execution_fee_usd || undefined,
       operationData: row.operation_data ? JSON.parse(row.operation_data) : undefined,
     }));
   }
@@ -867,6 +887,299 @@ export class MonitoringDatabase {
     `);
 
     updateStmt.run(...values);
+  }
+
+  /**
+   * Record a fee collection event
+   */
+  recordFeeCollection(
+    account: string,
+    tokenId: string,
+    feesCollectedUsd: bigint,
+    feesAmount0?: bigint,
+    feesAmount1?: bigint
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO fee_collection_history (
+        timestamp, account, token_id, fees_collected_usd, fees_amount0, fees_amount1
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = insert.run(
+      timestamp,
+      account,
+      tokenId,
+      feesCollectedUsd.toString(),
+      feesAmount0?.toString() || null,
+      feesAmount1?.toString() || null
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Record a funding fee snapshot
+   */
+  recordFundingFee(
+    account: string,
+    snapshotId: number,
+    fundingFeeAmountUsd: bigint,
+    fundingFeePerSize: bigint,
+    positionSizeTokens: bigint
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO funding_fee_history (
+        timestamp, account, snapshot_id, funding_fee_amount_usd,
+        funding_fee_per_size, position_size_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = insert.run(
+      timestamp,
+      account,
+      snapshotId,
+      fundingFeeAmountUsd.toString(),
+      fundingFeePerSize.toString(),
+      positionSizeTokens.toString()
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Get total fees collected in a time period
+   */
+  getFeesCollected(account: string, startTime?: number, endTime?: number): bigint {
+    let query = `
+      SELECT SUM(CAST(fees_collected_usd AS TEXT)) as total
+      FROM fee_collection_history
+      WHERE account = ?
+    `;
+    const params: any[] = [account];
+
+    if (startTime !== undefined) {
+      query += " AND timestamp >= ?";
+      params.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      query += " AND timestamp <= ?";
+      params.push(endTime);
+    }
+
+    const stmt = this.db.prepare(query);
+    const row = stmt.get(...params) as { total: string | null } | undefined;
+
+    return row?.total ? BigInt(row.total) : 0n;
+  }
+
+  /**
+   * Get total costs (funding fees + gas) in a time period
+   *
+   * Note: Funding fees are calculated from deltas in funding_fee_per_size between snapshots.
+   * For shorts, negative funding fees mean we're paying (cost), positive means we're receiving (benefit).
+   *
+   * TODO: Implement proper funding fee delta calculation once we have sufficient snapshot data
+   */
+  getTotalCosts(account: string, startTime?: number, endTime?: number): bigint {
+    // Get gas costs and GMX execution fees
+    let query = `
+      SELECT 
+        SUM(CAST(gas_cost_usd AS TEXT)) as total_gas,
+        SUM(CAST(gmx_execution_fee_usd AS TEXT)) as total_gmx_fees
+      FROM operation_history
+      WHERE account = ?
+    `;
+    const params: any[] = [account];
+
+    if (startTime !== undefined) {
+      query += " AND timestamp >= ?";
+      params.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      query += " AND timestamp <= ?";
+      params.push(endTime);
+    }
+
+    const stmt = this.db.prepare(query);
+    const row = stmt.get(...params) as
+      | {
+          total_gas: string | null;
+          total_gmx_fees: string | null;
+        }
+      | undefined;
+
+    const gasCosts = row?.total_gas ? BigInt(row.total_gas) : 0n;
+    const gmxFees = row?.total_gmx_fees ? BigInt(row.total_gmx_fees) : 0n;
+
+    // TODO: Add funding fee calculation from snapshot deltas
+    // For now, return gas costs + GMX execution fees
+    return gasCosts + gmxFees;
+  }
+
+  /**
+   * Get average NAV over a time period
+   */
+  getAverageNav(account: string, startTime?: number, endTime?: number): bigint {
+    let query = `
+      SELECT total_nav_usd
+      FROM monitoring_snapshots
+      WHERE account = ?
+    `;
+    const params: any[] = [account];
+
+    if (startTime !== undefined) {
+      query += " AND timestamp >= ?";
+      params.push(startTime);
+    }
+
+    if (endTime !== undefined) {
+      query += " AND timestamp <= ?";
+      params.push(endTime);
+    }
+
+    query += " ORDER BY timestamp ASC";
+
+    const stmt = this.db.prepare(query);
+    const rows = stmt.all(...params) as Array<{ total_nav_usd: string }>;
+
+    if (rows.length === 0) {
+      return 0n;
+    }
+
+    // Filter out snapshots with very low NAV (likely during position transitions)
+    // These snapshots occur when positions are being closed/reopened and don't
+    // represent the typical position size during the period
+    const navValues = rows.map((row) => BigInt(row.total_nav_usd));
+
+    // Find the maximum NAV in the period to use as a reference
+    const maxNav = navValues.reduce((max, nav) => (nav > max ? nav : max), 0n);
+
+    // Exclude snapshots with NAV < $100 or < 20% of max NAV
+    // This filters out transition periods while keeping normal operational snapshots
+    const MIN_NAV_THRESHOLD = 100n * 10n ** 30n; // $100 in 30 decimals
+    const MIN_NAV_PERCENTAGE = (maxNav * 20n) / 100n; // 20% of max NAV
+    const effectiveThreshold =
+      MIN_NAV_THRESHOLD > MIN_NAV_PERCENTAGE ? MIN_NAV_THRESHOLD : MIN_NAV_PERCENTAGE;
+
+    const validNavValues = navValues.filter((nav) => nav >= effectiveThreshold);
+
+    if (validNavValues.length === 0) {
+      // If all snapshots were filtered out, fall back to all snapshots
+      // (shouldn't happen in practice, but handle gracefully)
+      const sum = navValues.reduce((acc, nav) => acc + nav, 0n);
+      return sum / BigInt(navValues.length);
+    }
+
+    // Calculate average of valid snapshots
+    const sum = validNavValues.reduce((acc, nav) => acc + nav, 0n);
+    return sum / BigInt(validNavValues.length);
+  }
+
+  /**
+   * Calculate and cache APR for a period
+   */
+  calculateAndCacheAPR(
+    account: string,
+    periodType:
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "rolling_7d"
+      | "rolling_30d"
+      | "rolling_90d"
+      | "lifetime",
+    periodStart: number,
+    periodEnd: number,
+    feesCollected: bigint,
+    costsIncurred: bigint,
+    averageNav: bigint,
+    aprBps: bigint
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO apr_calculations (
+        timestamp, account, period_type, period_start, period_end,
+        fees_collected_usd, costs_incurred_usd, net_yield_usd,
+        average_nav_usd, apr_bps
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const netYield = feesCollected - costsIncurred;
+
+    const result = insert.run(
+      timestamp,
+      account,
+      periodType,
+      periodStart,
+      periodEnd,
+      feesCollected.toString(),
+      costsIncurred.toString(),
+      netYield.toString(),
+      averageNav.toString(),
+      aprBps.toString()
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Get latest APR calculation for a period type
+   */
+  getLatestAPR(
+    account: string,
+    periodType:
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "rolling_7d"
+      | "rolling_30d"
+      | "rolling_90d"
+      | "lifetime"
+  ): {
+    periodStart: number;
+    periodEnd: number;
+    feesCollected: bigint;
+    costsIncurred: bigint;
+    netYield: bigint;
+    averageNav: bigint;
+    aprBps: bigint;
+  } | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM apr_calculations
+      WHERE account = ? AND period_type = ?
+      ORDER BY period_end DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(account, periodType) as
+      | {
+          period_start: number;
+          period_end: number;
+          fees_collected_usd: string;
+          costs_incurred_usd: string;
+          net_yield_usd: string;
+          average_nav_usd: string;
+          apr_bps: string;
+        }
+      | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      periodStart: row.period_start,
+      periodEnd: row.period_end,
+      feesCollected: BigInt(row.fees_collected_usd),
+      costsIncurred: BigInt(row.costs_incurred_usd),
+      netYield: BigInt(row.net_yield_usd),
+      averageNav: BigInt(row.average_nav_usd),
+      aprBps: BigInt(row.apr_bps),
+    };
   }
 
   /**

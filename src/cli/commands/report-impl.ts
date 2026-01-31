@@ -13,6 +13,8 @@ import {
   DailyReport,
 } from "../../utils/reports";
 import { getLogger } from "../../utils/logger";
+import { MonitoringDatabase } from "../../utils/database";
+import { getAPRMetrics, formatAPRMetrics, formatAPRResult } from "../../utils/apr";
 
 export interface ReportOptions {
   account?: string;
@@ -218,4 +220,73 @@ export function generateDiscordSummary(report: DailyReport): {
   ];
 
   return { title, message, fields };
+}
+
+export interface APRReportOptions {
+  account?: string;
+  period?: string; // "1d", "7d", "30d", "90d", or "lifetime"
+}
+
+/**
+ * Generate an APR report for the strategy
+ */
+export async function generateAPRReport(options: APRReportOptions = {}): Promise<void> {
+  const { account } = await getSignerAndAccount(options.account);
+  const logger = getLogger();
+
+  logger.info("Generating APR report", { account, period: options.period });
+
+  const db = new MonitoringDatabase();
+
+  try {
+    // Get comprehensive APR metrics
+    const metrics = await getAPRMetrics(db, account);
+
+    console.log("\n" + formatAPRMetrics(metrics));
+    console.log("");
+
+    // Show detailed breakdown for the requested period
+    const period = options.period || "30d";
+    let detailedResult;
+
+    if (period === "1d") {
+      detailedResult = metrics.rolling1d;
+    } else if (period === "7d") {
+      detailedResult = metrics.rolling7d;
+    } else if (period === "30d") {
+      detailedResult = metrics.rolling30d;
+    } else if (period === "90d") {
+      detailedResult = metrics.rolling90d;
+    } else if (period === "lifetime") {
+      detailedResult = metrics.lifetime;
+    } else {
+      console.error(`Invalid period: ${period}. Use 1d, 7d, 30d, 90d, or lifetime`);
+      return;
+    }
+
+    if (detailedResult) {
+      console.log("Detailed Breakdown:");
+      console.log("-".repeat(80));
+      console.log(formatAPRResult(detailedResult));
+    } else {
+      console.log(`No data available for period: ${period}`);
+    }
+
+    logger.info("APR report generated successfully", {
+      account,
+      period,
+      rolling1d: metrics.rolling1d?.aprPercent,
+      rolling7d: metrics.rolling7d?.aprPercent,
+      rolling30d: metrics.rolling30d?.aprPercent,
+      rolling90d: metrics.rolling90d?.aprPercent,
+      lifetime: metrics.lifetime?.aprPercent,
+    });
+  } catch (error: any) {
+    logger.error("Failed to generate APR report", { account, error: error.message });
+    console.error("\nError generating APR report:");
+    console.error(error);
+    throw error;
+  } finally {
+    db.close();
+  }
 }
