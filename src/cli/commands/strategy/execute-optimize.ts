@@ -32,6 +32,7 @@ import {
 import { getSignerAndAccount } from "../base";
 import { MonitoringDatabase } from "../../../utils/database";
 import { StateManager } from "../../../utils/state";
+import { getAPRMetrics } from "../../../utils/apr";
 import { IERC20 as UniswapIERC20 } from "../../../modules/uniswap/types";
 import {
   ERC20_ABI,
@@ -724,10 +725,12 @@ export async function executeOptimize(
     if (executeFlag) {
       // Check if we have non-zero amounts to mint
       if (finalAmount0 === 0n && finalAmount1 === 0n) {
-        console.warn("⚠️  Warning: Both finalAmount0 and finalAmount1 are 0. Skipping LP minting to avoid revert.");
+        console.warn(
+          "⚠️  Warning: Both finalAmount0 and finalAmount1 are 0. Skipping LP minting to avoid revert."
+        );
         // We can still proceed with GMX hedge if applicable, or just return
         if (allocation.gmxShortSizeUsd === 0n) {
-           return { feesCollectedUsd: closeResult.totalFeesCollectedUsd };
+          return { feesCollectedUsd: closeResult.totalFeesCollectedUsd };
         }
       }
 
@@ -773,7 +776,7 @@ export async function executeOptimize(
       }
 
       let mintResult: { txHash?: string } = {};
-      
+
       if (finalAmount0 > 0n || finalAmount1 > 0n) {
         // Verify balances before proceeding - must account for both LP and GMX collateral
         const [currentBalance0, currentBalance1, allowance0, allowance1] = await Promise.all([
@@ -930,7 +933,7 @@ export async function executeOptimize(
             performApproval: false,
           }
         );
-        
+
         mintResult = actualMintResult;
 
         if (mintResult.txHash) {
@@ -1170,25 +1173,46 @@ export async function executeOptimize(
       // Send success alert to Discord
       if (!options.suppressAlert) {
         try {
+          // Fetch APR metrics
+          let apr1d: number | undefined;
+          let apr7d: number | undefined;
+          try {
+            const metrics = await getAPRMetrics(db, account);
+            apr1d = metrics.rolling1d?.aprPercent;
+            apr7d = metrics.rolling7d?.aprPercent;
+          } catch (error) {
+            console.warn("Failed to fetch APR metrics for alert", error);
+          }
+
+          // Get updated wallet balances
+          const [balance0, balance1] = await Promise.all([
+            token0Contract.balanceOf(account),
+            token1Contract.balanceOf(account),
+          ]);
+          const balance0Str = `${ethers.formatUnits(balance0, token0Decimals)} ${token0Symbol}`;
+          const balance1Str = `${ethers.formatUnits(balance1, token1Decimals)} ${token1Symbol}`;
+
+          // Calculate total NAV
+          // Use current prices and balances
+          const ethPriceResult = await getLatestPrice(
+            ARBITRUM_MAINNET.chainlinkEthUsdFeed,
+            signer.provider!,
+            { outputDecimals: 12, maxStaleSeconds: 3600 }
+          );
+          const ethPriceUsd = ethPriceResult.outputPrice
+            ? Number(ethers.formatUnits(ethPriceResult.outputPrice, 12))
+            : 3000;
+
+          // Simplified NAV calculation for the alert (just LP + GMX capital)
+          // For a precise NAV we'd need the full monitor check, but this is sufficient for the alert context
+          const lpValueUsd = allocation.lpSizeUsd;
+          const gmxValueUsd = allocation.gmxCollateralUsd; // Approx net value
+          const totalNavUsd = lpValueUsd + gmxValueUsd;
+
           const fields: Array<{ name: string; value: string; inline?: boolean }> = [
             {
-              name: "Account",
-              value: account,
-              inline: false,
-            },
-            {
-              name: "LP Position",
-              value: mintResult.txHash || "minted",
-              inline: true,
-            },
-            {
-              name: "LP Size",
-              value: `$${parseFloat(ethers.formatUnits(allocation.lpSizeUsd, 30)).toFixed(4)}`,
-              inline: true,
-            },
-            {
-              name: "GMX Short Size",
-              value: `$${parseFloat(ethers.formatUnits(allocation.gmxShortSizeUsd, 30)).toFixed(4)}`,
+              name: "Total NAV",
+              value: `$${parseFloat(ethers.formatUnits(totalNavUsd, 30)).toFixed(4)}`,
               inline: true,
             },
             {
@@ -1196,29 +1220,27 @@ export async function executeOptimize(
               value: `${(status.deltaDrift * 100).toFixed(2)}%`,
               inline: true,
             },
-          ];
-
-          if (totalFeesUsd > 0n) {
-            fields.push({
+            {
               name: "Fees Collected",
               value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
               inline: true,
-            });
+            },
+          ];
+
+          if (apr1d !== undefined) {
+            fields.push({ name: "1d APR", value: `${apr1d.toFixed(2)}%`, inline: true });
+          }
+          if (apr7d !== undefined) {
+            fields.push({ name: "7d APR", value: `${apr7d.toFixed(2)}%`, inline: true });
           }
 
-          if (allocation.gmxShortSizeUsd > 0n && gmxResult?.txHash) {
-            fields.push({
-              name: "GMX Order",
-              value: gmxResult.txHash,
-              inline: false,
-            });
-          }
+          fields.push({
+            name: "Wallet Balances",
+            value: `${balance0Str}\n${balance1Str}`,
+            inline: false,
+          });
 
-          await sendSuccessAlert(
-            "✅ Strategy Optimization Complete",
-            `Successfully optimized delta-neutral position. LP position created and GMX hedge adjusted.`,
-            fields
-          );
+          await sendSuccessAlert("✅ Harmonia : Optimized", "", fields);
         } catch (alertError) {
           // Don't fail optimization if alert fails
           console.warn("Failed to send Discord alert:", alertError);
