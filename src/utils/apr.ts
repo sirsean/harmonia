@@ -105,25 +105,16 @@ export async function calculateAPRForPeriod(
   }
 
   // Use actual data period for APR calculation
-  const actualElapsedMs = actualEnd - actualStart;
+  // const actualElapsedMs = actualEnd - actualStart;
 
-  // If we have fees/costs but very short actual period, use window size as fallback
-  // This handles edge cases where data exists but period is very short (e.g., test scenarios)
+  // Use the full window size for Calendar APR calculation
+  // This ensures that if we request a 30-day APR, we calculate the yield over 30 days,
+  // even if the strategy was only active for a portion of that time.
   const windowElapsedMs = endTime - startTime;
   const minDataPeriodMs = 60 * 60 * 1000; // 1 hour minimum
 
-  let elapsedMsForCalculation: number;
-  if (actualElapsedMs >= minDataPeriodMs) {
-    // Use actual data period if it's substantial (>= 1 hour)
-    elapsedMsForCalculation = actualElapsedMs;
-  } else if (snapshots.length > 0 || feesCollected > 0n || costsIncurred > 0n) {
-    // If we have snapshots/fees/costs but short period, use window size as fallback
-    // This ensures we can calculate APR even with limited data (e.g., test scenarios)
-    elapsedMsForCalculation = windowElapsedMs;
-  } else {
-    // No data at all - can't calculate APR
-    return null;
-  }
+  // Ensure we have a valid time period
+  const elapsedMsForCalculation = Math.max(windowElapsedMs, minDataPeriodMs);
 
   if (elapsedMsForCalculation <= 0) {
     return null; // Invalid time period
@@ -131,7 +122,7 @@ export async function calculateAPRForPeriod(
 
   const netYield = feesCollected - costsIncurred;
 
-  // Use calculated elapsed time (actual period if sufficient, otherwise window)
+  // Use calculated elapsed time (full window)
   const aprBps = calculateAPRFromYieldMs(netYield, averageNav, elapsedMsForCalculation);
   const aprPercent = (Number(aprBps) / Number(PRECISION)) * 100;
 
