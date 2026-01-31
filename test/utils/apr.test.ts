@@ -204,6 +204,36 @@ describe("APR calculation utilities", () => {
 
       expect(result).toBeNull();
     });
+
+    it("uses full window for sparse data (Calendar APR)", async () => {
+      // 30 day window
+      const now = Date.now();
+      const startTime = now - 30 * 24 * 60 * 60 * 1000;
+      const endTime = now + 1000; // Add buffer to ensure current ops are included
+
+      // Only 1 day of data (snapshot 1 day ago)
+      const oneDayAgo = now - 24 * 60 * 60 * 1000;
+      const status = createMockStatus(oneDayAgo, ethers.parseUnits("100000", 30));
+      db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
+
+      // $100 yield
+      db.recordFeeCollection(account, "123", ethers.parseUnits("100", 30));
+
+      const result = await calculateAPRForPeriod(db, account, startTime, endTime);
+
+      expect(result).not.toBeNull();
+      
+      // Net Yield: $100
+      // Average NAV: $100,000
+      // Window: 30 days
+      // Calendar APR: (100 / 100000) * (365 / 30) = 0.001 * 12.1667 = 0.012167 = 1.22%
+      
+      // If it was Active APR (1 day), it would be:
+      // (100 / 100000) * (365 / 1) = 0.001 * 365 = 0.365 = 36.5%
+      
+      expect(result!.aprPercent).toBeCloseTo(1.22, 1);
+      expect(result!.aprPercent).toBeLessThan(5.0); // Definitely not 36.5%
+    });
   });
 
   describe("calculateRollingAPR", () => {

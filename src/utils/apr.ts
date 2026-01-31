@@ -127,8 +127,8 @@ export async function calculateAPRForPeriod(
   const aprPercent = (Number(aprBps) / Number(PRECISION)) * 100;
 
   return {
-    periodStart: actualStart, // Return actual data period, not window
-    periodEnd: actualEnd,
+    periodStart: startTime, // Return full calculation window, consistent with Calendar APR
+    periodEnd: endTime,
     feesCollected,
     costsIncurred,
     netYield,
