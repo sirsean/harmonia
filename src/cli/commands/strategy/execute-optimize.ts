@@ -51,6 +51,7 @@ export interface ExecuteOptimizeOptions {
   priceUpper?: number;
   slippageBps?: bigint;
   execute?: boolean;
+  suppressAlert?: boolean;
 }
 
 /**
@@ -1140,59 +1141,61 @@ export async function executeOptimize(
       }
 
       // Send success alert to Discord
-      try {
-        const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-          {
-            name: "Account",
-            value: account,
-            inline: false,
-          },
-          {
-            name: "LP Position",
-            value: mintResult.txHash || "minted",
-            inline: true,
-          },
-          {
-            name: "LP Size",
-            value: `$${parseFloat(ethers.formatUnits(allocation.lpSizeUsd, 30)).toFixed(4)}`,
-            inline: true,
-          },
-          {
-            name: "GMX Short Size",
-            value: `$${parseFloat(ethers.formatUnits(allocation.gmxShortSizeUsd, 30)).toFixed(4)}`,
-            inline: true,
-          },
-          {
-            name: "Delta Drift Before",
-            value: `${(status.deltaDrift * 100).toFixed(2)}%`,
-            inline: true,
-          },
-        ];
+      if (!options.suppressAlert) {
+        try {
+          const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+            {
+              name: "Account",
+              value: account,
+              inline: false,
+            },
+            {
+              name: "LP Position",
+              value: mintResult.txHash || "minted",
+              inline: true,
+            },
+            {
+              name: "LP Size",
+              value: `$${parseFloat(ethers.formatUnits(allocation.lpSizeUsd, 30)).toFixed(4)}`,
+              inline: true,
+            },
+            {
+              name: "GMX Short Size",
+              value: `$${parseFloat(ethers.formatUnits(allocation.gmxShortSizeUsd, 30)).toFixed(4)}`,
+              inline: true,
+            },
+            {
+              name: "Delta Drift Before",
+              value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+              inline: true,
+            },
+          ];
 
-        if (totalFeesUsd > 0n) {
-          fields.push({
-            name: "Fees Collected",
-            value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
-            inline: true,
-          });
+          if (totalFeesUsd > 0n) {
+            fields.push({
+              name: "Fees Collected",
+              value: `$${parseFloat(ethers.formatUnits(totalFeesUsd, 30)).toFixed(4)}`,
+              inline: true,
+            });
+          }
+
+          if (allocation.gmxShortSizeUsd > 0n && gmxResult?.txHash) {
+            fields.push({
+              name: "GMX Order",
+              value: gmxResult.txHash,
+              inline: false,
+            });
+          }
+
+          await sendSuccessAlert(
+            "✅ Strategy Optimization Complete",
+            `Successfully optimized delta-neutral position. LP position created and GMX hedge adjusted.`,
+            fields
+          );
+        } catch (alertError) {
+          // Don't fail optimization if alert fails
+          console.warn("Failed to send Discord alert:", alertError);
         }
-
-        if (allocation.gmxShortSizeUsd > 0n && gmxResult?.txHash) {
-          fields.push({
-            name: "GMX Order",
-            value: gmxResult.txHash,
-            inline: false,
-          });
-        }
-
-        await sendSuccessAlert(
-          "✅ Strategy Optimization Complete",
-          `Successfully optimized delta-neutral position. LP position created and GMX hedge adjusted.`,
-          fields
-        );
-      } catch (alertError) {
-        // Don't fail optimization if alert fails
-        console.warn("Failed to send Discord alert:", alertError);
       }
 
       // Return fees collected from execution
