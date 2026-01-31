@@ -219,8 +219,7 @@ describe("Report Implementation", () => {
 
     const summary = generateDiscordSummary(report);
     
-    expect(summary.title).toContain("Daily Report");
-    expect(summary.title).toContain("2026-01-26");
+    expect(summary.title).toBe("Harmonia : 2026-01-26");
     expect(summary.message).toBe("");
     
     // Check fields
@@ -248,49 +247,5 @@ describe("Report Implementation", () => {
     expect(summary.fields[4].name).toBe("Wallet Balances");
     expect(summary.fields[4].value).toContain("1.5 WETH");
     expect(summary.fields[4].value).toContain("2000.0 USDC");
-  });
-
-  it("should use correct emoji for different delta drift levels", async () => {
-    const { generateDiscordSummary } = await import("../../../src/cli/commands/report-impl");
-    
-    // Low delta drift (healthy)
-    const healthyReport = {
-      date: "2026-01-26",
-      timestamp: Date.now(),
-      account: "0x123",
-      summary: {
-        totalLpValueUsd: "1000",
-        totalGmxValueUsd: "500",
-        totalNetValueUsd: "1500",
-        netDelta: "0.1",
-        deltaDrift: 0.03, // 3%
-        recommendation: "NONE",
-      },
-      positions: { uniswap: [], gmx: { positionSizeTokens: "1", collateralAmount: "500", netValueUsd: "500", delta: "-1" } },
-      metrics: { totalLpDelta: "1", totalFeesUsd: "10", deltaDriftPercent: 3.0 },
-    };
-    
-    const healthySummary = generateDiscordSummary(healthyReport);
-    expect(healthySummary.title).toContain("✅");
-
-    // Medium delta drift (warning)
-    const warningReport = {
-      ...healthyReport,
-      summary: { ...healthyReport.summary, deltaDrift: 0.1 }, // 10%
-      metrics: { ...healthyReport.metrics, deltaDriftPercent: 10.0 },
-    };
-    
-    const warningSummary = generateDiscordSummary(warningReport);
-    expect(warningSummary.title).toContain("⚠️");
-
-    // High delta drift (emergency)
-    const emergencyReport = {
-      ...healthyReport,
-      summary: { ...healthyReport.summary, deltaDrift: 0.25 }, // 25%
-      metrics: { ...healthyReport.metrics, deltaDriftPercent: 25.0 },
-    };
-    
-    const emergencySummary = generateDiscordSummary(emergencyReport);
-    expect(emergencySummary.title).toContain("🚨");
   });
 });

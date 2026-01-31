@@ -153,13 +153,39 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
     try {
       logger.info("Generating daily report", { account });
 
+      // Get wallet balances
+      const [balance0, balance1] = await Promise.all([
+        token0Contract.balanceOf(account),
+        token1Contract.balanceOf(account),
+      ]);
+
+      const walletBalances = {
+        balance0: `${ethers.formatUnits(balance0, decimals0)} ${symbol0}`,
+        balance1: `${ethers.formatUnits(balance1, decimals1)} ${symbol1}`,
+      };
+
+      // Get APR metrics
+      let aprMetricsData: { apr1d?: number; apr7d?: number; apr30d?: number } = {};
+      try {
+        const metrics = await getAPRMetrics(db, account);
+        aprMetricsData = {
+          apr1d: metrics.rolling1d?.aprPercent,
+          apr7d: metrics.rolling7d?.aprPercent,
+          apr30d: metrics.rolling30d?.aprPercent,
+        };
+      } catch (error) {
+        logger.warn("Failed to fetch APR metrics for report", { error });
+      }
+
       // Generate report
       const report = generateDailyReport(
         account,
         status,
         recommendation,
         totalLpValueUsd,
-        totalFeesUsd
+        totalFeesUsd,
+        aprMetricsData,
+        walletBalances
       );
 
       // Save report to file
