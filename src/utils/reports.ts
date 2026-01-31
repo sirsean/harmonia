@@ -200,7 +200,7 @@ export function formatReportSummary(report: DailyReport): string {
   lines.push(`Net Delta: ${report.summary.netDelta} ETH`);
   lines.push(`Delta Drift: ${(report.summary.deltaDrift * 100).toFixed(2)}%`);
   lines.push(`Recommendation: ${report.summary.recommendation}`);
-  
+
   if (report.summary.walletBalance0 || report.summary.walletBalance1) {
     lines.push("");
     lines.push(`Wallet Balances:`);
@@ -241,13 +241,20 @@ export function formatReportSummary(report: DailyReport): string {
   lines.push(`Total LP Delta: ${report.metrics.totalLpDelta} ETH`);
   lines.push(`Total Fees USD: $${report.metrics.totalFeesUsd}`);
   lines.push(`Delta Drift: ${report.metrics.deltaDriftPercent.toFixed(2)}%`);
-  
-  if (report.metrics.apr1d !== undefined || report.metrics.apr7d !== undefined || report.metrics.apr30d !== undefined) {
+
+  if (
+    report.metrics.apr1d !== undefined ||
+    report.metrics.apr7d !== undefined ||
+    report.metrics.apr30d !== undefined
+  ) {
     lines.push("");
     lines.push("APR:");
-    if (report.metrics.apr1d !== undefined) lines.push(`  1d:  ${report.metrics.apr1d.toFixed(2)}%`);
-    if (report.metrics.apr7d !== undefined) lines.push(`  7d:  ${report.metrics.apr7d.toFixed(2)}%`);
-    if (report.metrics.apr30d !== undefined) lines.push(`  30d: ${report.metrics.apr30d.toFixed(2)}%`);
+    if (report.metrics.apr1d !== undefined)
+      lines.push(`  1d:  ${report.metrics.apr1d.toFixed(2)}%`);
+    if (report.metrics.apr7d !== undefined)
+      lines.push(`  7d:  ${report.metrics.apr7d.toFixed(2)}%`);
+    if (report.metrics.apr30d !== undefined)
+      lines.push(`  30d: ${report.metrics.apr30d.toFixed(2)}%`);
   }
   lines.push("");
 

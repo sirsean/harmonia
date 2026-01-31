@@ -137,7 +137,7 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
     token0Contract.balanceOf(account),
     token1Contract.balanceOf(account),
   ]);
-  
+
   const walletBalances = {
     balance0: `${ethers.formatUnits(balance0, decimals0)} ${symbol0}`,
     balance1: `${ethers.formatUnits(balance1, decimals1)} ${symbol1}`,
@@ -233,12 +233,19 @@ export function generateDiscordSummary(report: DailyReport): {
     },
   ];
 
-  if (report.metrics.apr1d !== undefined || report.metrics.apr7d !== undefined || report.metrics.apr30d !== undefined) {
+  if (
+    report.metrics.apr1d !== undefined ||
+    report.metrics.apr7d !== undefined ||
+    report.metrics.apr30d !== undefined
+  ) {
     const aprParts = [];
-    if (report.metrics.apr1d !== undefined) aprParts.push(`1d: ${report.metrics.apr1d.toFixed(2)}%`);
-    if (report.metrics.apr7d !== undefined) aprParts.push(`7d: ${report.metrics.apr7d.toFixed(2)}%`);
-    if (report.metrics.apr30d !== undefined) aprParts.push(`30d: ${report.metrics.apr30d.toFixed(2)}%`);
-    
+    if (report.metrics.apr1d !== undefined)
+      aprParts.push(`1d: ${report.metrics.apr1d.toFixed(2)}%`);
+    if (report.metrics.apr7d !== undefined)
+      aprParts.push(`7d: ${report.metrics.apr7d.toFixed(2)}%`);
+    if (report.metrics.apr30d !== undefined)
+      aprParts.push(`30d: ${report.metrics.apr30d.toFixed(2)}%`);
+
     fields.push({
       name: "APR",
       value: aprParts.join(" | "),
