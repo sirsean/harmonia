@@ -374,11 +374,9 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               fields.push({ name: "7d APR", value: `${apr7d.toFixed(2)}%`, inline: true });
             }
 
-            await sendSuccessAlert("✅ Harmonia : Optimized", "", fields).catch(
-              (alertError) => {
-                logger.warn("Failed to send Discord alert", { error: alertError.message });
-              }
-            );
+            await sendSuccessAlert("✅ Harmonia : Optimized", "", fields).catch((alertError) => {
+              logger.warn("Failed to send Discord alert", { error: alertError.message });
+            });
 
             // Record successful optimization in database
             try {
