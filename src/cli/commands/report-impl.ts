@@ -224,7 +224,7 @@ export function generateDiscordSummary(report: DailyReport): {
 
 export interface APRReportOptions {
   account?: string;
-  period?: string; // "7d", "30d", "90d", or "lifetime"
+  period?: string; // "1d", "7d", "30d", "90d", or "lifetime"
 }
 
 /**
@@ -249,7 +249,9 @@ export async function generateAPRReport(options: APRReportOptions = {}): Promise
     const period = options.period || "30d";
     let detailedResult;
 
-    if (period === "7d") {
+    if (period === "1d") {
+      detailedResult = metrics.rolling1d;
+    } else if (period === "7d") {
       detailedResult = metrics.rolling7d;
     } else if (period === "30d") {
       detailedResult = metrics.rolling30d;
@@ -258,7 +260,7 @@ export async function generateAPRReport(options: APRReportOptions = {}): Promise
     } else if (period === "lifetime") {
       detailedResult = metrics.lifetime;
     } else {
-      console.error(`Invalid period: ${period}. Use 7d, 30d, 90d, or lifetime`);
+      console.error(`Invalid period: ${period}. Use 1d, 7d, 30d, 90d, or lifetime`);
       return;
     }
 
@@ -273,6 +275,7 @@ export async function generateAPRReport(options: APRReportOptions = {}): Promise
     logger.info("APR report generated successfully", {
       account,
       period,
+      rolling1d: metrics.rolling1d?.aprPercent,
       rolling7d: metrics.rolling7d?.aprPercent,
       rolling30d: metrics.rolling30d?.aprPercent,
       rolling90d: metrics.rolling90d?.aprPercent,

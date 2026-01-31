@@ -93,10 +93,22 @@ export function calculateAPRFromYield(
   // APR = (netYield / averageNav) × (365 / elapsedDays)
   // Using PRECISION (1e18) for percentage representation
   const daysInYear = 365n;
-  const elapsedDaysBigInt = BigInt(Math.floor(elapsedDays));
+  // Ensure minimum of 1 hour (1/24 days) to avoid division by zero
+  const minDays = 1 / 24;
+  const safeElapsedDays = Math.max(elapsedDays, minDays);
+  // Convert to BigInt with precision: multiply by 1e6, floor, then divide by 1e6
+  // This preserves fractional days while avoiding division by zero
+  const elapsedDaysScaled = Math.floor(safeElapsedDays * 1_000_000);
+  const elapsedDaysBigInt = BigInt(elapsedDaysScaled);
 
-  // Calculate: (netYield * 365 * PRECISION) / (averageNav * elapsedDays)
-  const numerator = netYieldUsd * daysInYear * PRECISION;
+  // Ensure we never divide by zero
+  if (elapsedDaysBigInt === 0n) {
+    throw new Error("elapsedDays must be positive after scaling");
+  }
+
+  // Calculate: (netYield * 365 * PRECISION * 1e6) / (averageNav * elapsedDaysScaled)
+  // We multiply numerator by 1e6 to account for the scaling in denominator
+  const numerator = netYieldUsd * daysInYear * PRECISION * 1_000_000n;
   const denominator = averageNavUsd * elapsedDaysBigInt;
 
   return numerator / denominator;
@@ -116,9 +128,12 @@ export function calculateAPRFromYieldMs(
 ): bigint {
   const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
   if (elapsedDays <= 0) {
-    throw new Error("elapsedMs must represent at least 1 day");
+    throw new Error("elapsedMs must represent a positive time period");
   }
-  return calculateAPRFromYield(netYieldUsd, averageNavUsd, elapsedDays);
+  // Ensure minimum of 1 hour to avoid division by zero
+  const minDays = 1 / 24; // 1 hour in days
+  const safeElapsedDays = Math.max(elapsedDays, minDays);
+  return calculateAPRFromYield(netYieldUsd, averageNavUsd, safeElapsedDays);
 }
 
 export { PRECISION, SECONDS_PER_YEAR };

@@ -27,7 +27,7 @@ export function registerReportCommand(program: Command): void {
     program
       .command("apr")
       .description("Calculate and display APR metrics")
-      .option("--period <period>", "Time period: 7d, 30d, 90d, or lifetime (default: 30d)")
+      .option("--period <period>", "Time period: 1d, 7d, 30d, 90d, or lifetime (default: 30d)")
       .action(async (options) => {
         await generateAPRReport({
           account: options.account,

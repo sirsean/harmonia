@@ -374,6 +374,7 @@ describe("APR calculation utilities", () => {
   describe("formatAPRMetrics", () => {
     it("formats all metrics correctly", () => {
       const metrics = {
+        rolling1d: null,
         rolling7d: {
           periodStart: Date.now() - 7 * 24 * 60 * 60 * 1000,
           periodEnd: Date.now(),
@@ -421,6 +422,7 @@ describe("APR calculation utilities", () => {
 
     it("handles all null metrics", () => {
       const metrics = {
+        rolling1d: null,
         rolling7d: null,
         rolling30d: null,
         rolling90d: null,

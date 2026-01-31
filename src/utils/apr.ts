@@ -217,12 +217,14 @@ export async function getAPRMetrics(
   db: MonitoringDatabase,
   account: string
 ): Promise<{
+  rolling1d: APRResult | null;
   rolling7d: APRResult | null;
   rolling30d: APRResult | null;
   rolling90d: APRResult | null;
   lifetime: APRResult | null;
 }> {
-  const [rolling7d, rolling30d, rolling90d, lifetime] = await Promise.all([
+  const [rolling1d, rolling7d, rolling30d, rolling90d, lifetime] = await Promise.all([
+    calculateRollingAPR(db, account, 1),
     calculateRollingAPR(db, account, 7),
     calculateRollingAPR(db, account, 30),
     calculateRollingAPR(db, account, 90),
@@ -230,6 +232,7 @@ export async function getAPRMetrics(
   ]);
 
   return {
+    rolling1d,
     rolling7d,
     rolling30d,
     rolling90d,
@@ -241,6 +244,7 @@ export async function getAPRMetrics(
  * Format comprehensive APR metrics for display
  */
 export function formatAPRMetrics(metrics: {
+  rolling1d: APRResult | null;
   rolling7d: APRResult | null;
   rolling30d: APRResult | null;
   rolling90d: APRResult | null;
@@ -251,6 +255,12 @@ export function formatAPRMetrics(metrics: {
   lines.push("APR Metrics");
   lines.push("=".repeat(80));
   lines.push("");
+
+  if (metrics.rolling1d) {
+    lines.push(`Last 1 day:         ${metrics.rolling1d.aprPercent.toFixed(2)}%`);
+  } else {
+    lines.push(`Last 1 day:         N/A (insufficient data)`);
+  }
 
   if (metrics.rolling7d) {
     lines.push(`Last 7 days:       ${metrics.rolling7d.aprPercent.toFixed(2)}%`);
