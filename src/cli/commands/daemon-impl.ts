@@ -177,6 +177,11 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
         logger.warn("Failed to fetch APR metrics for report", { error });
       }
 
+      // Get collected fees for last 24h
+      const now = Date.now();
+      const oneDayAgo = now - 24 * 60 * 60 * 1000;
+      const collectedFees24h = db.getFeesCollected(account, oneDayAgo, now);
+
       // Generate report
       const report = generateDailyReport(
         account,
@@ -185,7 +190,8 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
         totalLpValueUsd,
         totalFeesUsd,
         aprMetricsData,
-        walletBalances
+        walletBalances,
+        collectedFees24h
       );
 
       // Save report to file
