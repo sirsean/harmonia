@@ -950,8 +950,9 @@ export class MonitoringDatabase {
    * Get total fees collected in a time period
    */
   getFeesCollected(account: string, startTime?: number, endTime?: number): bigint {
+    // Fetch individual rows and sum in JS to avoid SQLite integer overflow
     let query = `
-      SELECT SUM(CAST(fees_collected_usd AS TEXT)) as total
+      SELECT fees_collected_usd
       FROM fee_collection_history
       WHERE account = ?
     `;
@@ -968,9 +969,18 @@ export class MonitoringDatabase {
     }
 
     const stmt = this.db.prepare(query);
-    const row = stmt.get(...params) as { total: string | null } | undefined;
+    const rows = stmt.all(...params) as Array<{ fees_collected_usd: string }>;
 
-    return row?.total ? BigInt(row.total) : 0n;
+    let total = 0n;
+    for (const row of rows) {
+      try {
+        total += BigInt(row.fees_collected_usd);
+      } catch (e) {
+        // Ignore invalid values
+      }
+    }
+
+    return total;
   }
 
   /**
@@ -983,10 +993,11 @@ export class MonitoringDatabase {
    */
   getTotalCosts(account: string, startTime?: number, endTime?: number): bigint {
     // Get gas costs and GMX execution fees
+    // We fetch individual rows and sum in JS to avoid SQLite integer overflow
     let query = `
       SELECT 
-        SUM(CAST(gas_cost_usd AS TEXT)) as total_gas,
-        SUM(CAST(gmx_execution_fee_usd AS TEXT)) as total_gmx_fees
+        gas_cost_usd,
+        gmx_execution_fee_usd
       FROM operation_history
       WHERE account = ?
     `;
@@ -1003,19 +1014,36 @@ export class MonitoringDatabase {
     }
 
     const stmt = this.db.prepare(query);
-    const row = stmt.get(...params) as
-      | {
-          total_gas: string | null;
-          total_gmx_fees: string | null;
-        }
-      | undefined;
+    const rows = stmt.all(...params) as Array<{
+      gas_cost_usd: string | null;
+      gmx_execution_fee_usd: string | null;
+    }>;
 
-    const gasCosts = row?.total_gas ? BigInt(row.total_gas) : 0n;
-    const gmxFees = row?.total_gmx_fees ? BigInt(row.total_gmx_fees) : 0n;
+    let totalGas = 0n;
+    let totalGmxFees = 0n;
+
+    for (const row of rows) {
+      if (row.gas_cost_usd) {
+        // Handle potential huge values or garbage by wrapping in try/catch if necessary
+        // but BigInt constructor should handle valid numeric strings
+        try {
+          totalGas += BigInt(row.gas_cost_usd);
+        } catch (e) {
+          // Ignore invalid values
+        }
+      }
+      if (row.gmx_execution_fee_usd) {
+        try {
+          totalGmxFees += BigInt(row.gmx_execution_fee_usd);
+        } catch (e) {
+          // Ignore invalid values
+        }
+      }
+    }
 
     // TODO: Add funding fee calculation from snapshot deltas
     // For now, return gas costs + GMX execution fees
-    return gasCosts + gmxFees;
+    return totalGas + totalGmxFees;
   }
 
   /**
