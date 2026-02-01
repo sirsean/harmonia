@@ -92,7 +92,7 @@ vi.mock("../../../src/modules/uniswap/reader", () => ({
 }));
 
 vi.mock("../../../src/utils/reports", () => ({
-  generateDailyReport: vi.fn((account, status, recommendation, totalLpValueUsd, totalFeesUsd, aprMetrics, walletBalances, collectedFees24h) => ({
+  generateDailyReport: vi.fn((account, status, recommendation, totalLpValueUsd, totalFeesUsd, aprMetrics, walletBalances, netYield24h) => ({
     date: new Date().toISOString().split("T")[0],
     timestamp: Date.now(),
     account,
@@ -118,7 +118,7 @@ vi.mock("../../../src/utils/reports", () => ({
     metrics: {
       totalLpDelta: "1.0",
       totalFeesUsd: "10.0",
-      collectedFees24h: collectedFees24h ? collectedFees24h.toString() : undefined,
+      netYield24h: netYield24h ? netYield24h.toString() : undefined,
       deltaDriftPercent: 0,
       apr1d: aprMetrics?.apr1d,
       apr7d: aprMetrics?.apr7d,
@@ -250,7 +250,7 @@ describe("Report Implementation", () => {
     expect(summary.fields[4].value).toContain("2000.0 USDC");
   });
 
-  it("should include collected fees in Discord summary when present", async () => {
+  it("should include net yield in Discord summary when present", async () => {
     const { generateDiscordSummary } = await import("../../../src/cli/commands/report-impl");
     
     const report = {
@@ -277,15 +277,15 @@ describe("Report Implementation", () => {
       metrics: {
         totalLpDelta: "0.0",
         totalFeesUsd: "10.0",
-        collectedFees24h: "5.50",
+        netYield24h: "5.50",
         deltaDriftPercent: 0,
       },
     };
 
     const summary = generateDiscordSummary(report as any);
     
-    const collectedFeesField = summary.fields.find(f => f.name === "Collected Fees (24h)");
-    expect(collectedFeesField).toBeDefined();
-    expect(collectedFeesField?.value).toBe("$5.5000");
+    const netYieldField = summary.fields.find(f => f.name === "Net Yield (24h)");
+    expect(netYieldField).toBeDefined();
+    expect(netYieldField?.value).toBe("$5.5000");
   });
 });
