@@ -146,6 +146,8 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
   // Get APR metrics
   const db = new MonitoringDatabase();
   let aprMetricsData: { apr1d?: number; apr7d?: number; apr30d?: number } = {};
+  let collectedFees24h = 0n;
+
   try {
     const metrics = await getAPRMetrics(db, account);
     aprMetricsData = {
@@ -153,8 +155,13 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
       apr7d: metrics.rolling7d?.aprPercent,
       apr30d: metrics.rolling30d?.aprPercent,
     };
+
+    // Get collected fees for last 24h
+    const now = Date.now();
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    collectedFees24h = db.getFeesCollected(account, oneDayAgo, now);
   } catch (error) {
-    logger.warn("Failed to fetch APR metrics for report", { error });
+    logger.warn("Failed to fetch APR metrics or collected fees for report", { error });
   } finally {
     db.close();
   }
@@ -167,7 +174,8 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
     totalLpValueUsd,
     totalFeesUsd,
     aprMetricsData,
-    walletBalances
+    walletBalances,
+    collectedFees24h
   );
 
   // Override date if specified
@@ -203,6 +211,9 @@ export function generateDiscordSummary(report: DailyReport): {
   const totalNetValue = parseFloat(report.summary.totalNetValueUsd);
   const deltaDriftPercent = report.summary.deltaDrift * 100;
   const feesUsd = parseFloat(report.metrics.totalFeesUsd);
+  const collectedFees24hUsd = report.metrics.collectedFees24h
+    ? parseFloat(report.metrics.collectedFees24h)
+    : 0;
 
   // Determine status emoji based on health
   let statusEmoji = "✅";
@@ -232,6 +243,14 @@ export function generateDiscordSummary(report: DailyReport): {
       inline: true,
     },
   ];
+
+  if (collectedFees24hUsd > 0) {
+    fields.push({
+      name: "Collected Fees (24h)",
+      value: `$${collectedFees24hUsd.toFixed(4)}`,
+      inline: true,
+    });
+  }
 
   if (
     report.metrics.apr1d !== undefined ||

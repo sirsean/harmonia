@@ -92,7 +92,7 @@ vi.mock("../../../src/modules/uniswap/reader", () => ({
 }));
 
 vi.mock("../../../src/utils/reports", () => ({
-  generateDailyReport: vi.fn((account, status, recommendation, totalLpValueUsd, totalFeesUsd, aprMetrics, walletBalances) => ({
+  generateDailyReport: vi.fn((account, status, recommendation, totalLpValueUsd, totalFeesUsd, aprMetrics, walletBalances, collectedFees24h) => ({
     date: new Date().toISOString().split("T")[0],
     timestamp: Date.now(),
     account,
@@ -118,6 +118,7 @@ vi.mock("../../../src/utils/reports", () => ({
     metrics: {
       totalLpDelta: "1.0",
       totalFeesUsd: "10.0",
+      collectedFees24h: collectedFees24h ? collectedFees24h.toString() : undefined,
       deltaDriftPercent: 0,
       apr1d: aprMetrics?.apr1d,
       apr7d: aprMetrics?.apr7d,
@@ -247,5 +248,44 @@ describe("Report Implementation", () => {
     expect(summary.fields[4].name).toBe("Wallet Balances");
     expect(summary.fields[4].value).toContain("1.5 WETH");
     expect(summary.fields[4].value).toContain("2000.0 USDC");
+  });
+
+  it("should include collected fees in Discord summary when present", async () => {
+    const { generateDiscordSummary } = await import("../../../src/cli/commands/report-impl");
+    
+    const report = {
+      date: "2026-01-26",
+      timestamp: Date.now(),
+      account: "0x1234567890123456789012345678901234567890",
+      summary: {
+        totalLpValueUsd: "1000.0",
+        totalGmxValueUsd: "500.0",
+        totalNetValueUsd: "1500.0",
+        netDelta: "0.0",
+        deltaDrift: 0,
+        recommendation: "NONE",
+      },
+      positions: {
+        uniswap: [],
+        gmx: {
+          positionSizeTokens: "1.0",
+          collateralAmount: "500.0",
+          netValueUsd: "500.0",
+          delta: "-1.0",
+        },
+      },
+      metrics: {
+        totalLpDelta: "0.0",
+        totalFeesUsd: "10.0",
+        collectedFees24h: "5.50",
+        deltaDriftPercent: 0,
+      },
+    };
+
+    const summary = generateDiscordSummary(report as any);
+    
+    const collectedFeesField = summary.fields.find(f => f.name === "Collected Fees (24h)");
+    expect(collectedFeesField).toBeDefined();
+    expect(collectedFeesField?.value).toBe("$5.5000");
   });
 });

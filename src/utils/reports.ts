@@ -45,7 +45,8 @@ export interface DailyReport {
   };
   metrics: {
     totalLpDelta: string;
-    totalFeesUsd: string;
+    totalFeesUsd: string; // Unclaimed fees
+    collectedFees24h?: string; // Fees collected in last 24h
     deltaDriftPercent: number;
     apr1d?: number;
     apr7d?: number;
@@ -70,7 +71,8 @@ export function generateDailyReport(
   walletBalances?: {
     balance0: string;
     balance1: string;
-  }
+  },
+  collectedFees24h?: bigint
 ): DailyReport {
   const totalNetValueUsd = totalLpValueUsd + status.gmx.netValueUsd;
 
@@ -111,6 +113,7 @@ export function generateDailyReport(
     metrics: {
       totalLpDelta: ethers.formatEther(status.totalLpDelta),
       totalFeesUsd: ethers.formatUnits(totalFeesUsd, 30),
+      collectedFees24h: collectedFees24h ? ethers.formatUnits(collectedFees24h, 30) : undefined,
       deltaDriftPercent: status.deltaDrift * 100,
       apr1d: aprMetrics?.apr1d,
       apr7d: aprMetrics?.apr7d,
@@ -239,7 +242,10 @@ export function formatReportSummary(report: DailyReport): string {
   lines.push("METRICS");
   lines.push("-".repeat(80));
   lines.push(`Total LP Delta: ${report.metrics.totalLpDelta} ETH`);
-  lines.push(`Total Fees USD: $${report.metrics.totalFeesUsd}`);
+  lines.push(`Total Fees USD: $${report.metrics.totalFeesUsd} (Unclaimed)`);
+  if (report.metrics.collectedFees24h) {
+    lines.push(`Collected Fees (24h): $${report.metrics.collectedFees24h}`);
+  }
   lines.push(`Delta Drift: ${report.metrics.deltaDriftPercent.toFixed(2)}%`);
 
   if (
