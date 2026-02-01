@@ -146,7 +146,7 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
   // Get APR metrics
   const db = new MonitoringDatabase();
   let aprMetricsData: { apr1d?: number; apr7d?: number; apr30d?: number } = {};
-  let collectedFees24h = 0n;
+  let netYield24h = 0n;
 
   try {
     const metrics = await getAPRMetrics(db, account);
@@ -156,12 +156,14 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
       apr30d: metrics.rolling30d?.aprPercent,
     };
 
-    // Get collected fees for last 24h
+    // Get net yield for last 24h (fees collected - costs incurred)
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
-    collectedFees24h = db.getFeesCollected(account, oneDayAgo, now);
+    const feesCollected24h = db.getFeesCollected(account, oneDayAgo, now);
+    const costsIncurred24h = db.getTotalCosts(account, oneDayAgo, now);
+    netYield24h = feesCollected24h - costsIncurred24h;
   } catch (error) {
-    logger.warn("Failed to fetch APR metrics or collected fees for report", { error });
+    logger.warn("Failed to fetch APR metrics or net yield for report", { error });
   } finally {
     db.close();
   }
@@ -175,7 +177,7 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
     totalFeesUsd,
     aprMetricsData,
     walletBalances,
-    collectedFees24h
+    netYield24h
   );
 
   // Override date if specified
@@ -211,9 +213,7 @@ export function generateDiscordSummary(report: DailyReport): {
   const totalNetValue = parseFloat(report.summary.totalNetValueUsd);
   const deltaDriftPercent = report.summary.deltaDrift * 100;
   const feesUsd = parseFloat(report.metrics.totalFeesUsd);
-  const collectedFees24hUsd = report.metrics.collectedFees24h
-    ? parseFloat(report.metrics.collectedFees24h)
-    : 0;
+  const netYield24hUsd = report.metrics.netYield24h ? parseFloat(report.metrics.netYield24h) : 0;
 
   // Determine status emoji based on health
   let statusEmoji = "✅";
@@ -244,10 +244,10 @@ export function generateDiscordSummary(report: DailyReport): {
     },
   ];
 
-  if (collectedFees24hUsd > 0) {
+  if (Math.abs(netYield24hUsd) > 0) {
     fields.push({
-      name: "Collected Fees (24h)",
-      value: `$${collectedFees24hUsd.toFixed(4)}`,
+      name: "Net Yield (24h)",
+      value: `$${netYield24hUsd.toFixed(4)}`,
       inline: true,
     });
   }
