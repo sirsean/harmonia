@@ -54,11 +54,9 @@ export class MonitoringDatabase {
     const defaultPath = path.join(process.cwd(), "data", "monitoring.db");
     const finalPath = dbPath || defaultPath;
 
-    // Ensure directory exists
+    // Ensure directory exists (avoid race with parallel test cleanup)
     const dir = path.dirname(finalPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    fs.mkdirSync(dir, { recursive: true });
 
     this.db = new Database(finalPath);
     this.db.pragma("journal_mode = WAL"); // Better concurrency

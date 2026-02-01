@@ -68,6 +68,130 @@ export interface ExecuteOptimizeResult {
   feesCollectedUsd: bigint;
 }
 
+type SweepWethContract = {
+  balanceOf: (account: string) => Promise<bigint>;
+  allowance: (owner: string, spender: string) => Promise<bigint>;
+  approve: (
+    spender: string,
+    amount: bigint
+  ) => Promise<{ wait: () => Promise<{ gasUsed?: bigint; gasPrice?: bigint }> }>;
+};
+
+type SweepSwapRouter = {
+  exactInputSingle: (params: {
+    tokenIn: string;
+    tokenOut: string;
+    fee: number;
+    recipient: string;
+    deadline: bigint;
+    amountIn: bigint;
+    amountOutMinimum: bigint;
+    sqrtPriceLimitX96: number;
+  }) => Promise<{ hash: string; wait: () => Promise<{ gasUsed?: bigint; gasPrice?: bigint }> }>;
+};
+
+type SweepQuoter = {
+  quoteExactInputSingle: {
+    staticCall: (
+      tokenIn: string,
+      tokenOut: string,
+      fee: number,
+      amountIn: bigint,
+      sqrtPriceLimitX96: number
+    ) => Promise<bigint>;
+  };
+};
+
+export async function sweepIdleWethToUsdc(params: {
+  account: string;
+  wethContract: SweepWethContract;
+  swapRouter: SweepSwapRouter;
+  quoter: SweepQuoter;
+  wethToken: string;
+  usdcToken: string;
+  fee: number;
+  slippageBps: bigint;
+  dustThreshold: bigint;
+  refreshNonce: (provider: any, account: string) => Promise<void>;
+  provider: any;
+  transactionReceipts?: Array<{ gasUsed: bigint; gasPrice: bigint }>;
+}): Promise<{ amountIn: bigint; amountOutMin: bigint } | null> {
+  const {
+    account,
+    wethContract,
+    swapRouter,
+    quoter,
+    wethToken,
+    usdcToken,
+    fee,
+    slippageBps,
+    dustThreshold,
+    refreshNonce: refreshNonceFn,
+    provider,
+    transactionReceipts,
+  } = params;
+
+  const amountIn = await wethContract.balanceOf(account);
+  if (amountIn <= dustThreshold) {
+    return null;
+  }
+
+  let quoteOut: bigint;
+  try {
+    const quoteOutRaw = await quoter.quoteExactInputSingle.staticCall(
+      wethToken,
+      usdcToken,
+      fee,
+      amountIn,
+      0
+    );
+    quoteOut = toBigInt(quoteOutRaw);
+    if (quoteOut === 0n) {
+      throw new Error("Quoter returned 0 - insufficient liquidity or invalid parameters");
+    }
+  } catch (error: any) {
+    const errorMsg = error.reason || error.message || String(error);
+    throw new Error(`Failed to get sweep quote: ${errorMsg}`);
+  }
+
+  const amountOutMin = (quoteOut * (10_000n - slippageBps)) / 10_000n;
+  const allowance = await wethContract.allowance(account, ARBITRUM_MAINNET.uniswapV3SwapRouter);
+
+  if (allowance < amountIn) {
+    const approval = await wethContract.approve(ARBITRUM_MAINNET.uniswapV3SwapRouter, amountIn);
+    const approvalReceipt = await approval.wait();
+    if (approvalReceipt?.gasUsed && approvalReceipt?.gasPrice && transactionReceipts) {
+      transactionReceipts.push({
+        gasUsed: approvalReceipt.gasUsed,
+        gasPrice: approvalReceipt.gasPrice,
+      });
+    }
+    await refreshNonceFn(provider, account);
+  }
+
+  const swapTx = await swapRouter.exactInputSingle({
+    tokenIn: wethToken,
+    tokenOut: usdcToken,
+    fee,
+    recipient: account,
+    deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
+    amountIn,
+    amountOutMinimum: amountOutMin,
+    sqrtPriceLimitX96: 0,
+  });
+
+  const swapReceipt = await swapTx.wait();
+  if (swapReceipt?.gasUsed && swapReceipt?.gasPrice && transactionReceipts) {
+    transactionReceipts.push({
+      gasUsed: swapReceipt.gasUsed,
+      gasPrice: swapReceipt.gasPrice,
+    });
+  }
+  await refreshNonceFn(provider, account);
+
+  return { amountIn, amountOutMin };
+}
+
 export async function executeOptimize(
   options: ExecuteOptimizeOptions = {}
 ): Promise<ExecuteOptimizeResult> {
@@ -1077,6 +1201,37 @@ export async function executeOptimize(
         }
       }
 
+      // Sweep idle WETH to USDC after positions are open
+      const wethDustThreshold = ethers.parseUnits("0.0001", wethDecimals);
+      console.log(`\nSweeping idle WETH to USDC...`);
+      try {
+        const sweepResult = await sweepIdleWethToUsdc({
+          account,
+          wethContract: wethContract as unknown as SweepWethContract,
+          swapRouter: swapRouter as unknown as SweepSwapRouter,
+          quoter: quoter as unknown as SweepQuoter,
+          wethToken,
+          usdcToken,
+          fee,
+          slippageBps,
+          dustThreshold: wethDustThreshold,
+          refreshNonce,
+          provider: signer.provider,
+          transactionReceipts,
+        });
+
+        if (sweepResult) {
+          console.log(
+            `  Swept ${ethers.formatUnits(sweepResult.amountIn, wethDecimals)} WETH for USDC (min ${ethers.formatUnits(sweepResult.amountOutMin, usdcDecimals)} USDC)`
+          );
+        } else {
+          console.log(`  No idle WETH above dust threshold.`);
+        }
+      } catch (error: any) {
+        const errorMsg = error.reason || error.message || String(error);
+        console.warn(`  Warning: WETH sweep failed (${errorMsg}). Continuing.`);
+      }
+
       console.log(`\n✅ Optimization complete!`);
       console.log(`  LP position: ${mintResult.txHash || "minted"}`);
       if (allocation.gmxShortSizeUsd > 0n) {
@@ -1091,6 +1246,7 @@ export async function executeOptimize(
       const totalFeesUsd = closeResult.totalFeesCollectedUsd;
       let totalGasCostUsd = 0n;
       let gmxExecutionFeeUsd = 0n;
+      let dbClosed = false;
       try {
         const stateManager = new StateManager(db);
 
@@ -1165,9 +1321,6 @@ export async function executeOptimize(
         console.log(`  Optimization recorded in database`);
       } catch (error) {
         console.warn(`  Warning: Failed to record optimization in database: ${error}`);
-      } finally {
-        // Close database instance
-        db.close();
       }
 
       // Send success alert to Discord
@@ -1246,6 +1399,14 @@ export async function executeOptimize(
           console.warn("Failed to send Discord alert:", alertError);
         }
       }
+      // Close database instance after alerts (APR metrics uses db)
+      if (!dbClosed) {
+        try {
+          db.close();
+        } finally {
+          dbClosed = true;
+        }
+      }
 
       // Return fees collected from execution
       return {
@@ -1264,6 +1425,17 @@ export async function executeOptimize(
       console.log(`   - Collateral: $${ethers.formatUnits(allocation.gmxCollateralUsd, 30)}`);
       console.log(
         `   - Total capital used: $${ethers.formatUnits(allocation.totalCapitalUsd, 30)}`
+      );
+      const currentWethBalance = isToken0Weth ? balance0 : balance1;
+      const estimatedIdleWeth =
+        currentWethBalance > wethAmount ? currentWethBalance - wethAmount : 0n;
+      const wethDustThreshold = ethers.parseUnits("0.0001", wethDecimals);
+      console.log(`\n5. Sweep remaining WETH to USDC:`);
+      console.log(
+        `   - Estimated idle WETH: ${ethers.formatUnits(estimatedIdleWeth, wethDecimals)}`
+      );
+      console.log(
+        `   - Action: ${estimatedIdleWeth > wethDustThreshold ? "Convert to USDC to remove price exposure" : "Skip (below dust threshold)"}`
       );
       console.log("\nTo execute, run with --execute flag");
       // Return 0 for dry-run
