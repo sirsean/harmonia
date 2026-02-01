@@ -31,6 +31,8 @@ npm test              # Run all tests once
 npm run test:watch    # Run tests in watch mode
 ```
 
+**Note:** Always use `npm test` (or `npm run test:watch`) to run tests. Do not use `npx vitest` directly, as it requires manual intervention to complete.
+
 **Test Requirements:**
 - ✅ **All tests must pass** - Never commit code with failing tests
 - ✅ **Comprehensive coverage** - Write tests for all new functionality
