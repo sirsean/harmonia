@@ -125,7 +125,8 @@ function renderDashboard(
   console.log("│");
   const netDeltaStr = `${formatBigInt(status.netDelta, 18, 4)} ETH`;
   console.log(`│ Net Delta:            ${netDeltaStr}`);
-  const deltaDriftStr = `${formatValue(status.deltaDrift * 100, 2, deltaDriftColor)}%`;
+  const driftDirection = status.netDelta > 0n ? "under" : "over";
+  const deltaDriftStr = `${formatValue(status.deltaDrift * 100, 2, deltaDriftColor)}% (${driftDirection}-hedged)`;
   console.log(`│ Delta Drift:          ${deltaDriftStr}`);
   console.log("│");
   const recommendationStr = recommendation.action;
@@ -183,7 +184,7 @@ function renderDashboard(
 
   if (recommendation.data && recommendation.action === StrategyAction.OPTIMIZE) {
     console.log("┌─ OPTIMIZATION DETAILS ─" + "-".repeat(5));
-    const deltaDrift = `${formatValue(recommendation.data.deltaDrift * 100, 2)}%`;
+    const deltaDrift = `${formatValue(recommendation.data.deltaDrift * 100, 2)}% (${status.netDelta > 0n ? "under" : "over"}-hedged)`;
     console.log(`│ Delta Drift:          ${deltaDrift}`);
     const outOfRange = recommendation.data.anyOutOfRange ? "Yes" : "No";
     console.log(`│ Out of Range:         ${outOfRange}`);

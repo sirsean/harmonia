@@ -235,7 +235,7 @@ describe("Report Implementation", () => {
     expect(summary.fields[0].value).toBe("$1500.7500");
     
     expect(summary.fields[1].name).toBe("Delta Drift");
-    expect(summary.fields[1].value).toBe("3.00%");
+    expect(summary.fields[1].value).toBe("3.00% (under-hedged)");
     
     expect(summary.fields[2].name).toBe("Unclaimed Fees");
     expect(summary.fields[2].value).toBe("$10.5000");
@@ -287,5 +287,43 @@ describe("Report Implementation", () => {
     const netYieldField = summary.fields.find(f => f.name === "Net Yield (24h)");
     expect(netYieldField).toBeDefined();
     expect(netYieldField?.value).toBe("$5.5000");
+  });
+
+  it("should show over-hedged when netDelta is negative", async () => {
+    const { generateDiscordSummary } = await import("../../../src/cli/commands/report-impl");
+
+    const report = {
+      date: "2026-01-26",
+      timestamp: Date.now(),
+      account: "0x1234567890123456789012345678901234567890",
+      summary: {
+        totalLpValueUsd: "1000.0",
+        totalGmxValueUsd: "500.0",
+        totalNetValueUsd: "1500.0",
+        netDelta: "-0.5",
+        deltaDrift: 1.1924,
+        recommendation: "OPTIMIZE",
+      },
+      positions: {
+        uniswap: [],
+        gmx: {
+          positionSizeTokens: "1.5",
+          collateralAmount: "500.0",
+          netValueUsd: "500.0",
+          delta: "-1.5",
+        },
+      },
+      metrics: {
+        totalLpDelta: "1.0",
+        totalFeesUsd: "10.0",
+        deltaDriftPercent: 119.24,
+      },
+    };
+
+    const summary = generateDiscordSummary(report as any);
+
+    const driftField = summary.fields.find(f => f.name === "Delta Drift");
+    expect(driftField).toBeDefined();
+    expect(driftField?.value).toBe("119.24% (over-hedged)");
   });
 });

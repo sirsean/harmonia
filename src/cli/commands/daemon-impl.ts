@@ -363,7 +363,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               },
               {
                 name: "Delta Drift Before",
-                value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+                value: `${(status.deltaDrift * 100).toFixed(2)}% (${status.netDelta > 0n ? "under" : "over"}-hedged)`,
                 inline: true,
               },
               {

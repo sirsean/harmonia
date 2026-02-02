@@ -234,7 +234,7 @@ export function generateDiscordSummary(report: DailyReport): {
     },
     {
       name: "Delta Drift",
-      value: `${deltaDriftPercent.toFixed(2)}%`,
+      value: `${deltaDriftPercent.toFixed(2)}% (${parseFloat(report.summary.netDelta) > 0 ? "under" : "over"}-hedged)`,
       inline: true,
     },
     {

@@ -201,7 +201,10 @@ export function formatReportSummary(report: DailyReport): string {
   lines.push(`Total GMX Value: $${report.summary.totalGmxValueUsd}`);
   lines.push(`Total Net Value: $${report.summary.totalNetValueUsd}`);
   lines.push(`Net Delta: ${report.summary.netDelta} ETH`);
-  lines.push(`Delta Drift: ${(report.summary.deltaDrift * 100).toFixed(2)}%`);
+  const summaryDriftDir = parseFloat(report.summary.netDelta) > 0 ? "under" : "over";
+  lines.push(
+    `Delta Drift: ${(report.summary.deltaDrift * 100).toFixed(2)}% (${summaryDriftDir}-hedged)`
+  );
   lines.push(`Recommendation: ${report.summary.recommendation}`);
 
   if (report.summary.walletBalance0 || report.summary.walletBalance1) {
@@ -246,7 +249,10 @@ export function formatReportSummary(report: DailyReport): string {
   if (report.metrics.netYield24h) {
     lines.push(`Net Yield (24h): $${report.metrics.netYield24h}`);
   }
-  lines.push(`Delta Drift: ${report.metrics.deltaDriftPercent.toFixed(2)}%`);
+  const metricsDriftDir = parseFloat(report.summary.netDelta) > 0 ? "under" : "over";
+  lines.push(
+    `Delta Drift: ${report.metrics.deltaDriftPercent.toFixed(2)}% (${metricsDriftDir}-hedged)`
+  );
 
   if (
     report.metrics.apr1d !== undefined ||
