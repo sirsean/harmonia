@@ -156,7 +156,9 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
 
     console.log("\n[Net Strategy]");
     console.log(`  Net Delta: ${ethers.formatEther(status.netDelta)} ETH`);
-    console.log(`  Delta Drift: ${(status.deltaDrift * 100).toFixed(2)}%`);
+    console.log(
+      `  Delta Drift: ${(status.deltaDrift * 100).toFixed(2)}% (${status.netDelta > 0n ? "under" : "over"}-hedged)`
+    );
 
     // Calculate and display total net value
     const totalNetValueUsd = totalLpValueUsd + status.gmx.netValueUsd;
@@ -183,7 +185,7 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
           [
             {
               name: "Delta Drift",
-              value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+              value: `${(status.deltaDrift * 100).toFixed(2)}% (${status.netDelta > 0n ? "under" : "over"}-hedged)`,
               inline: true,
             },
             {
@@ -216,7 +218,7 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
           [
             {
               name: "Delta Drift",
-              value: `${(status.deltaDrift * 100).toFixed(2)}%`,
+              value: `${(status.deltaDrift * 100).toFixed(2)}% (${status.netDelta > 0n ? "under" : "over"}-hedged)`,
               inline: true,
             },
             {
