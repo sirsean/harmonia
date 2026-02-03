@@ -380,6 +380,24 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               fields.push({ name: "7d APR", value: `${apr7d.toFixed(2)}%`, inline: true });
             }
 
+            try {
+              const [balance0, balance1] = await Promise.all([
+                token0Contract.balanceOf(account),
+                token1Contract.balanceOf(account),
+              ]);
+              const balance0Str = `${ethers.formatUnits(balance0, decimals0)} ${symbol0}`;
+              const balance1Str = `${ethers.formatUnits(balance1, decimals1)} ${symbol1}`;
+              fields.push({
+                name: "Wallet Balances",
+                value: `${balance0Str}\n${balance1Str}`,
+                inline: false,
+              });
+            } catch (error: any) {
+              logger.warn("Failed to fetch wallet balances for optimization alert", {
+                error: error.message,
+              });
+            }
+
             await sendSuccessAlert("✅ Harmonia : Optimized", "", fields).catch((alertError) => {
               logger.warn("Failed to send Discord alert", { error: alertError.message });
             });
