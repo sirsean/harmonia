@@ -41,7 +41,7 @@ import {
   UNISWAP_QUOTER_ABI,
 } from "../../../utils/abis";
 
-import { toBigInt } from "../../../utils/helpers";
+import { toBigInt, refreshNonce } from "../../../utils/helpers";
 import { sendErrorAlert, sendSuccessAlert } from "../../../utils/alerts";
 
 export interface ExecuteOptimizeOptions {
@@ -112,6 +112,8 @@ export async function sweepIdleWethToUsdc(params: {
   fee: number;
   slippageBps: bigint;
   dustThreshold: bigint;
+  refreshNonce: (provider: any, account: string) => Promise<void>;
+  provider: any;
   transactionReceipts?: Array<{ gasUsed: bigint; gasPrice: bigint }>;
 }): Promise<{ amountIn: bigint; amountOutMin: bigint } | null> {
   const {
@@ -124,6 +126,8 @@ export async function sweepIdleWethToUsdc(params: {
     fee,
     slippageBps,
     dustThreshold,
+    refreshNonce: refreshNonceFn,
+    provider,
     transactionReceipts,
   } = params;
 
@@ -165,6 +169,7 @@ export async function sweepIdleWethToUsdc(params: {
         gasPrice: approvalReceipt.gasPrice,
       });
     }
+    await refreshNonceFn(provider, account);
   }
 
   const swapTx = await swapRouter.exactInputSingle({
@@ -185,6 +190,7 @@ export async function sweepIdleWethToUsdc(params: {
       gasPrice: swapReceipt.gasPrice,
     });
   }
+  await refreshNonceFn(provider, account);
 
   return { amountIn, amountOutMin };
 }
@@ -485,6 +491,9 @@ export async function executeOptimize(
       monitorConfig,
       db
     );
+    if (executeFlag) {
+      await refreshNonce(signer.provider, account);
+    }
 
     // Get actual balances after closing (for execution path)
     // For dry-run, we use the calculated totals above
@@ -682,6 +691,7 @@ export async function executeOptimize(
               gasPrice: approvalReceipt.gasPrice,
             });
           }
+          await refreshNonce(signer.provider, account);
         }
         // Let ethers manage nonce automatically
         const swapTx = await swapRouter.exactInputSingle({
@@ -697,6 +707,7 @@ export async function executeOptimize(
         console.log(`  Swap tx: ${swapTx.hash}`);
         // CRITICAL: Wait for swap confirmation before proceeding
         await swapTx.wait();
+        await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),
@@ -764,6 +775,7 @@ export async function executeOptimize(
               gasPrice: approvalReceipt.gasPrice,
             });
           }
+          await refreshNonce(signer.provider, account);
         }
         // Let ethers manage nonce automatically
         const swapTx = await swapRouter.exactInputSingle({
@@ -779,6 +791,7 @@ export async function executeOptimize(
         console.log(`  Swap tx: ${swapTx.hash}`);
         // CRITICAL: Wait for swap confirmation before proceeding
         await swapTx.wait();
+        await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),
@@ -971,6 +984,7 @@ export async function executeOptimize(
           console.log(
             `  ✓ Approved ${token0Symbol}: ${ethers.formatUnits(newAllowance0, token0Decimals)}`
           );
+          await refreshNonce(signer.provider, account);
         }
         if (allowance1 < finalAmount1 && finalAmount1 > 0n) {
           console.log(`  Approving ${token1Symbol}...`);
@@ -1001,6 +1015,7 @@ export async function executeOptimize(
           console.log(
             `  ✓ Approved ${token1Symbol}: ${ethers.formatUnits(newAllowance1, token1Decimals)}`
           );
+          await refreshNonce(signer.provider, account);
         }
 
         console.log(`  Minting LP position...`);
@@ -1132,6 +1147,7 @@ export async function executeOptimize(
           );
           // CRITICAL: Wait for approval before proceeding
           await approval.wait();
+          await refreshNonce(signer.provider, account);
         }
 
         // Let ethers manage nonce automatically - no manual nonce management
@@ -1189,6 +1205,8 @@ export async function executeOptimize(
           fee,
           slippageBps,
           dustThreshold: wethDustThreshold,
+          refreshNonce,
+          provider: signer.provider,
           transactionReceipts,
         });
 

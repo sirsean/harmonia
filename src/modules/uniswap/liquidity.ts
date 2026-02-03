@@ -8,6 +8,7 @@ import {
   UniswapTransactionResult,
 } from "./types";
 import { UNISWAP_POSITION_MANAGER_WRITE_ABI } from "../../utils/abis";
+import { refreshNonce } from "../../utils/helpers";
 
 export function createPositionManager(
   address: string,
@@ -67,7 +68,15 @@ export async function mintPosition(
   if (config.performApproval !== false) {
     // Sequential approvals - let ethers manage nonces automatically
     await ensureAllowance(token0, config.owner, config.spender, params.amount0Desired);
+    const managerContract = manager as unknown as ethers.Contract;
+    const provider = managerContract.runner?.provider;
+    if (provider && typeof provider === "object" && "getTransactionCount" in provider) {
+      await refreshNonce(provider as ethers.Provider, config.owner);
+    }
     await ensureAllowance(token1, config.owner, config.spender, params.amount1Desired);
+    if (provider && typeof provider === "object" && "getTransactionCount" in provider) {
+      await refreshNonce(provider as ethers.Provider, config.owner);
+    }
   }
 
   // Let ethers manage nonce automatically - no manual nonce management
@@ -88,7 +97,15 @@ export async function increaseLiquidity(
   if (config.performApproval !== false) {
     // Sequential approvals - let ethers manage nonces automatically
     await ensureAllowance(token0, params.owner, params.spender, params.amount0Desired);
+    const managerContract = manager as unknown as ethers.Contract;
+    const provider = managerContract.runner?.provider;
+    if (provider && typeof provider === "object" && "getTransactionCount" in provider) {
+      await refreshNonce(provider as ethers.Provider, params.owner);
+    }
     await ensureAllowance(token1, params.owner, params.spender, params.amount1Desired);
+    if (provider && typeof provider === "object" && "getTransactionCount" in provider) {
+      await refreshNonce(provider as ethers.Provider, params.owner);
+    }
   }
 
   const { owner, spender, ...callParams } = params;

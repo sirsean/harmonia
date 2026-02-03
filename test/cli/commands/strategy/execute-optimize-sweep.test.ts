@@ -30,6 +30,8 @@ describe("sweepIdleWethToUsdc", () => {
       fee: 500,
       slippageBps: 50n,
       dustThreshold: 100n,
+      refreshNonce: vi.fn().mockResolvedValue(undefined),
+      provider: {},
     });
 
     expect(result).toBeNull();
@@ -55,6 +57,7 @@ describe("sweepIdleWethToUsdc", () => {
       },
     };
     const receipts: Array<{ gasUsed: bigint; gasPrice: bigint }> = [];
+    const refreshNonce = vi.fn().mockResolvedValue(undefined);
 
     const result = await sweepIdleWethToUsdc({
       account: mockAccount,
@@ -66,6 +69,8 @@ describe("sweepIdleWethToUsdc", () => {
       fee: 500,
       slippageBps: 50n,
       dustThreshold: 100n,
+      refreshNonce,
+      provider: {},
       transactionReceipts: receipts,
     });
 
@@ -77,6 +82,7 @@ describe("sweepIdleWethToUsdc", () => {
       (1n << 256n) - 1n
     );
     expect(swapRouter.exactInputSingle).toHaveBeenCalledTimes(1);
+    expect(refreshNonce).toHaveBeenCalledTimes(2);
     expect(receipts).toHaveLength(2);
   });
 
@@ -97,6 +103,7 @@ describe("sweepIdleWethToUsdc", () => {
       },
     };
     const receipts: Array<{ gasUsed: bigint; gasPrice: bigint }> = [];
+    const refreshNonce = vi.fn().mockResolvedValue(undefined);
 
     const result = await sweepIdleWethToUsdc({
       account: mockAccount,
@@ -108,12 +115,15 @@ describe("sweepIdleWethToUsdc", () => {
       fee: 500,
       slippageBps: 50n,
       dustThreshold: 100n,
+      refreshNonce,
+      provider: {},
       transactionReceipts: receipts,
     });
 
     expect(result).not.toBeNull();
     expect(wethContract.approve).not.toHaveBeenCalled();
     expect(swapRouter.exactInputSingle).toHaveBeenCalledTimes(1);
+    expect(refreshNonce).toHaveBeenCalledTimes(1);
     expect(receipts).toHaveLength(1);
   });
 });
