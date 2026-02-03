@@ -16,6 +16,9 @@ vi.mock("hardhat", () => ({
       return {
         decimals: vi.fn().mockResolvedValue(address === "0xUSDC" ? 6n : 18n),
         symbol: vi.fn().mockResolvedValue(address === "0xUSDC" ? "USDC" : "ETH"),
+        balanceOf: vi
+          .fn()
+          .mockResolvedValue(address === "0xUSDC" ? 5_000_000n : 2_000_000_000_000_000_000n),
       };
     }),
     parseEther: vi.fn((val: string) => {
@@ -657,6 +660,19 @@ describe("daemon command", () => {
         execute: true,
         suppressAlert: true,
       });
+
+      const { sendSuccessAlert } = await import("../../../src/utils/alerts");
+      expect(sendSuccessAlert).toHaveBeenCalledWith(
+        "✅ Harmonia : Optimized",
+        "",
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: "Wallet Balances",
+            value: "5000000 USDC\n2000000000000000000 ETH",
+            inline: false,
+          }),
+        ])
+      );
 
       exitSpy.mockRestore();
     });
