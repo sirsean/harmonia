@@ -231,10 +231,12 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
   // Let ethers manage nonce automatically - no manual nonce management
   const allowance = await usdcContract.allowance(account, ARBITRUM_MAINNET.uniswapV3SwapRouter);
   if (allowance < amountIn) {
-    const approval = await usdcContract.approve(ARBITRUM_MAINNET.uniswapV3SwapRouter, amountIn);
+    const approval = await usdcContract.approve(
+      ARBITRUM_MAINNET.uniswapV3SwapRouter,
+      (1n << 256n) - 1n
+    );
     // CRITICAL: Wait for approval before proceeding
     await approval.wait();
-    // CRITICAL: Refresh nonce after approval before swap
     await refreshNonce(ethers.provider, account);
   }
 
@@ -252,7 +254,6 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
   console.log("Swap Tx Hash:", swapTx.hash);
   // CRITICAL: Wait for swap confirmation before proceeding
   await swapTx.wait();
-  // CRITICAL: Refresh nonce after swap before approvals
   await refreshNonce(ethers.provider, account);
 
   const [usdcBalanceAfter, wethBalanceAfter] = await Promise.all([
@@ -307,17 +308,15 @@ export async function uniswapOpenPosition(options: UniswapOpenPositionOptions = 
 
   // Let ethers manage nonce automatically - sequential approvals
   if (allowance0 < amount0Desired) {
-    const approval = await token0Contract.approve(positionManager, amount0Desired);
+    const approval = await token0Contract.approve(positionManager, (1n << 256n) - 1n);
     // CRITICAL: Wait for approval before proceeding
     await approval.wait();
-    // CRITICAL: Refresh nonce after approval before next approval
     await refreshNonce(ethers.provider, account);
   }
   if (allowance1 < amount1Desired) {
-    const approval = await token1Contract.approve(positionManager, amount1Desired);
+    const approval = await token1Contract.approve(positionManager, (1n << 256n) - 1n);
     // CRITICAL: Wait for approval before proceeding
     await approval.wait();
-    // CRITICAL: Refresh nonce after approval before mint
     await refreshNonce(ethers.provider, account);
   }
 

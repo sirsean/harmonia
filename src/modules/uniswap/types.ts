@@ -61,6 +61,10 @@ export interface UniswapPositionManager {
     params: CollectParams,
     overrides?: { nonce?: number }
   ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
+  multicall(
+    data: string[],
+    overrides?: { nonce?: number }
+  ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
 }
 
 export interface IERC20 {

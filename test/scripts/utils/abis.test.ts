@@ -40,9 +40,10 @@ describe("ABI Definitions", () => {
 
   describe("UNISWAP_ROUTER_ABI", () => {
     it("should contain exactInputSingle function", () => {
-      expect(UNISWAP_ROUTER_ABI.length).toBe(1);
-      expect(UNISWAP_ROUTER_ABI[0]).toContain("exactInputSingle");
-      expect(UNISWAP_ROUTER_ABI[0]).toContain("returns (uint256 amountOut)");
+      const abiStrings = UNISWAP_ROUTER_ABI.join(" ");
+      expect(UNISWAP_ROUTER_ABI.length).toBe(2);
+      expect(abiStrings).toContain("exactInputSingle");
+      expect(abiStrings).toContain("returns (uint256 amountOut)");
     });
   });
 

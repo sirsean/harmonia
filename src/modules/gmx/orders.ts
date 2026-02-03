@@ -116,16 +116,15 @@ export async function ensureAllowance(
   spender: string,
   amount: bigint
 ): Promise<boolean> {
+  const MAX_UINT256 = (1n << 256n) - 1n;
   const allowance = await token.allowance(owner, spender);
   if (allowance >= amount) {
     return false;
   }
   // Let ethers manage nonce automatically - no manual nonce management
-  const approval = await token.approve(spender, amount);
+  const approval = await token.approve(spender, MAX_UINT256);
   // CRITICAL: Wait for approval before proceeding
   await approval.wait();
-  // Note: Nonce refresh is handled by the calling function (createIncreaseOrder/createDecreaseOrder)
-  // to ensure we have access to the router's provider
   return true;
 }
 
@@ -153,9 +152,6 @@ export async function createIncreaseOrder(
   const routerAddress = config.routerAddress ?? routerAddressFromInterface(router);
   // Always ensure allowance - let ethers manage nonces automatically
   await ensureAllowance(token, request.account, routerAddress, request.collateralAmount);
-
-  // CRITICAL: Refresh nonce after approval before order creation
-  // Get provider from router (which has the signer)
   const routerContract = router as unknown as ethers.Contract;
   const provider = routerContract.runner?.provider;
   if (provider && typeof provider === "object" && "getTransactionCount" in provider) {

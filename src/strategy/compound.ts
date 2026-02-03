@@ -6,7 +6,6 @@ import { UniswapPositionManager, IERC20, UniswapV3Pool } from "../modules/uniswa
 import { MonitoringDatabase } from "../utils/database";
 import { getLatestPrice } from "../modules/chainlink/price";
 import { ARBITRUM_MAINNET } from "../config/addresses";
-import { refreshNonce } from "../utils/helpers";
 
 /**
  * Result of a compound operation
@@ -77,7 +76,7 @@ export async function compoundFees(
   const { positionManager, pool, token0, token1, owner, spender } = config;
 
   // 1. Get current position state and unclaimed fees
-  const position = await uniswapReader.getPositionWithFees(positionManager, tokenId, owner);
+  await uniswapReader.getPositionWithFees(positionManager, tokenId, owner);
 
   // Get fees before collecting (to know how much we'll collect)
   const feesBefore = await uniswapFees.getUnclaimedFees(positionManager, tokenId, owner);
@@ -107,18 +106,6 @@ export async function compoundFees(
     amount0Max: amount0Collected > MAX_UINT128 ? MAX_UINT128 : (amount0Collected as bigint),
     amount1Max: amount1Collected > MAX_UINT128 ? MAX_UINT128 : (amount1Collected as bigint),
   };
-
-  // Let ethers manage nonce automatically - no manual nonce management
-  const collectTx = await uniswapFees.collectFees(positionManager, collectParams);
-
-  // CRITICAL: Always wait for receipt to ensure transaction is confirmed
-  const receipt = await collectTx.wait();
-  const collectTxHash = receipt.hash;
-
-  // CRITICAL: Refresh nonce after collectFees before increaseLiquidity
-  if (config.provider) {
-    await refreshNonce(config.provider, owner);
-  }
 
   // Record fee collection in database if database is provided
   if (config.db && config.provider && (amount0Collected > 0n || amount1Collected > 0n)) {
@@ -200,17 +187,19 @@ export async function compoundFees(
     owner,
     spender,
   };
+  if (config.performApproval !== false) {
+    await uniswapLiquidity.ensureAllowance(token0, owner, spender, amount0Collected);
+    await uniswapLiquidity.ensureAllowance(token1, owner, spender, amount1Collected);
+  }
 
-  // CRITICAL: Always wait for receipt (no option to disable)
-  const increaseLiquidityResult = await uniswapLiquidity.increaseLiquidity(
-    positionManager,
-    token0,
-    token1,
-    increaseLiquidityParams,
-    {
-      performApproval: config.performApproval !== false,
-    }
-  );
+  const multicallData = [
+    uniswapFees.encodeCollectCalldata(collectParams),
+    uniswapLiquidity.encodeIncreaseLiquidityCalldata(increaseLiquidityParams),
+  ];
+
+  const multicallTx = await positionManager.multicall(multicallData);
+  await multicallTx.wait();
+  const multicallTxHash = multicallTx.hash;
 
   // Note: To get the actual amounts added, we would need to:
   // 1. Parse the transaction receipt return values, or
@@ -224,8 +213,8 @@ export async function compoundFees(
     amount1Collected,
     amount0Added: amount0Collected, // Approximation - actual may be less
     amount1Added: amount1Collected, // Approximation - actual may be less
-    collectTxHash,
-    increaseLiquidityTxHash: increaseLiquidityResult.txHash,
+    collectTxHash: multicallTxHash,
+    increaseLiquidityTxHash: multicallTxHash,
   };
 }
 

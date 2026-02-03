@@ -158,7 +158,10 @@ export async function sweepIdleWethToUsdc(params: {
   const allowance = await wethContract.allowance(account, ARBITRUM_MAINNET.uniswapV3SwapRouter);
 
   if (allowance < amountIn) {
-    const approval = await wethContract.approve(ARBITRUM_MAINNET.uniswapV3SwapRouter, amountIn);
+    const approval = await wethContract.approve(
+      ARBITRUM_MAINNET.uniswapV3SwapRouter,
+      (1n << 256n) - 1n
+    );
     const approvalReceipt = await approval.wait();
     if (approvalReceipt?.gasUsed && approvalReceipt?.gasPrice && transactionReceipts) {
       transactionReceipts.push({
@@ -488,10 +491,6 @@ export async function executeOptimize(
       monitorConfig,
       db
     );
-
-    // CRITICAL: Refresh nonce after closing positions to prevent "nonce too low" errors
-    // Closing positions may have sent multiple transactions (decrease liquidity, collect fees, GMX orders)
-    // We need to refresh the nonce before proceeding with swaps
     if (executeFlag) {
       await refreshNonce(signer.provider, account);
     }
@@ -677,7 +676,7 @@ export async function executeOptimize(
           // Let ethers manage nonce automatically
           const approval = await usdcContract.approve(
             ARBITRUM_MAINNET.uniswapV3SwapRouter,
-            amountIn
+            ethers.MaxUint256
           );
           // CRITICAL: Wait for approval before proceeding
           const approvalReceipt = await approval.wait();
@@ -692,7 +691,6 @@ export async function executeOptimize(
               gasPrice: approvalReceipt.gasPrice,
             });
           }
-          // CRITICAL: Refresh nonce after approval before swap
           await refreshNonce(signer.provider, account);
         }
         // Let ethers manage nonce automatically
@@ -708,8 +706,7 @@ export async function executeOptimize(
         });
         console.log(`  Swap tx: ${swapTx.hash}`);
         // CRITICAL: Wait for swap confirmation before proceeding
-        const swapReceipt = await swapTx.wait();
-        // CRITICAL: Refresh nonce after swap to prevent "nonce too low" errors
+        await swapTx.wait();
         await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
@@ -763,7 +760,7 @@ export async function executeOptimize(
           // Let ethers manage nonce automatically
           const approval = await wethContract.approve(
             ARBITRUM_MAINNET.uniswapV3SwapRouter,
-            amountIn
+            ethers.MaxUint256
           );
           // CRITICAL: Wait for approval before proceeding
           const approvalReceipt = await approval.wait();
@@ -778,7 +775,6 @@ export async function executeOptimize(
               gasPrice: approvalReceipt.gasPrice,
             });
           }
-          // CRITICAL: Refresh nonce after approval before swap
           await refreshNonce(signer.provider, account);
         }
         // Let ethers manage nonce automatically
@@ -794,8 +790,7 @@ export async function executeOptimize(
         });
         console.log(`  Swap tx: ${swapTx.hash}`);
         // CRITICAL: Wait for swap confirmation before proceeding
-        const swapReceipt = await swapTx.wait();
-        // CRITICAL: Refresh nonce after swap to prevent "nonce too low" errors
+        await swapTx.wait();
         await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
@@ -978,8 +973,6 @@ export async function executeOptimize(
             });
           }
 
-          // CRITICAL: Refresh nonce after approval before next transaction
-          await refreshNonce(signer.provider, account);
           // Verify approval succeeded - check with a small delay to ensure state is updated
           await new Promise((resolve) => setTimeout(resolve, 500));
           const newAllowance0 = await token0Contract.allowance(account, positionManager);
@@ -991,6 +984,7 @@ export async function executeOptimize(
           console.log(
             `  ✓ Approved ${token0Symbol}: ${ethers.formatUnits(newAllowance0, token0Decimals)}`
           );
+          await refreshNonce(signer.provider, account);
         }
         if (allowance1 < finalAmount1 && finalAmount1 > 0n) {
           console.log(`  Approving ${token1Symbol}...`);
@@ -1010,8 +1004,6 @@ export async function executeOptimize(
             });
           }
 
-          // CRITICAL: Refresh nonce after approval before mint
-          await refreshNonce(signer.provider, account);
           // Verify approval succeeded - check with a small delay to ensure state is updated
           await new Promise((resolve) => setTimeout(resolve, 500));
           const newAllowance1 = await token1Contract.allowance(account, positionManager);
@@ -1023,6 +1015,7 @@ export async function executeOptimize(
           console.log(
             `  ✓ Approved ${token1Symbol}: ${ethers.formatUnits(newAllowance1, token1Decimals)}`
           );
+          await refreshNonce(signer.provider, account);
         }
 
         console.log(`  Minting LP position...`);
@@ -1064,8 +1057,6 @@ export async function executeOptimize(
           console.log(`  LP position minted. Tx: ${mintResult.txHash}`);
           // Transaction already waited for receipt (always waits)
           console.log(`  LP position confirmed`);
-          // CRITICAL: Refresh nonce after mint before GMX operations
-          await refreshNonce(signer.provider, account);
           // Get receipt for gas cost tracking
           if (executeFlag && signer.provider) {
             try {
@@ -1152,11 +1143,10 @@ export async function executeOptimize(
           // Let ethers manage nonce automatically
           const approval = await usdcContractForGmx.approve(
             ARBITRUM_MAINNET.gmxExchangeRouter,
-            collateralAmount
+            ethers.MaxUint256
           );
           // CRITICAL: Wait for approval before proceeding
           await approval.wait();
-          // CRITICAL: Refresh nonce after approval before GMX order
           await refreshNonce(signer.provider, account);
         }
 
