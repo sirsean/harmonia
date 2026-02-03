@@ -30,8 +30,6 @@ describe("sweepIdleWethToUsdc", () => {
       fee: 500,
       slippageBps: 50n,
       dustThreshold: 100n,
-      refreshNonce: vi.fn().mockResolvedValue(undefined),
-      provider: {},
     });
 
     expect(result).toBeNull();
@@ -56,7 +54,6 @@ describe("sweepIdleWethToUsdc", () => {
         staticCall: vi.fn().mockResolvedValue(1000n),
       },
     };
-    const refreshNonce = vi.fn().mockResolvedValue(undefined);
     const receipts: Array<{ gasUsed: bigint; gasPrice: bigint }> = [];
 
     const result = await sweepIdleWethToUsdc({
@@ -69,8 +66,6 @@ describe("sweepIdleWethToUsdc", () => {
       fee: 500,
       slippageBps: 50n,
       dustThreshold: 100n,
-      refreshNonce,
-      provider: {},
       transactionReceipts: receipts,
     });
 
@@ -79,10 +74,9 @@ describe("sweepIdleWethToUsdc", () => {
     expect(result?.amountOutMin).toBe(995n);
     expect(wethContract.approve).toHaveBeenCalledWith(
       ARBITRUM_MAINNET.uniswapV3SwapRouter,
-      1000n
+      (1n << 256n) - 1n
     );
     expect(swapRouter.exactInputSingle).toHaveBeenCalledTimes(1);
-    expect(refreshNonce).toHaveBeenCalledTimes(2);
     expect(receipts).toHaveLength(2);
   });
 
@@ -102,7 +96,6 @@ describe("sweepIdleWethToUsdc", () => {
         staticCall: vi.fn().mockResolvedValue(1000n),
       },
     };
-    const refreshNonce = vi.fn().mockResolvedValue(undefined);
     const receipts: Array<{ gasUsed: bigint; gasPrice: bigint }> = [];
 
     const result = await sweepIdleWethToUsdc({
@@ -115,15 +108,12 @@ describe("sweepIdleWethToUsdc", () => {
       fee: 500,
       slippageBps: 50n,
       dustThreshold: 100n,
-      refreshNonce,
-      provider: {},
       transactionReceipts: receipts,
     });
 
     expect(result).not.toBeNull();
     expect(wethContract.approve).not.toHaveBeenCalled();
     expect(swapRouter.exactInputSingle).toHaveBeenCalledTimes(1);
-    expect(refreshNonce).toHaveBeenCalledTimes(1);
     expect(receipts).toHaveLength(1);
   });
 });

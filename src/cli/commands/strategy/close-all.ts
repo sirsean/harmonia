@@ -3,7 +3,11 @@ import { ARBITRUM_MAINNET } from "../../../config/addresses";
 import { DeltaNeutralMonitor } from "../../../strategy/monitor";
 import { loadStrategyConfig, StrategyConfig } from "../../../config/strategy";
 import { createPositionManager, getPosition } from "../../../modules/uniswap/reader";
-import { collectFees, decreaseLiquidity } from "../../../modules/uniswap/fees";
+import {
+  encodeCollectCalldata,
+  encodeDecreaseLiquidityCalldata,
+  getUnclaimedFees,
+} from "../../../modules/uniswap/fees";
 import { createPositionManager as createPositionManagerWriter } from "../../../modules/uniswap/liquidity";
 import * as gmxReader from "../../../modules/gmx/reader";
 import * as gmxOrders from "../../../modules/gmx/orders";
@@ -11,10 +15,8 @@ import { getLatestPrice } from "../../../modules/chainlink/price";
 import { getSignerAndAccount } from "../base";
 import { sendErrorAlert, sendSuccessAlert } from "../../../utils/alerts";
 import { MonitoringDatabase } from "../../../utils/database";
-import { getUnclaimedFees } from "../../../modules/uniswap/fees";
 import * as uniswapReader from "../../../modules/uniswap/reader";
 import { ERC20_ABI } from "../../../utils/abis";
-import { refreshNonce } from "../../../utils/helpers";
 
 const MAX_UINT128 = (1n << 128n) - 1n;
 
@@ -112,7 +114,14 @@ export async function closePositions(
   }
 
   // Close each LP position and collect tokens
-  // CRITICAL: Process positions sequentially to avoid nonce conflicts
+  const multicallData: string[] = [];
+  const feeRecords: Array<{
+    tokenId: string;
+    feesCollectedUsd: bigint;
+    feesAmount0: bigint;
+    feesAmount1: bigint;
+  }> = [];
+
   for (const pos of positionsToClose) {
     const tokenId = BigInt(pos.tokenId);
     if (executeFlag) {
@@ -190,109 +199,75 @@ export async function closePositions(
       }
     }
 
-    let decreaseSucceeded = false;
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
 
-    // Step 1: Remove liquidity if present
     if (position.liquidity > 0n) {
       if (executeFlag) {
-        const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
         console.log(`  Removing liquidity: ${position.liquidity.toString()}`);
-
-        try {
-          const decreaseTx = await decreaseLiquidity(manager, {
-            tokenId,
-            liquidity: position.liquidity,
-            amount0Min: 0n,
-            amount1Min: 0n,
-            deadline,
-          });
-          console.log(`  Decrease liquidity transaction submitted: ${decreaseTx.hash}`);
-          // CRITICAL: Wait for confirmation before proceeding to prevent stuck funds
-          const decreaseReceipt = (await decreaseTx.wait()) as { blockNumber: number };
-          console.log(`  Decrease liquidity confirmed in block ${decreaseReceipt.blockNumber}`);
-          decreaseSucceeded = true;
-
-          // CRITICAL: Refresh nonce to prevent "nonce too low" errors
-          await refreshNonce(signer.provider, account);
-        } catch (error: any) {
-          console.error(
-            `  ERROR: Failed to decrease liquidity for position ${pos.tokenId}:`,
-            error.message
-          );
-          // Continue to try collecting anyway - there might be tokens/fees to collect
-          console.warn(`  Attempting to collect fees/tokens despite decreaseLiquidity failure...`);
-        }
       } else {
         console.log(`  Would remove liquidity: ${position.liquidity.toString()}`);
       }
-    } else {
-      if (executeFlag) {
-        console.log(`  Position has no liquidity; collecting fees only.`);
-      }
+      multicallData.push(
+        encodeDecreaseLiquidityCalldata({
+          tokenId,
+          liquidity: position.liquidity,
+          amount0Min: 0n,
+          amount1Min: 0n,
+          deadline,
+        })
+      );
+    } else if (executeFlag) {
+      console.log(`  Position has no liquidity; collecting fees only.`);
     }
 
-    // Step 2: Always collect fees and tokens (even if liquidity was 0 or decreaseLiquidity failed)
-    // Note: decreaseLiquidity stores tokens in the position contract - collect() transfers them to wallet
-    // CRITICAL: Must collect after decreaseLiquidity to avoid stuck funds
-    // CRITICAL: Must collect even if decreaseLiquidity failed (in case it partially succeeded)
     if (executeFlag) {
       console.log(`  Collecting fees and tokens...`);
-      try {
-        const collectTx = await collectFees(manager, {
-          tokenId,
-          recipient: account,
-          amount0Max: MAX_UINT128,
-          amount1Max: MAX_UINT128,
-        });
-        console.log(`  Collect transaction submitted: ${collectTx.hash}`);
-        // CRITICAL: Wait for confirmation before proceeding
-        const collectReceipt = await collectTx.wait();
-        console.log(
-          `  Collect confirmed in block ${collectReceipt.blockNumber} - tokens transferred to wallet`
-        );
-
-        // CRITICAL: Refresh nonce after collect before processing next position (if multiple)
-        await refreshNonce(signer.provider, account);
-
-        // Record fee collection in database
-        if (db && feesCollectedUsd > 0n) {
-          try {
-            db.recordFeeCollection(
-              account,
-              pos.tokenId,
-              feesCollectedUsd,
-              feesAmount0,
-              feesAmount1
-            );
-            totalFeesCollectedUsd += feesCollectedUsd;
-            console.log(`  Recorded fee collection: $${ethers.formatUnits(feesCollectedUsd, 30)}`);
-          } catch (error: any) {
-            console.warn(`  Warning: Failed to record fee collection: ${error.message}`);
-          }
-        }
-      } catch (error: any) {
-        console.error(
-          `  ERROR: Failed to collect fees/tokens for position ${pos.tokenId}:`,
-          error.message
-        );
-        // If decreaseLiquidity succeeded but collect failed, funds are stuck!
-        if (decreaseSucceeded) {
-          throw new Error(
-            `CRITICAL: Position ${pos.tokenId} liquidity was removed but collection failed. ` +
-              `Funds may be stuck in position contract. Manual intervention required. ` +
-              `Original error: ${error.message}`
-          );
-        }
-        // If both failed, throw the error
-        throw error;
-      }
     } else {
-      if (position.liquidity > 0n) {
-        console.log(`  Would remove liquidity: ${position.liquidity.toString()}`);
-      } else {
-        console.log(`  Position has no liquidity; would collect fees only.`);
-      }
       console.log(`  Would collect fees`);
+    }
+    multicallData.push(
+      encodeCollectCalldata({
+        tokenId,
+        recipient: account,
+        amount0Max: MAX_UINT128,
+        amount1Max: MAX_UINT128,
+      })
+    );
+
+    if (db && executeFlag && feesCollectedUsd > 0n) {
+      feeRecords.push({
+        tokenId: pos.tokenId,
+        feesCollectedUsd,
+        feesAmount0,
+        feesAmount1,
+      });
+    }
+  }
+
+  if (executeFlag && multicallData.length > 0) {
+    const multicallTx = await manager.multicall(multicallData);
+    console.log(`  Multicall transaction submitted: ${multicallTx.hash}`);
+    const multicallReceipt = (await multicallTx.wait()) as { blockNumber: number };
+    console.log(`  Multicall confirmed in block ${multicallReceipt.blockNumber}`);
+
+    if (db) {
+      for (const record of feeRecords) {
+        try {
+          db.recordFeeCollection(
+            account,
+            record.tokenId,
+            record.feesCollectedUsd,
+            record.feesAmount0,
+            record.feesAmount1
+          );
+          totalFeesCollectedUsd += record.feesCollectedUsd;
+          console.log(
+            `  Recorded fee collection: $${ethers.formatUnits(record.feesCollectedUsd, 30)}`
+          );
+        } catch (error: any) {
+          console.warn(`  Warning: Failed to record fee collection: ${error.message}`);
+        }
+      }
     }
   }
 

@@ -25,6 +25,9 @@ export interface NetworkAddresses {
   gmxReferralStorage: string;
   gmxPriceApi: string;
 
+  // Multicall
+  multicall3: string;
+
   // Chainlink
   chainlinkEthUsdFeed: string;
 
@@ -53,6 +56,9 @@ export const ARBITRUM_MAINNET: NetworkAddresses = {
   gmxEthUsdMarket: "0x70d95587d40A2caf56bd97485aB3Eec10Bee6336",
   gmxReferralStorage: "0xe6fab3F0c7199b0d34d7FbE83394fc0e0D06e99d",
   gmxPriceApi: "https://arbitrum-api.gmxinfra.io/prices/tickers",
+
+  // Multicall3 - https://www.multicall3.com/
+  multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11",
 
   // Chainlink - https://docs.chain.link/data-feeds/price-feeds/addresses
   chainlinkEthUsdFeed: "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",

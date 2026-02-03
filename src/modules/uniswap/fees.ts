@@ -1,5 +1,8 @@
 import { ethers } from "ethers";
 import { UniswapPositionManager, DecreaseLiquidityParams, CollectParams } from "./types";
+import { UNISWAP_POSITION_MANAGER_WRITE_ABI } from "../../utils/abis";
+
+const POSITION_MANAGER_INTERFACE = new ethers.Interface(UNISWAP_POSITION_MANAGER_WRITE_ABI);
 
 export function buildDecreaseLiquidityParams(
   params: DecreaseLiquidityParams
@@ -9,6 +12,14 @@ export function buildDecreaseLiquidityParams(
 
 export function buildCollectParams(params: CollectParams): CollectParams {
   return params;
+}
+
+export function encodeDecreaseLiquidityCalldata(params: DecreaseLiquidityParams): string {
+  return POSITION_MANAGER_INTERFACE.encodeFunctionData("decreaseLiquidity", [params]);
+}
+
+export function encodeCollectCalldata(params: CollectParams): string {
+  return POSITION_MANAGER_INTERFACE.encodeFunctionData("collect", [params]);
 }
 
 export async function decreaseLiquidity(

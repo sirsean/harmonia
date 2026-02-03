@@ -8,7 +8,6 @@ import {
   UniswapTransactionResult,
 } from "./types";
 import { UNISWAP_POSITION_MANAGER_WRITE_ABI } from "../../utils/abis";
-import { refreshNonce } from "../../utils/helpers";
 
 export function createPositionManager(
   address: string,
@@ -27,14 +26,13 @@ export async function ensureAllowance(
   spender: string,
   amount: bigint
 ): Promise<boolean> {
+  const MAX_UINT256 = (1n << 256n) - 1n;
   const allowance = await token.allowance(owner, spender);
   if (allowance >= amount) {
     return false;
   }
-  const approval = await token.approve(spender, amount);
+  const approval = await token.approve(spender, MAX_UINT256);
   await approval.wait();
-  // Note: Nonce refresh is handled by mintPosition/increaseLiquidity
-  // to ensure we have access to the manager's provider
   return true;
 }
 
@@ -48,6 +46,16 @@ export function buildIncreaseLiquidityParams(
   return { ...params };
 }
 
+export function encodeMintCalldata(params: MintParams): string {
+  const iface = new ethers.Interface(UNISWAP_POSITION_MANAGER_WRITE_ABI);
+  return iface.encodeFunctionData("mint", [params]);
+}
+
+export function encodeIncreaseLiquidityCalldata(params: IncreaseLiquidityParams): string {
+  const iface = new ethers.Interface(UNISWAP_POSITION_MANAGER_WRITE_ABI);
+  return iface.encodeFunctionData("increaseLiquidity", [params]);
+}
+
 export async function mintPosition(
   manager: UniswapPositionManager,
   token0: IERC20,
@@ -59,17 +67,7 @@ export async function mintPosition(
   if (config.performApproval !== false) {
     // Sequential approvals - let ethers manage nonces automatically
     await ensureAllowance(token0, config.owner, config.spender, params.amount0Desired);
-    // CRITICAL: Refresh nonce between approvals
-    const managerContract = manager as unknown as ethers.Contract;
-    const provider = managerContract.runner?.provider;
-    if (provider && typeof provider === "object" && "getTransactionCount" in provider) {
-      await refreshNonce(provider as ethers.Provider, config.owner);
-      await ensureAllowance(token1, config.owner, config.spender, params.amount1Desired);
-      // CRITICAL: Refresh nonce after all approvals before mint
-      await refreshNonce(provider as ethers.Provider, config.owner);
-    } else {
-      await ensureAllowance(token1, config.owner, config.spender, params.amount1Desired);
-    }
+    await ensureAllowance(token1, config.owner, config.spender, params.amount1Desired);
   }
 
   // Let ethers manage nonce automatically - no manual nonce management
@@ -90,17 +88,7 @@ export async function increaseLiquidity(
   if (config.performApproval !== false) {
     // Sequential approvals - let ethers manage nonces automatically
     await ensureAllowance(token0, params.owner, params.spender, params.amount0Desired);
-    // CRITICAL: Refresh nonce between approvals
-    const managerContract = manager as unknown as ethers.Contract;
-    const provider = managerContract.runner?.provider;
-    if (provider && typeof provider === "object" && "getTransactionCount" in provider) {
-      await refreshNonce(provider as ethers.Provider, params.owner);
-      await ensureAllowance(token1, params.owner, params.spender, params.amount1Desired);
-      // CRITICAL: Refresh nonce after all approvals before increaseLiquidity
-      await refreshNonce(provider as ethers.Provider, params.owner);
-    } else {
-      await ensureAllowance(token1, params.owner, params.spender, params.amount1Desired);
-    }
+    await ensureAllowance(token1, params.owner, params.spender, params.amount1Desired);
   }
 
   const { owner, spender, ...callParams } = params;

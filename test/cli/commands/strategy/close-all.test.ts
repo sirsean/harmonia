@@ -149,25 +149,37 @@ vi.mock("../../../../src/modules/uniswap/reader", () => ({
   ),
 }));
 
-vi.mock("../../../../src/modules/uniswap/fees", () => ({
-  decreaseLiquidity: vi.fn(() =>
-    Promise.resolve({
-      hash: "0xdecreasetx",
-      wait: vi.fn(() => Promise.resolve({ blockNumber: 1001 })),
-    })
-  ),
-  collectFees: vi.fn(() =>
-    Promise.resolve({
-      hash: "0xcollecttx",
-      wait: vi.fn(() => Promise.resolve({ blockNumber: 1002 })),
-    })
-  ),
-}));
+vi.mock("../../../../src/modules/uniswap/fees", async () => {
+  const actual = await vi.importActual<typeof import("../../../../src/modules/uniswap/fees")>(
+    "../../../../src/modules/uniswap/fees"
+  );
+  return {
+    ...actual,
+    decreaseLiquidity: vi.fn(() =>
+      Promise.resolve({
+        hash: "0xdecreasetx",
+        wait: vi.fn(() => Promise.resolve({ blockNumber: 1001 })),
+      })
+    ),
+    collectFees: vi.fn(() =>
+      Promise.resolve({
+        hash: "0xcollecttx",
+        wait: vi.fn(() => Promise.resolve({ blockNumber: 1002 })),
+      })
+    ),
+  };
+});
 
 vi.mock("../../../../src/modules/uniswap/liquidity", () => ({
   createPositionManager: vi.fn(() => ({
     decreaseLiquidity: vi.fn(),
     collect: vi.fn(),
+    multicall: vi.fn(() =>
+      Promise.resolve({
+        hash: "0xmulticall",
+        wait: vi.fn(() => Promise.resolve({ blockNumber: 1002 })),
+      })
+    ),
   })),
 }));
 
@@ -297,8 +309,6 @@ describe("closeAll", () => {
     const { getPosition } = await import("../../../../src/modules/gmx/reader");
     vi.mocked(getPosition).mockResolvedValue(mockGmxPosition as any);
 
-    const { decreaseLiquidity } = await import("../../../../src/modules/uniswap/fees");
-    const { collectFees } = await import("../../../../src/modules/uniswap/fees");
     const { createDecreaseOrder } = await import("../../../../src/modules/gmx/orders");
 
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});

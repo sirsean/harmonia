@@ -6,9 +6,30 @@ import * as uniswapLiquidity from "../../src/modules/uniswap/liquidity";
 import * as uniswapReader from "../../src/modules/uniswap/reader";
 import { UniswapPosition, UniswapPoolState } from "../../src/modules/uniswap/types";
 import { getSqrtRatioAtTick } from "../../src/modules/math/ticks";
+import { UNISWAP_POSITION_MANAGER_WRITE_ABI } from "../../src/utils/abis";
 
-vi.mock("../../src/modules/uniswap/fees");
-vi.mock("../../src/modules/uniswap/liquidity");
+const VALID_OWNER = "0x0000000000000000000000000000000000000001";
+const VALID_TOKEN0 = "0x0000000000000000000000000000000000000002";
+const VALID_TOKEN1 = "0x0000000000000000000000000000000000000003";
+
+vi.mock("../../src/modules/uniswap/fees", async () => {
+  const actual = await vi.importActual<typeof import("../../src/modules/uniswap/fees")>(
+    "../../src/modules/uniswap/fees"
+  );
+  return {
+    ...actual,
+    getUnclaimedFees: vi.fn(),
+  };
+});
+vi.mock("../../src/modules/uniswap/liquidity", async () => {
+  const actual = await vi.importActual<typeof import("../../src/modules/uniswap/liquidity")>(
+    "../../src/modules/uniswap/liquidity"
+  );
+  return {
+    ...actual,
+    ensureAllowance: vi.fn(),
+  };
+});
 vi.mock("../../src/modules/uniswap/reader");
 
 describe("compoundFees", () => {
@@ -21,8 +42,8 @@ describe("compoundFees", () => {
   const mockPosition: UniswapPosition = {
     nonce: 0n,
     operator: "0xOperator",
-    token0: "0xToken0",
-    token1: "0xToken1",
+    token0: VALID_TOKEN0,
+    token1: VALID_TOKEN1,
     fee: 500,
     tickLower: 69000,
     tickUpper: 69100,
@@ -44,6 +65,10 @@ describe("compoundFees", () => {
 
     mockPositionManager = {
       positions: vi.fn(),
+      multicall: vi.fn().mockResolvedValue({
+        hash: "0xMulticallHash",
+        wait: vi.fn().mockResolvedValue({ hash: "0xMulticallHash" }),
+      }),
     };
 
     mockPool = {
@@ -68,7 +93,7 @@ describe("compoundFees", () => {
       pool: mockPool,
       token0: mockToken0,
       token1: mockToken1,
-      owner: "0xOwner",
+      owner: VALID_OWNER,
       spender: "0xSpender",
       performApproval: false,
       // Note: waitForReceipt removed - always waits for receipt
@@ -81,6 +106,7 @@ describe("compoundFees", () => {
       amount0: 0n,
       amount1: 0n,
     });
+    vi.mocked(uniswapLiquidity.ensureAllowance).mockResolvedValue(false);
   });
 
   it("should return early if no fees to collect", async () => {
@@ -96,8 +122,8 @@ describe("compoundFees", () => {
     expect(result.amount1Collected).toBe(0n);
     expect(result.amount0Added).toBe(0n);
     expect(result.amount1Added).toBe(0n);
-    expect(uniswapFees.collectFees).not.toHaveBeenCalled();
-    expect(uniswapLiquidity.increaseLiquidity).not.toHaveBeenCalled();
+    expect(mockPositionManager.multicall).not.toHaveBeenCalled();
+    expect(uniswapLiquidity.ensureAllowance).not.toHaveBeenCalled();
   });
 
   it("should collect fees and add liquidity back", async () => {
@@ -109,58 +135,25 @@ describe("compoundFees", () => {
       amount1: amount1Fees,
     });
 
-    const mockCollectTx = {
-      hash: "0xCollectHash",
-      wait: vi.fn().mockResolvedValue({ hash: "0xCollectHash" }),
-    };
-    vi.mocked(uniswapFees.collectFees).mockResolvedValue(mockCollectTx as any);
-
-    const mockIncreaseLiquidityResult = {
-      txHash: "0xIncreaseHash",
-      params: {} as any,
-    };
-    vi.mocked(uniswapLiquidity.increaseLiquidity).mockResolvedValue(
-      mockIncreaseLiquidityResult as any
-    );
-
     const result = await compoundFees(123n, config);
 
     expect(result.tokenId).toBe(123n);
     expect(result.amount0Collected).toBe(amount0Fees);
     expect(result.amount1Collected).toBe(amount1Fees);
-    expect(result.collectTxHash).toBe("0xCollectHash");
-    expect(result.increaseLiquidityTxHash).toBe("0xIncreaseHash");
+    expect(result.collectTxHash).toBe("0xMulticallHash");
+    expect(result.increaseLiquidityTxHash).toBe("0xMulticallHash");
 
-    // Verify collect was called with correct parameters (no overrides - let ethers manage nonces)
-    expect(uniswapFees.collectFees).toHaveBeenCalledWith(
-      mockPositionManager,
-      {
-        tokenId: 123n,
-        recipient: "0xOwner",
-        amount0Max: amount0Fees,
-        amount1Max: amount1Fees,
-      }
-    );
+    expect(mockPositionManager.multicall).toHaveBeenCalledTimes(1);
+    const multicallData = mockPositionManager.multicall.mock.calls[0][0];
+    const iface = new ethers.Interface(UNISWAP_POSITION_MANAGER_WRITE_ABI);
+    const collectParams = iface.decodeFunctionData("collect", multicallData[0])[0];
+    const increaseParams = iface.decodeFunctionData("increaseLiquidity", multicallData[1])[0];
 
-    // Verify increaseLiquidity was called with correct parameters
-    expect(uniswapLiquidity.increaseLiquidity).toHaveBeenCalledWith(
-      mockPositionManager,
-      mockToken0,
-      mockToken1,
-      expect.objectContaining({
-        tokenId: 123n,
-        amount0Desired: amount0Fees,
-        amount1Desired: amount1Fees,
-        amount0Min: 0n,
-        amount1Min: 0n,
-        owner: "0xOwner",
-        spender: "0xSpender",
-      }),
-      expect.objectContaining({
-        performApproval: false,
-        // Note: waitForReceipt removed - always waits for receipt
-      })
-    );
+    expect(collectParams.tokenId).toBe(123n);
+    expect(collectParams.amount0Max).toBe(amount0Fees);
+    expect(collectParams.amount1Max).toBe(amount1Fees);
+    expect(increaseParams.amount0Desired).toBe(amount0Fees);
+    expect(increaseParams.amount1Desired).toBe(amount1Fees);
   });
 
   it("should handle fees exceeding MAX_UINT128", async () => {
@@ -173,42 +166,21 @@ describe("compoundFees", () => {
       amount1: amount1Fees,
     });
 
-    const mockCollectTx = {
-      hash: "0xCollectHash",
-      wait: vi.fn().mockResolvedValue({ hash: "0xCollectHash" }),
-    };
-    vi.mocked(uniswapFees.collectFees).mockResolvedValue(mockCollectTx as any);
-
-    const mockIncreaseLiquidityResult = {
-      txHash: "0xIncreaseHash",
-      params: {} as any,
-    };
-    vi.mocked(uniswapLiquidity.increaseLiquidity).mockResolvedValue(
-      mockIncreaseLiquidityResult as any
-    );
-
     const result = await compoundFees(123n, config);
 
-    // Should cap at MAX_UINT128 for collect params (no overrides - let ethers manage nonces)
-    expect(uniswapFees.collectFees).toHaveBeenCalledWith(
-      mockPositionManager,
-      expect.objectContaining({
-        amount0Max: MAX_UINT128,
-        amount1Max: MAX_UINT128,
-      })
-    );
+    expect(result.collectTxHash).toBe("0xMulticallHash");
+    const multicallData = mockPositionManager.multicall.mock.calls[0][0];
+    const iface = new ethers.Interface(UNISWAP_POSITION_MANAGER_WRITE_ABI);
+    const collectParams = iface.decodeFunctionData("collect", multicallData[0])[0];
+    const increaseParams = iface.decodeFunctionData("increaseLiquidity", multicallData[1])[0];
+
+    // Should cap at MAX_UINT128 for collect params
+    expect(collectParams.amount0Max).toBe(MAX_UINT128);
+    expect(collectParams.amount1Max).toBe(MAX_UINT128);
 
     // But should use full amounts for increaseLiquidity
-    expect(uniswapLiquidity.increaseLiquidity).toHaveBeenCalledWith(
-      mockPositionManager,
-      mockToken0,
-      mockToken1,
-      expect.objectContaining({
-        amount0Desired: amount0Fees,
-        amount1Desired: amount1Fees,
-      }),
-      expect.anything()
-    );
+    expect(increaseParams.amount0Desired).toBe(amount0Fees);
+    expect(increaseParams.amount1Desired).toBe(amount1Fees);
   });
 
   it("should always wait for receipts", async () => {
@@ -220,24 +192,16 @@ describe("compoundFees", () => {
       amount1: amount1Fees,
     });
 
-    const mockCollectTx = {
+    const mockWait = vi.fn().mockResolvedValue({ hash: "0xCollectHashReceipt" });
+    mockPositionManager.multicall.mockResolvedValueOnce({
       hash: "0xCollectHash",
-      wait: vi.fn().mockResolvedValue({ hash: "0xCollectHashReceipt" }),
-    };
-    vi.mocked(uniswapFees.collectFees).mockResolvedValue(mockCollectTx as any);
-
-    const mockIncreaseLiquidityResult = {
-      txHash: "0xIncreaseHash",
-      params: {} as any,
-    };
-    vi.mocked(uniswapLiquidity.increaseLiquidity).mockResolvedValue(
-      mockIncreaseLiquidityResult as any
-    );
+      wait: mockWait,
+    });
 
     // Note: waitForReceipt option removed - always waits for receipt
     const result = await compoundFees(123n, config);
 
-    expect(mockCollectTx.wait).toHaveBeenCalled();
+    expect(mockWait).toHaveBeenCalled();
     expect(result.collectTxHash).toBe("0xCollectHashReceipt");
   });
 
@@ -250,31 +214,9 @@ describe("compoundFees", () => {
       amount1: amount1Fees,
     });
 
-    const mockCollectTx = {
-      hash: "0xCollectHash",
-      wait: vi.fn().mockResolvedValue({ hash: "0xCollectHash" }),
-    };
-    vi.mocked(uniswapFees.collectFees).mockResolvedValue(mockCollectTx as any);
-
-    const mockIncreaseLiquidityResult = {
-      txHash: "0xIncreaseHash",
-      params: {} as any,
-    };
-    vi.mocked(uniswapLiquidity.increaseLiquidity).mockResolvedValue(
-      mockIncreaseLiquidityResult as any
-    );
-
     await compoundFees(123n, { ...config, performApproval: true });
 
-    expect(uniswapLiquidity.increaseLiquidity).toHaveBeenCalledWith(
-      mockPositionManager,
-      mockToken0,
-      mockToken1,
-      expect.anything(),
-      expect.objectContaining({
-        performApproval: true,
-      })
-    );
+    expect(uniswapLiquidity.ensureAllowance).toHaveBeenCalledTimes(2);
   });
 
   it("should not use transaction overrides (let ethers manage nonces)", async () => {
@@ -286,32 +228,17 @@ describe("compoundFees", () => {
       amount1: amount1Fees,
     });
 
-    const mockCollectTx = {
-      hash: "0xCollectHash",
-      wait: vi.fn().mockResolvedValue({ hash: "0xCollectHash" }),
-    };
-    vi.mocked(uniswapFees.collectFees).mockResolvedValue(mockCollectTx as any);
-
-    const mockIncreaseLiquidityResult = {
-      txHash: "0xIncreaseHash",
-      params: {} as any,
-    };
-    vi.mocked(uniswapLiquidity.increaseLiquidity).mockResolvedValue(
-      mockIncreaseLiquidityResult as any
-    );
-
     // Note: nonce management removed - let ethers handle it automatically
     // Test that compoundFees works without overrides
     const result = await compoundFees(123n, { ...config });
 
     // Verify functions were called (exact args don't matter - key is no nonce management)
-    expect(uniswapFees.collectFees).toHaveBeenCalled();
-    expect(uniswapLiquidity.increaseLiquidity).toHaveBeenCalled();
+    expect(mockPositionManager.multicall).toHaveBeenCalled();
     
     // Verify result
     expect(result.tokenId).toBe(123n);
-    expect(result.collectTxHash).toBe("0xCollectHash");
-    expect(result.increaseLiquidityTxHash).toBe("0xIncreaseHash");
+    expect(result.collectTxHash).toBe("0xMulticallHash");
+    expect(result.increaseLiquidityTxHash).toBe("0xMulticallHash");
   });
 
   it("should set deadline to 30 minutes from now", async () => {
@@ -323,27 +250,13 @@ describe("compoundFees", () => {
       amount1: amount1Fees,
     });
 
-    const mockCollectTx = {
-      hash: "0xCollectHash",
-      wait: vi.fn().mockResolvedValue({ hash: "0xCollectHash" }),
-    };
-    vi.mocked(uniswapFees.collectFees).mockResolvedValue(mockCollectTx as any);
-
-    const mockIncreaseLiquidityResult = {
-      txHash: "0xIncreaseHash",
-      params: {} as any,
-    };
-    vi.mocked(uniswapLiquidity.increaseLiquidity).mockResolvedValue(
-      mockIncreaseLiquidityResult as any
-    );
-
     const now = Math.floor(Date.now() / 1000);
     await compoundFees(123n, config);
 
-    const increaseCall = vi.mocked(uniswapLiquidity.increaseLiquidity).mock.calls[0];
-    // increaseLiquidity signature: (manager, token0, token1, params, config)
-    // params is at index 3
-    const deadline = increaseCall[3].deadline;
+    const multicallData = mockPositionManager.multicall.mock.calls[0][0];
+    const iface = new ethers.Interface(UNISWAP_POSITION_MANAGER_WRITE_ABI);
+    const increaseParams = iface.decodeFunctionData("increaseLiquidity", multicallData[1])[0];
+    const deadline = increaseParams.deadline;
     const expectedDeadline = BigInt(now + 1800); // 30 minutes
 
     // Allow 5 second tolerance for test execution time
@@ -362,7 +275,12 @@ describe("compoundFeesForPositions", () => {
   beforeEach(() => {
     vi.resetAllMocks();
 
-    mockPositionManager = {};
+    mockPositionManager = {
+      multicall: vi.fn().mockResolvedValue({
+        hash: "0xMulticallHash",
+        wait: vi.fn().mockResolvedValue({ hash: "0xMulticallHash" }),
+      }),
+    };
     mockPool = {};
     mockToken0 = {
       decimals: vi.fn().mockResolvedValue(6n),
@@ -376,15 +294,15 @@ describe("compoundFeesForPositions", () => {
       pool: mockPool,
       token0: mockToken0,
       token1: mockToken1,
-      owner: "0xOwner",
+      owner: VALID_OWNER,
       spender: "0xSpender",
     };
 
     vi.mocked(uniswapReader.getPositionWithFees).mockResolvedValue({
       nonce: 0n,
       operator: "0xOp",
-      token0: "0xT0",
-      token1: "0xT1",
+      token0: VALID_TOKEN0,
+      token1: VALID_TOKEN1,
       fee: 500,
       tickLower: 69000,
       tickUpper: 69100,
@@ -405,20 +323,7 @@ describe("compoundFeesForPositions", () => {
       amount0: 1000000n,
       amount1: 100000000000000000n,
     });
-
-    const mockCollectTx = {
-      hash: "0xCollectHash",
-      wait: vi.fn().mockResolvedValue({ hash: "0xCollectHash" }),
-    };
-    vi.mocked(uniswapFees.collectFees).mockResolvedValue(mockCollectTx as any);
-
-    const mockIncreaseLiquidityResult = {
-      txHash: "0xIncreaseHash",
-      params: {} as any,
-    };
-    vi.mocked(uniswapLiquidity.increaseLiquidity).mockResolvedValue(
-      mockIncreaseLiquidityResult as any
-    );
+    vi.mocked(uniswapLiquidity.ensureAllowance).mockResolvedValue(false);
   });
 
   it("should compound fees for multiple positions", async () => {
@@ -431,15 +336,14 @@ describe("compoundFeesForPositions", () => {
     expect(results[1].tokenId).toBe(456n);
     expect(results[2].tokenId).toBe(789n);
 
-    expect(uniswapFees.collectFees).toHaveBeenCalledTimes(3);
-    expect(uniswapLiquidity.increaseLiquidity).toHaveBeenCalledTimes(3);
+    expect(mockPositionManager.multicall).toHaveBeenCalledTimes(3);
   });
 
   it("should continue processing other positions if one fails", async () => {
     const tokenIds = [123n, 456n, 789n];
 
     // Reset mocks to set up per-call behavior
-    vi.mocked(uniswapFees.collectFees).mockReset();
+    mockPositionManager.multicall.mockReset();
     vi.mocked(uniswapFees.getUnclaimedFees).mockReset();
     
     // First position (123) succeeds
@@ -447,10 +351,10 @@ describe("compoundFeesForPositions", () => {
       amount0: 1000000n,
       amount1: 100000000000000000n,
     });
-    vi.mocked(uniswapFees.collectFees).mockResolvedValueOnce({
+    mockPositionManager.multicall.mockResolvedValueOnce({
       hash: "0xHash1",
       wait: vi.fn().mockResolvedValue({ hash: "0xHash1" }),
-    } as any);
+    });
     
     // Second position (456) fails - make getUnclaimedFees throw
     vi.mocked(uniswapFees.getUnclaimedFees).mockImplementationOnce(async () => {
@@ -462,10 +366,10 @@ describe("compoundFeesForPositions", () => {
       amount0: 1000000n,
       amount1: 100000000000000000n,
     });
-    vi.mocked(uniswapFees.collectFees).mockResolvedValueOnce({
+    mockPositionManager.multicall.mockResolvedValueOnce({
       hash: "0xHash3",
       wait: vi.fn().mockResolvedValue({ hash: "0xHash3" }),
-    } as any);
+    });
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -484,8 +388,7 @@ describe("compoundFeesForPositions", () => {
     const results = await compoundFeesForPositions([], config);
 
     expect(results).toHaveLength(0);
-    expect(uniswapFees.collectFees).not.toHaveBeenCalled();
-    expect(uniswapLiquidity.increaseLiquidity).not.toHaveBeenCalled();
+    expect(mockPositionManager.multicall).not.toHaveBeenCalled();
   });
 
   it("should not enforce maxPositionSizeUsd - allows position to exceed max", async () => {
@@ -499,36 +402,12 @@ describe("compoundFeesForPositions", () => {
       amount1: largeAmount1Fees,
     });
 
-    const mockCollectTx = {
-      hash: "0xCollectHash",
-      wait: vi.fn().mockResolvedValue({ hash: "0xCollectHash" }),
-    };
-    vi.mocked(uniswapFees.collectFees).mockResolvedValue(mockCollectTx as any);
-
-    const mockIncreaseLiquidityResult = {
-      txHash: "0xIncreaseHash",
-      params: {} as any,
-    };
-    vi.mocked(uniswapLiquidity.increaseLiquidity).mockResolvedValue(
-      mockIncreaseLiquidityResult as any
-    );
-
     // Even with very large fees that would exceed typical maxPositionSizeUsd ($500),
     // compoundFees should still proceed
     const result = await compoundFees(123n, config);
 
     expect(result.amount0Collected).toBe(largeAmount0Fees);
     expect(result.amount1Collected).toBe(largeAmount1Fees);
-    expect(uniswapFees.collectFees).toHaveBeenCalled();
-    expect(uniswapLiquidity.increaseLiquidity).toHaveBeenCalledWith(
-      mockPositionManager,
-      mockToken0,
-      mockToken1,
-      expect.objectContaining({
-        amount0Desired: largeAmount0Fees,
-        amount1Desired: largeAmount1Fees,
-      }),
-      expect.anything()
-    );
+    expect(mockPositionManager.multicall).toHaveBeenCalled();
   });
 });

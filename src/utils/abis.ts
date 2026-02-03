@@ -59,6 +59,7 @@ export const UNISWAP_POSITION_MANAGER_WRITE_ABI = [
   "function increaseLiquidity((uint256 tokenId,uint256 amount0Desired,uint256 amount1Desired,uint256 amount0Min,uint256 amount1Min,uint256 deadline)) payable returns (uint128 liquidity, uint256 amount0, uint256 amount1)",
   "function decreaseLiquidity((uint256 tokenId,uint128 liquidity,uint256 amount0Min,uint256 amount1Min,uint256 deadline)) payable returns (uint256 amount0, uint256 amount1)",
   "function collect((uint256 tokenId,address recipient,uint128 amount0Max,uint128 amount1Max)) payable returns (uint256 amount0, uint256 amount1)",
+  "function multicall(bytes[] data) payable returns (bytes[] results)",
 ] as const;
 
 /**
@@ -75,6 +76,7 @@ export const UNISWAP_FACTORY_ABI = [
  */
 export const UNISWAP_ROUTER_ABI = [
   "function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 deadline,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)",
+  "function multicall(bytes[] data) payable returns (bytes[] results)",
 ] as const;
 
 /**

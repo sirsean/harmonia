@@ -40,6 +40,7 @@ describe("uniswap reader", () => {
       increaseLiquidity: async () => ({ hash: "0x2", wait: async () => ({} as any) }),
       decreaseLiquidity: async () => ({ hash: "0x3", wait: async () => ({} as any) }),
       collect: async () => ({ hash: "0x4", wait: async () => ({} as any) }),
+      multicall: async () => ({ hash: "0x5", wait: async () => ({} as any) }),
     };
 
     const position = await getPosition(manager, 1n);
