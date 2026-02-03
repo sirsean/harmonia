@@ -1209,6 +1209,114 @@ export class MonitoringDatabase {
   }
 
   /**
+   * Record a hedge adjustment execution
+   */
+  recordHedgeAdjustment(
+    account: string,
+    direction: "increase" | "decrease",
+    adjustmentSizeUsd: bigint,
+    deltaDriftBefore: number,
+    currentLeverage?: number,
+    estimatedLeverageAfter?: number,
+    txHash?: string
+  ): number {
+    const timestamp = Date.now();
+    const insert = this.db.prepare(`
+      INSERT INTO hedge_adjustment_history (
+        timestamp, account, direction, adjustment_size_usd, delta_drift_before,
+        current_leverage, estimated_leverage_after, tx_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = insert.run(
+      timestamp,
+      account,
+      direction,
+      adjustmentSizeUsd.toString(),
+      deltaDriftBefore,
+      currentLeverage ?? null,
+      estimatedLeverageAfter ?? null,
+      txHash ?? null
+    );
+
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Get the timestamp of the last hedge adjustment for an account.
+   * A full optimization also counts as resetting the hedge cooldown.
+   * @returns Timestamp in milliseconds, or undefined if never adjusted
+   */
+  getLastHedgeAdjustmentTime(account: string): number | undefined {
+    // Get last hedge adjustment time
+    const hedgeStmt = this.db.prepare(`
+      SELECT timestamp FROM hedge_adjustment_history
+      WHERE account = ?
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `);
+    const hedgeRow = hedgeStmt.get(account) as { timestamp: number } | undefined;
+
+    // Get last optimization time (optimizations reset hedge cooldown)
+    const optimizationTime = this.getLastOptimizationTime(account);
+
+    // Return whichever is more recent
+    const hedgeTime = hedgeRow?.timestamp;
+    if (hedgeTime === undefined && optimizationTime === undefined) return undefined;
+    if (hedgeTime === undefined) return optimizationTime;
+    if (optimizationTime === undefined) return hedgeTime;
+    return Math.max(hedgeTime, optimizationTime);
+  }
+
+  /**
+   * Get recent hedge adjustments for an account
+   */
+  getRecentHedgeAdjustments(
+    account: string,
+    limit: number = 10
+  ): Array<{
+    id: number;
+    timestamp: number;
+    direction: string;
+    adjustmentSizeUsd: string;
+    deltaDriftBefore: number;
+    currentLeverage?: number;
+    estimatedLeverageAfter?: number;
+    txHash?: string;
+  }> {
+    const stmt = this.db.prepare(`
+      SELECT id, timestamp, direction, adjustment_size_usd, delta_drift_before,
+             current_leverage, estimated_leverage_after, tx_hash
+      FROM hedge_adjustment_history
+      WHERE account = ?
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `);
+
+    const rows = stmt.all(account, limit) as Array<{
+      id: number;
+      timestamp: number;
+      direction: string;
+      adjustment_size_usd: string;
+      delta_drift_before: number;
+      current_leverage: number | null;
+      estimated_leverage_after: number | null;
+      tx_hash: string | null;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      timestamp: row.timestamp,
+      direction: row.direction,
+      adjustmentSizeUsd: row.adjustment_size_usd,
+      deltaDriftBefore: row.delta_drift_before,
+      currentLeverage: row.current_leverage ?? undefined,
+      estimatedLeverageAfter: row.estimated_leverage_after ?? undefined,
+      txHash: row.tx_hash ?? undefined,
+    }));
+  }
+
+  /**
    * Get database instance (for testing)
    */
   getDb(): Database.Database {

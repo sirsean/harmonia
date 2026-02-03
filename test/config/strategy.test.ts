@@ -41,6 +41,10 @@ describe("Strategy Configuration", () => {
         "maxRangeWidth",
         "targetLeverage",
         "minOptimizationBenefitRatio",
+        "hedgeDeltaThreshold",
+        "minHedgeInterval",
+        "minHedgeAdjustmentUsd",
+        "maxHedgeLeverage",
       ];
 
       for (const key of requiredKeys) {
@@ -55,6 +59,9 @@ describe("Strategy Configuration", () => {
       expect(DEFAULT_STRATEGY_CONFIG.targetLeverage).toBe(3.0);
       expect(DEFAULT_STRATEGY_CONFIG.minOptimizationInterval).toBe(3600);
       expect(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth).toBe(0.06);
+      expect(DEFAULT_STRATEGY_CONFIG.hedgeDeltaThreshold).toBe(0.05);
+      expect(DEFAULT_STRATEGY_CONFIG.minHedgeInterval).toBe(300);
+      expect(DEFAULT_STRATEGY_CONFIG.maxHedgeLeverage).toBe(10.0);
     });
 
     it("should have bigint values for USD amounts", () => {
@@ -195,6 +202,62 @@ describe("Strategy Configuration", () => {
         minPositionSizeUsd: 0n,
       };
       expect(() => validateStrategyConfig(invalid)).toThrow();
+    });
+
+    it("should reject hedgeDeltaThreshold >= optimizationDeltaThreshold", () => {
+      const invalid = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        hedgeDeltaThreshold: 0.15,
+        optimizationDeltaThreshold: 0.1,
+      };
+      expect(() => validateStrategyConfig(invalid)).toThrow(/hedgeDeltaThreshold/);
+    });
+
+    it("should reject invalid hedgeDeltaThreshold (out of range)", () => {
+      const invalid = { ...DEFAULT_STRATEGY_CONFIG, hedgeDeltaThreshold: 1.5 };
+      expect(() => validateStrategyConfig(invalid)).toThrow(/hedgeDeltaThreshold/);
+    });
+
+    it("should reject negative minHedgeInterval", () => {
+      const invalid = { ...DEFAULT_STRATEGY_CONFIG, minHedgeInterval: -1 };
+      expect(() => validateStrategyConfig(invalid)).toThrow(/minHedgeInterval/);
+    });
+
+    it("should reject minHedgeInterval >= minOptimizationInterval", () => {
+      const invalid = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        minHedgeInterval: 7200,
+        minOptimizationInterval: 3600,
+      };
+      expect(() => validateStrategyConfig(invalid)).toThrow(/minHedgeInterval/);
+    });
+
+    it("should reject maxHedgeLeverage <= targetLeverage", () => {
+      const invalid = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        maxHedgeLeverage: 2.0,
+        targetLeverage: 3.0,
+      };
+      expect(() => validateStrategyConfig(invalid)).toThrow(/maxHedgeLeverage/);
+    });
+
+    it("should reject zero minHedgeAdjustmentUsd", () => {
+      const invalid = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        minHedgeAdjustmentUsd: 0n,
+      };
+      expect(() => validateStrategyConfig(invalid)).toThrow(/minHedgeAdjustmentUsd/);
+    });
+
+    it("should accept valid hedge configuration", () => {
+      const valid = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        hedgeDeltaThreshold: 0.03,
+        minHedgeInterval: 120,
+        minHedgeAdjustmentUsd: 1n * PRECISION.GMX_USD,
+        maxHedgeLeverage: 15.0,
+      };
+      expect(() => validateStrategyConfig(valid)).not.toThrow();
     });
   });
 

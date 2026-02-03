@@ -13,6 +13,7 @@ import {
   StrategyMonitor,
   StrategyStatus,
   OptimizationData,
+  HedgeAdjustmentData,
 } from "./types";
 import { StrategyConfig } from "../config/strategy";
 import { GMXPosition } from "../modules/gmx/types";
@@ -285,10 +286,15 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
 
     // Get last optimization time from database if available
     let lastOptimizationTime: number | undefined;
+    let lastHedgeAdjustmentTime: number | undefined;
     if (this.database) {
-      const lastTime = this.database.getLastOptimizationTime(gmx.account);
-      if (lastTime !== undefined) {
-        lastOptimizationTime = lastTime;
+      const lastOptTime = this.database.getLastOptimizationTime(gmx.account);
+      if (lastOptTime !== undefined) {
+        lastOptimizationTime = lastOptTime;
+      }
+      const lastHedgeTime = this.database.getLastHedgeAdjustmentTime(gmx.account);
+      if (lastHedgeTime !== undefined) {
+        lastHedgeAdjustmentTime = lastHedgeTime;
       }
     }
 
@@ -298,7 +304,9 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       totalFeesUsd,
       riskTokenPrice,
       Number(riskTokenDecimals),
-      lastOptimizationTime
+      lastOptimizationTime,
+      lastHedgeAdjustmentTime,
+      gmxPosition
     );
 
     return { status, recommendation };
@@ -321,12 +329,86 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
   }
 
   /**
-   * Determines if we should optimize right now based on multiple factors:
-   * 1. Critical: Positions out of range (always optimize)
-   * 2. Time since last optimization (min/max intervals)
-   * 3. Delta drift (higher threshold to avoid being too eager)
-   * 4. Cost/benefit analysis (fees vs gas costs)
-   * 5. Range position (near edges or drifted from center)
+   * Build HedgeAdjustmentData for the current state.
+   * Returns undefined if no GMX position exists or adjustment is below minimum.
+   */
+  private buildHedgeAdjustmentData(
+    status: StrategyStatus,
+    gmxPosition: GMXPosition | undefined,
+    price: number,
+    decimals: number
+  ): HedgeAdjustmentData | undefined {
+    if (!gmxPosition || status.totalLpDelta === 0n) return undefined;
+
+    const currentShortSizeTokens = gmxPosition.numbers.sizeInTokens;
+    // Target short size = LP delta (to neutralize it)
+    const targetShortSizeTokens = status.totalLpDelta;
+
+    // Calculate adjustment in tokens (positive = need to increase short)
+    const adjustmentTokens = targetShortSizeTokens - currentShortSizeTokens;
+    if (adjustmentTokens === 0n) return undefined;
+
+    // Convert adjustment to USD (30 decimals)
+    const absAdjustmentTokens = adjustmentTokens < 0n ? -adjustmentTokens : adjustmentTokens;
+    const adjustmentUsdAbs = this.calculateUsdValue(absAdjustmentTokens, decimals, price);
+
+    // Check minimum adjustment size
+    if (adjustmentUsdAbs < this.config.minHedgeAdjustmentUsd) return undefined;
+
+    const adjustmentSizeUsd = adjustmentTokens > 0n ? adjustmentUsdAbs : -adjustmentUsdAbs;
+
+    // Calculate current and estimated leverage
+    let currentLeverage = 0;
+    let estimatedLeverageAfter = 0;
+
+    if (gmxPosition.numbers.collateralAmount > 0n) {
+      const collateralUsd = this.calculateUsdValue(
+        gmxPosition.numbers.collateralAmount,
+        6, // USDC decimals
+        1.0 // USDC price
+      );
+
+      if (collateralUsd > 0n) {
+        const currentSizeUsd = gmxPosition.numbers.sizeInUsd;
+        currentLeverage = Number(currentSizeUsd) / Number(collateralUsd);
+
+        // New size after adjustment
+        const newSizeUsd =
+          adjustmentSizeUsd > 0n
+            ? currentSizeUsd + adjustmentUsdAbs
+            : currentSizeUsd - adjustmentUsdAbs;
+
+        // Collateral stays the same for hedge adjustments
+        estimatedLeverageAfter = newSizeUsd > 0n ? Number(newSizeUsd) / Number(collateralUsd) : 0;
+      }
+    }
+
+    return {
+      currentShortSizeTokens,
+      targetShortSizeTokens,
+      adjustmentSizeUsd,
+      currentLeverage,
+      estimatedLeverageAfter,
+    };
+  }
+
+  /**
+   * Determines if we should optimize or hedge-adjust right now based on multiple factors:
+   *
+   * Decision flow:
+   * 1. Out of range → OPTIMIZE (always)
+   * 2. Within hedge cooldown → NONE
+   * 3. Within optimization cooldown (but past hedge cooldown):
+   *    - Emergency delta → OPTIMIZE (bypass optimization cooldown)
+   *    - Delta >= hedge threshold → HEDGE_ADJUST
+   *    - else → NONE
+   * 4. Past optimization cooldown:
+   *    - Max interval → OPTIMIZE
+   *    - Delta >= optimization threshold (with cost/benefit) → OPTIMIZE
+   *    - Delta >= hedge threshold → HEDGE_ADJUST
+   *    - Range issues → OPTIMIZE
+   *    - Fees accumulated → OPTIMIZE
+   *    - else → NONE
    */
   private shouldOptimize(
     status: StrategyStatus,
@@ -334,11 +416,15 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     totalFeesUsd: bigint,
     price: number,
     decimals: number,
-    lastOptimizationTime?: number
+    lastOptimizationTime?: number,
+    lastHedgeAdjustmentTime?: number,
+    gmxPosition?: GMXPosition
   ): Recommendation {
     const now = Date.now();
     const timeSinceLastOptimization =
       lastOptimizationTime !== undefined ? (now - lastOptimizationTime) / 1000 : undefined;
+    const timeSinceLastHedge =
+      lastHedgeAdjustmentTime !== undefined ? (now - lastHedgeAdjustmentTime) / 1000 : undefined;
 
     // Calculate estimated benefit (fees + value of delta correction)
     const gasCostUsd = this.config.estimatedOptimizationGasCostUsd;
@@ -358,6 +444,26 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       estimatedBenefitUsd,
     };
 
+    // Pre-compute hedge adjustment data for potential HEDGE_ADJUST decisions
+    const hedgeData = this.buildHedgeAdjustmentData(status, gmxPosition, price, decimals);
+
+    // Helper to build a HEDGE_ADJUST recommendation with leverage safety check
+    const makeHedgeRecommendation = (reason: string): Recommendation | null => {
+      if (!hedgeData) return null;
+
+      // Leverage safety guard
+      if (hedgeData.estimatedLeverageAfter > this.config.maxHedgeLeverage) {
+        return null; // Caller should escalate to OPTIMIZE or NONE
+      }
+
+      return {
+        action: StrategyAction.HEDGE_ADJUST,
+        reason,
+        data: optimizationData,
+        hedgeData,
+      };
+    };
+
     // Priority 1: CRITICAL - Positions are out of range (always optimize)
     if (anyOutOfRange) {
       return {
@@ -367,20 +473,54 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       };
     }
 
-    // Priority 2: Check minimum interval (rate limiting)
-    if (timeSinceLastOptimization !== undefined) {
-      if (timeSinceLastOptimization < this.config.minOptimizationInterval) {
-        const minutesSince = Math.floor(timeSinceLastOptimization / 60);
-        const minMinutes = Math.floor(this.config.minOptimizationInterval / 60);
+    // Priority 2: Check hedge cooldown (rate limiting for everything)
+    if (timeSinceLastHedge !== undefined) {
+      if (timeSinceLastHedge < this.config.minHedgeInterval) {
         return {
           action: StrategyAction.NONE,
-          reason: `Too soon since last optimization (${minutesSince}min < ${minMinutes}min minimum interval)`,
+          reason: `Too soon since last hedge/optimization (${Math.floor(timeSinceLastHedge / 60)}min < ${Math.floor(this.config.minHedgeInterval / 60)}min hedge interval)`,
           data: optimizationData,
         };
       }
     }
 
-    // Priority 3: Emergency delta drift (always optimize regardless of other factors)
+    // Priority 3: Within optimization cooldown (but past hedge cooldown)
+    const withinOptimizationCooldown =
+      timeSinceLastOptimization !== undefined &&
+      timeSinceLastOptimization < this.config.minOptimizationInterval;
+
+    if (withinOptimizationCooldown) {
+      // 3a: Emergency delta drift bypasses optimization cooldown
+      if (status.deltaDrift >= this.config.emergencyDeltaThreshold) {
+        return {
+          action: StrategyAction.OPTIMIZE,
+          reason: `Emergency: Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds emergency threshold ${(this.config.emergencyDeltaThreshold * 100).toFixed(2)}%`,
+          data: optimizationData,
+        };
+      }
+
+      // 3b: Hedge adjustment if delta drift exceeds hedge threshold
+      if (status.deltaDrift >= this.config.hedgeDeltaThreshold) {
+        const hedgeRec = makeHedgeRecommendation(
+          `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds hedge threshold ${(this.config.hedgeDeltaThreshold * 100).toFixed(2)}% (within optimization cooldown)`
+        );
+        if (hedgeRec) return hedgeRec;
+        // If hedge failed safety check, fall through to NONE (can't optimize yet)
+      }
+
+      // 3c: Within optimization cooldown and no hedge needed
+      const minutesSince = Math.floor(timeSinceLastOptimization! / 60);
+      const minMinutes = Math.floor(this.config.minOptimizationInterval / 60);
+      return {
+        action: StrategyAction.NONE,
+        reason: `Within optimization cooldown (${minutesSince}min < ${minMinutes}min) - no action needed`,
+        data: optimizationData,
+      };
+    }
+
+    // Priority 4+: Past optimization cooldown (or never optimized)
+
+    // Priority 4: Emergency delta drift (always optimize regardless of other factors)
     if (status.deltaDrift >= this.config.emergencyDeltaThreshold) {
       return {
         action: StrategyAction.OPTIMIZE,
@@ -389,7 +529,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       };
     }
 
-    // Priority 4: Max interval reached (force optimization even if conditions aren't ideal)
+    // Priority 5: Max interval reached (force optimization even if conditions aren't ideal)
     if (timeSinceLastOptimization !== undefined) {
       if (timeSinceLastOptimization >= this.config.maxOptimizationInterval) {
         const hoursSince = (timeSinceLastOptimization / 3600).toFixed(1);
@@ -401,7 +541,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       }
     }
 
-    // Priority 5: Delta drift exceeds threshold AND cost/benefit is favorable
+    // Priority 6: Delta drift exceeds optimization threshold AND cost/benefit is favorable
     if (status.deltaDrift >= this.config.optimizationDeltaThreshold) {
       // Check cost/benefit ratio
       if (estimatedBenefitUsd > 0n && gasCostUsd > 0n) {
@@ -413,6 +553,13 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
             data: optimizationData,
           };
         } else {
+          // Cost/benefit not favorable for full optimization, try hedge instead
+          if (status.deltaDrift >= this.config.hedgeDeltaThreshold) {
+            const hedgeRec = makeHedgeRecommendation(
+              `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds hedge threshold - hedge preferred over optimization (benefit/cost ratio ${benefitRatio.toFixed(2)}x below minimum ${this.config.minOptimizationBenefitRatio}x)`
+            );
+            if (hedgeRec) return hedgeRec;
+          }
           return {
             action: StrategyAction.NONE,
             reason: `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds threshold but benefit/cost ratio ${benefitRatio.toFixed(2)}x is below minimum ${this.config.minOptimizationBenefitRatio}x`,
@@ -429,11 +576,18 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       }
     }
 
-    // Priority 6: Range position issues (wide range, near edges, or drifted from center)
+    // Priority 7: Delta drift exceeds hedge threshold (but below optimization threshold)
+    if (status.deltaDrift >= this.config.hedgeDeltaThreshold) {
+      const hedgeRec = makeHedgeRecommendation(
+        `Delta drift ${(status.deltaDrift * 100).toFixed(2)}% exceeds hedge threshold ${(this.config.hedgeDeltaThreshold * 100).toFixed(2)}%`
+      );
+      if (hedgeRec) return hedgeRec;
+      // If hedge failed safety check, fall through to other checks
+    }
+
+    // Priority 8: Range position issues (wide range, near edges, or drifted from center)
     const rangeIssues = this.checkRangeIssues(status, price);
     if (rangeIssues.hasIssues) {
-      // Range width issues (exceeding default) should always trigger optimization
-      // Other range issues (near edges, drifted) require fees/benefit check
       const isRangeWidthIssue =
         rangeIssues.reason.includes("range width") &&
         rangeIssues.reason.includes("exceeds configured default");
@@ -451,9 +605,8 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       }
     }
 
-    // Priority 7: Fees are significant enough to warrant optimization
+    // Priority 9: Fees are significant enough to warrant optimization
     if (totalFeesUsd >= this.config.minOptimizationFeeThresholdUsd) {
-      // Check if benefit exceeds cost
       if (estimatedBenefitUsd > 0n && gasCostUsd > 0n) {
         const benefitRatio = Number(estimatedBenefitUsd) / Number(gasCostUsd);
         if (benefitRatio >= this.config.minOptimizationBenefitRatio) {
@@ -464,7 +617,6 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
           };
         }
       } else {
-        // If fees are high enough, optimize anyway
         return {
           action: StrategyAction.OPTIMIZE,
           reason: `Unclaimed fees ($${ethers.formatUnits(totalFeesUsd, 30)}) exceed threshold ($${ethers.formatUnits(this.config.minOptimizationFeeThresholdUsd, 30)})`,
@@ -473,7 +625,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       }
     }
 
-    // No optimization needed
+    // No optimization or hedge needed
     return {
       action: StrategyAction.NONE,
       reason: "Strategy is healthy - no optimization needed",

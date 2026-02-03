@@ -382,6 +382,45 @@ const migration007_cleanup_old_costs: Migration = {
 };
 
 /**
+ * Migration: Add hedge adjustment tracking
+ */
+const migration008_hedge_adjustments: Migration = {
+  version: 8,
+  name: "hedge_adjustments",
+  up: (db: Database.Database) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS hedge_adjustment_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT NOT NULL,
+        direction TEXT NOT NULL CHECK(direction IN ('increase', 'decrease')),
+        adjustment_size_usd TEXT NOT NULL,
+        delta_drift_before REAL NOT NULL,
+        current_leverage REAL,
+        estimated_leverage_after REAL,
+        tx_hash TEXT,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_hedge_adjustment_account_timestamp
+      ON hedge_adjustment_history(account, timestamp DESC)
+    `);
+
+    // Add 'hedge_adjust' to operation_history operation_type check constraint
+    // SQLite doesn't support ALTER CHECK, so we add hedge adjustments as a new type
+    // by recreating the table. However, since this is risky, we'll just use the
+    // separate hedge_adjustment_history table for tracking and the operation_history
+    // for general operation tracking with a TEXT type (the CHECK is soft).
+  },
+  down: (db: Database.Database) => {
+    db.exec(`DROP INDEX IF EXISTS idx_hedge_adjustment_account_timestamp`);
+    db.exec(`DROP TABLE IF EXISTS hedge_adjustment_history`);
+  },
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
@@ -392,6 +431,7 @@ export const migrations: Migration[] = [
   migration005_apr_tracking,
   migration006_cost_tracking,
   migration007_cleanup_old_costs,
+  migration008_hedge_adjustments,
 ];
 
 /**
