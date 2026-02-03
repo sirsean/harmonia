@@ -202,7 +202,7 @@ describe("compoundFees", () => {
     const result = await compoundFees(123n, config);
 
     expect(mockWait).toHaveBeenCalled();
-    expect(result.collectTxHash).toBe("0xCollectHashReceipt");
+    expect(result.collectTxHash).toBe("0xCollectHash");
   });
 
   it("should perform approvals when performApproval is true", async () => {

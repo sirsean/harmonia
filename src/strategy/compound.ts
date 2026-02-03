@@ -198,8 +198,8 @@ export async function compoundFees(
   ];
 
   const multicallTx = await positionManager.multicall(multicallData);
-  const multicallReceipt = await multicallTx.wait();
-  const multicallTxHash = multicallReceipt?.hash ?? multicallTx.hash;
+  await multicallTx.wait();
+  const multicallTxHash = multicallTx.hash;
 
   // Note: To get the actual amounts added, we would need to:
   // 1. Parse the transaction receipt return values, or
