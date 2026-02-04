@@ -18,10 +18,27 @@ import {
 import { StrategyConfig } from "../config/strategy";
 import { GMXPosition } from "../modules/gmx/types";
 import { UniswapPosition } from "../modules/uniswap/types";
-import { ERC20_ABI } from "../utils/abis";
+import {
+  ERC20_ABI,
+  UNISWAP_POOL_ABI,
+  UNISWAP_POSITION_MANAGER_ABI,
+  GMX_READER_ABI,
+} from "../utils/abis";
 import { MonitoringDatabase } from "../utils/database";
+import { multicallRead, MulticallRequest } from "../utils/multicall";
+
+interface TokenMetadataCache {
+  token0: string;
+  token1: string;
+  decimals0: number;
+  decimals1: number;
+  symbol0: string;
+  symbol1: string;
+}
 
 export class DeltaNeutralMonitor implements StrategyMonitor {
+  private tokenMetadataCache?: TokenMetadataCache;
+
   constructor(
     private provider: ethers.Provider,
     private config: StrategyConfig,
@@ -38,6 +55,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
         market: string;
         collateralToken: string;
       };
+      multicall3?: string;
     },
     private database?: MonitoringDatabase
   ) {}
@@ -49,36 +67,55 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     const poolContract = uniswapReader.createPool(uniswap.pool, this.provider);
     const pmContract = uniswapReader.createPositionManager(uniswap.positionManager, this.provider);
 
-    // Determine which positions to monitor
-    let positionsToMonitor: { tokenId: bigint; position: UniswapPosition }[] = [];
+    let positionsToMonitor: { tokenId: bigint; position: UniswapPosition }[];
+    let poolState;
+    let gmxPosition: GMXPosition | undefined;
 
-    if (uniswap.tokenIds && uniswap.tokenIds.length > 0) {
-      // Fetch specific positions
-      for (const id of uniswap.tokenIds) {
-        const position = await uniswapReader.getPositionWithFees(pmContract, id, gmx.account);
-        if (position.liquidity > 0n) {
-          positionsToMonitor.push({ tokenId: id, position });
-        }
-      }
+    const canBatch = this.context.multicall3 && uniswap.tokenIds && uniswap.tokenIds.length > 0;
+
+    if (canBatch) {
+      // Batched path: single multicall for pool state, positions, fees, and GMX
+      ({ positionsToMonitor, poolState, gmxPosition } = await this.fetchDataBatched(
+        uniswap.tokenIds!
+      ));
     } else {
-      // Auto-discover active positions
-      positionsToMonitor = await uniswapReader.getActivePositionsForOwner(pmContract, gmx.account);
+      // Individual calls path (auto-discover or no multicall3)
+      ({ positionsToMonitor, poolState, gmxPosition } = await this.fetchDataIndividual(
+        poolContract,
+        pmContract
+      ));
     }
 
-    const poolState = await uniswapReader.getPoolState(poolContract);
+    // Lazily cache immutable token metadata (token addresses, decimals, symbols)
+    if (!this.tokenMetadataCache) {
+      const poolToken0 = await poolContract.token0();
+      const poolToken1 = await poolContract.token1();
+      const token0Contract = new ethers.Contract(poolToken0, ERC20_ABI, this.provider);
+      const token1Contract = new ethers.Contract(poolToken1, ERC20_ABI, this.provider);
+      const [d0, d1, s0, s1] = await Promise.all([
+        token0Contract.decimals(),
+        token1Contract.decimals(),
+        token0Contract.symbol(),
+        token1Contract.symbol(),
+      ]);
+      this.tokenMetadataCache = {
+        token0: poolToken0,
+        token1: poolToken1,
+        decimals0: typeof d0 === "bigint" ? Number(d0) : d0,
+        decimals1: typeof d1 === "bigint" ? Number(d1) : d1,
+        symbol0: s0,
+        symbol1: s1,
+      };
+    }
 
-    const poolToken0 = await poolContract.token0();
-    const poolToken1 = await poolContract.token1();
-
-    // Fetch decimals and symbols
-    const token0Contract = new ethers.Contract(poolToken0, ERC20_ABI, this.provider);
-    const token1Contract = new ethers.Contract(poolToken1, ERC20_ABI, this.provider);
-    const [decimals0, decimals1, symbol0, symbol1] = await Promise.all([
-      token0Contract.decimals(),
-      token1Contract.decimals(),
-      token0Contract.symbol(),
-      token1Contract.symbol(),
-    ]);
+    const {
+      token0: poolToken0,
+      token1: poolToken1,
+      decimals0,
+      decimals1,
+      symbol0,
+      symbol1,
+    } = this.tokenMetadataCache;
 
     // Determine Risk vs Stable (Collateral)
     // We assume the Collateral Token is the stable one (USDC)
@@ -166,15 +203,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       }
     }
 
-    // 2. Fetch GMX Data
-    const gmxReaderContract = gmxReader.createReader(gmx.reader, this.provider);
-    const gmxPosition = await gmxReader.getPosition(gmxReaderContract, gmx.dataStore, gmx.account, {
-      market: gmx.market,
-      collateralToken: gmx.collateralToken,
-      isLong: false, // We assume short for hedging
-    });
-
-    // 3. Calculate GMX Delta
+    // 2. Calculate GMX Delta
     const shortSizeTokens = gmxPosition ? gmxPosition.numbers.sizeInTokens : 0n;
     const gmxDelta = -shortSizeTokens;
 
@@ -310,6 +339,164 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     );
 
     return { status, recommendation };
+  }
+
+  /**
+   * Fetch pool state, positions, and GMX data using individual RPC calls.
+   * Used when multicall3 is not configured or when auto-discovering positions.
+   */
+  private async fetchDataIndividual(
+    poolContract: any,
+    pmContract: any
+  ): Promise<{
+    positionsToMonitor: { tokenId: bigint; position: UniswapPosition }[];
+    poolState: { sqrtPriceX96: bigint; tick: number; liquidity: bigint };
+    gmxPosition: GMXPosition | undefined;
+  }> {
+    const { uniswap, gmx } = this.context;
+
+    let positionsToMonitor: { tokenId: bigint; position: UniswapPosition }[] = [];
+
+    if (uniswap.tokenIds && uniswap.tokenIds.length > 0) {
+      for (const id of uniswap.tokenIds) {
+        const position = await uniswapReader.getPositionWithFees(pmContract, id, gmx.account);
+        if (position.liquidity > 0n) {
+          positionsToMonitor.push({ tokenId: id, position });
+        }
+      }
+    } else {
+      positionsToMonitor = await uniswapReader.getActivePositionsForOwner(pmContract, gmx.account);
+    }
+
+    const poolState = await uniswapReader.getPoolState(poolContract);
+
+    const gmxReaderContract = gmxReader.createReader(gmx.reader, this.provider);
+    const gmxPosition = await gmxReader.getPosition(gmxReaderContract, gmx.dataStore, gmx.account, {
+      market: gmx.market,
+      collateralToken: gmx.collateralToken,
+      isLong: false,
+    });
+
+    return { positionsToMonitor, poolState, gmxPosition };
+  }
+
+  /**
+   * Fetch pool state, positions, and GMX data in a single Multicall3 batch.
+   * Reduces ~5-8 RPC calls to 1.
+   */
+  private async fetchDataBatched(tokenIds: bigint[]): Promise<{
+    positionsToMonitor: { tokenId: bigint; position: UniswapPosition }[];
+    poolState: { sqrtPriceX96: bigint; tick: number; liquidity: bigint };
+    gmxPosition: GMXPosition | undefined;
+  }> {
+    const { uniswap, gmx } = this.context;
+    const multicall3Address = this.context.multicall3!;
+
+    const poolIface = new ethers.Interface(UNISWAP_POOL_ABI);
+    const pmIface = new ethers.Interface(UNISWAP_POSITION_MANAGER_ABI);
+    const gmxIface = new ethers.Interface(GMX_READER_ABI);
+
+    const MAX_UINT128 = (1n << 128n) - 1n;
+
+    // Build the batch: slot0, liquidity, then per-position: positions + collect, then GMX
+    const requests: MulticallRequest[] = [];
+
+    // Index 0: slot0
+    requests.push({
+      target: uniswap.pool,
+      iface: poolIface,
+      functionName: "slot0",
+      args: [],
+    });
+
+    // Index 1: liquidity
+    requests.push({
+      target: uniswap.pool,
+      iface: poolIface,
+      functionName: "liquidity",
+      args: [],
+    });
+
+    // Indices 2..2+2N-1: for each tokenId, positions() then collect()
+    for (const tokenId of tokenIds) {
+      requests.push({
+        target: uniswap.positionManager,
+        iface: pmIface,
+        functionName: "positions",
+        args: [tokenId],
+      });
+
+      requests.push({
+        target: uniswap.positionManager,
+        iface: pmIface,
+        functionName: "collect",
+        args: [
+          {
+            tokenId,
+            recipient: gmx.account,
+            amount0Max: MAX_UINT128,
+            amount1Max: MAX_UINT128,
+          },
+        ],
+        allowFailure: true,
+      });
+    }
+
+    // Last index: GMX getAccountPositions
+    requests.push({
+      target: gmx.reader,
+      iface: gmxIface,
+      functionName: "getAccountPositions",
+      args: [gmx.dataStore, gmx.account, 0, 10],
+    });
+
+    const results = await multicallRead(this.provider, multicall3Address, requests);
+
+    // Parse slot0
+    const slot0Data = results[0].data;
+    const poolState = {
+      sqrtPriceX96: slot0Data[0] as bigint,
+      tick: Number(slot0Data[1]),
+      liquidity: results[1].data[0] as bigint,
+    };
+
+    // Parse positions and fees
+    const positionsToMonitor: { tokenId: bigint; position: UniswapPosition }[] = [];
+    for (let i = 0; i < tokenIds.length; i++) {
+      const posResult = results[2 + i * 2];
+      const feeResult = results[2 + i * 2 + 1];
+
+      const data = posResult.data;
+      const position: UniswapPosition = {
+        nonce: data[0] as bigint,
+        operator: data[1] as string,
+        token0: data[2] as string,
+        token1: data[3] as string,
+        fee: Number(data[4]),
+        tickLower: Number(data[5]),
+        tickUpper: Number(data[6]),
+        liquidity: data[7] as bigint,
+        feeGrowthInside0LastX128: data[8] as bigint,
+        feeGrowthInside1LastX128: data[9] as bigint,
+        tokensOwed0: feeResult.success ? (feeResult.data[0] as bigint) : 0n,
+        tokensOwed1: feeResult.success ? (feeResult.data[1] as bigint) : 0n,
+      };
+
+      if (position.liquidity > 0n) {
+        positionsToMonitor.push({ tokenId: tokenIds[i], position });
+      }
+    }
+
+    // Parse GMX positions
+    const gmxResultIndex = 2 + tokenIds.length * 2;
+    const gmxPositions = results[gmxResultIndex].data[0] as GMXPosition[];
+    const gmxPosition = gmxReader.findPosition(gmxPositions, {
+      market: gmx.market,
+      collateralToken: gmx.collateralToken,
+      isLong: false,
+    });
+
+    return { positionsToMonitor, poolState, gmxPosition };
   }
 
   private calculateUsdValue(amount: bigint, decimals: number, price: number): bigint {

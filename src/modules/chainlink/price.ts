@@ -13,6 +13,32 @@ const DEFAULT_MAX_STALE_SECONDS = 60 * 60; // 1 hour
 const DEFAULT_ALLOW_FUTURE_SECONDS = 5 * 60; // 5 minutes
 const WAD_DECIMALS = 18;
 
+// Cache for immutable feed decimals, keyed by feed contract address
+const decimalsCache = new Map<string, number>();
+
+export function resetDecimalsCache(): void {
+  decimalsCache.clear();
+}
+
+async function getFeedDecimals(feed: ChainlinkFeed): Promise<number> {
+  const feedAddress = (feed as any).target as string | undefined;
+  if (feedAddress) {
+    const cached = decimalsCache.get(feedAddress.toLowerCase());
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
+
+  const decimalsRaw = await feed.decimals();
+  const decimals = typeof decimalsRaw === "bigint" ? Number(decimalsRaw) : decimalsRaw;
+
+  if (feedAddress) {
+    decimalsCache.set(feedAddress.toLowerCase(), decimals);
+  }
+
+  return decimals;
+}
+
 export class ChainlinkPriceError extends Error {
   code: string;
   context?: Record<string, unknown>;
@@ -116,8 +142,7 @@ export async function getLatestPriceFromFeed(
   const roundData = normalizeRoundData(await feed.latestRoundData());
   validateRoundData(roundData, options);
 
-  const decimalsRaw = await feed.decimals();
-  const decimals = typeof decimalsRaw === "bigint" ? Number(decimalsRaw) : decimalsRaw;
+  const decimals = await getFeedDecimals(feed);
 
   const priceWad = scalePrice(roundData.answer, decimals, WAD_DECIMALS);
 

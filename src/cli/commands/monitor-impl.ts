@@ -43,6 +43,7 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
       market: ARBITRUM_MAINNET.gmxEthUsdMarket,
       collateralToken: ARBITRUM_MAINNET.usdc,
     },
+    multicall3: ARBITRUM_MAINNET.multicall3,
   };
 
   const monitorInstance = new DeltaNeutralMonitor(ethers.provider, config, context);
