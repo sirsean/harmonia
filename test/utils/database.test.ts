@@ -21,15 +21,6 @@ describe("MonitoringDatabase", () => {
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath);
     }
-    // Remove test-data directory if empty
-    const testDataDir = path.dirname(testDbPath);
-    try {
-      if (fs.existsSync(testDataDir) && fs.readdirSync(testDataDir).length === 0) {
-        fs.rmdirSync(testDataDir);
-      }
-    } catch (e) {
-      // Ignore errors
-    }
   });
 
   describe("Schema initialization", () => {

@@ -33,14 +33,6 @@ describe("APR calculation utilities", () => {
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath);
     }
-    const testDataDir = path.dirname(testDbPath);
-    try {
-      if (fs.existsSync(testDataDir) && fs.readdirSync(testDataDir).length === 0) {
-        fs.rmdirSync(testDataDir);
-      }
-    } catch (e) {
-      // Ignore errors
-    }
   });
 
   const createMockStatus = (timestamp: number, gmxNetValueUsd: bigint): StrategyStatus => ({
