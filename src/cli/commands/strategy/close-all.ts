@@ -245,7 +245,9 @@ export async function closePositions(
   }
 
   if (executeFlag && multicallData.length > 0) {
-    const multicallTx = await manager.multicall(multicallData);
+    // Arbitrum One can underestimate gas for Uniswap V3 multicall operations
+    // (decreaseLiquidity + collect per position). Set explicit gas limit.
+    const multicallTx = await manager.multicall(multicallData, { gasLimit: 1_000_000n });
     console.log(`  Multicall transaction submitted: ${multicallTx.hash}`);
     const multicallReceipt = (await multicallTx.wait()) as { blockNumber: number };
     console.log(`  Multicall confirmed in block ${multicallReceipt.blockNumber}`);
