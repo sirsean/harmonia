@@ -123,3 +123,16 @@ export const CHAINLINK_FEED_ABI = [
   "function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)",
   "function decimals() view returns (uint8)",
 ] as const;
+
+// ============================================================================
+// Multicall3 ABI
+// ============================================================================
+
+/**
+ * Multicall3 ABI
+ * Used for batching multiple read calls into a single RPC call
+ * https://www.multicall3.com/
+ */
+export const MULTICALL3_ABI = [
+  "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[] returnData)",
+] as const;

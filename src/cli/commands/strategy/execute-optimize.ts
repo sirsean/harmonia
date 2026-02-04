@@ -227,6 +227,7 @@ export async function executeOptimize(
         market: ARBITRUM_MAINNET.gmxEthUsdMarket,
         collateralToken: ARBITRUM_MAINNET.usdc,
       },
+      multicall3: ARBITRUM_MAINNET.multicall3,
     };
 
     const monitor = new DeltaNeutralMonitor(ethers.provider, monitorConfig, monitorContext);
