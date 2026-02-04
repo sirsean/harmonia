@@ -3,7 +3,7 @@ import { ARBITRUM_MAINNET } from "../../../config/addresses";
 import { loadStrategyConfig } from "../../../config/strategy";
 import * as gmxReader from "../../../modules/gmx/reader";
 import * as gmxOrders from "../../../modules/gmx/orders";
-import { price30ToPrice12 } from "../../../modules/gmx/prices";
+import { getLatestPrice } from "../../../modules/chainlink/price";
 import { getSignerAndAccount } from "../base";
 import { MonitoringDatabase } from "../../../utils/database";
 import { HedgeAdjustmentData } from "../../../strategy/types";
@@ -58,10 +58,18 @@ export async function executeHedgeAdjust(
     return { txHash: "", direction, adjustmentSizeUsd: absAdjustmentUsd };
   }
 
-  // Get current ETH price for acceptable price calculation
-  const gmxReaderContract = gmxReader.createReader(ARBITRUM_MAINNET.gmxReader, ethers.provider);
+  // Fetch current ETH price from Chainlink for acceptable price calculation
+  const priceResult = await getLatestPrice(ARBITRUM_MAINNET.chainlinkEthUsdFeed, ethers.provider, {
+    outputDecimals: 12,
+    maxStaleSeconds: 3600,
+  });
+  if (!priceResult.outputPrice) {
+    throw new Error("Failed to fetch current ETH price for hedge adjustment");
+  }
+  const currentPrice12 = priceResult.outputPrice;
 
-  // Fetch current position to verify it exists
+  // Verify GMX position exists
+  const gmxReaderContract = gmxReader.createReader(ARBITRUM_MAINNET.gmxReader, ethers.provider);
   const gmxPosition = await gmxReader.getPosition(
     gmxReaderContract,
     ARBITRUM_MAINNET.gmxDataStore,
@@ -77,11 +85,6 @@ export async function executeHedgeAdjust(
     throw new Error("No existing GMX short position found - cannot hedge adjust");
   }
 
-  // Calculate index token price from position data
-  // price = sizeInUsd / sizeInTokens (both in appropriate decimals)
-  const indexTokenPrice30 =
-    (gmxPosition.numbers.sizeInUsd * 10n ** 18n) / gmxPosition.numbers.sizeInTokens;
-
   const router = gmxOrders.createRouter(ARBITRUM_MAINNET.gmxExchangeRouter, signer);
   const executionConfig = { orderVault: ARBITRUM_MAINNET.gmxOrderVault };
 
@@ -89,9 +92,8 @@ export async function executeHedgeAdjust(
 
   if (direction === "increase") {
     // Increase short with zero collateral (leverage floats up)
-    const slippageFactor = BigInt(Math.round((1 - config.slippageBuffer) * 10000));
-    const acceptablePrice30 = (indexTokenPrice30 * slippageFactor) / 10000n;
-    const acceptablePrice = price30ToPrice12(acceptablePrice30);
+    const slippageBps = BigInt(Math.round(config.maxSlippage * 10000));
+    const acceptablePrice = (currentPrice12 * (10000n - slippageBps)) / 10000n;
 
     const usdcContract = new ethers.Contract(
       ARBITRUM_MAINNET.usdc,
@@ -122,9 +124,8 @@ export async function executeHedgeAdjust(
     txHash = result.txHash;
   } else {
     // Decrease short (collateral unchanged, leverage floats down)
-    const slippageFactor = BigInt(Math.round((1 + config.slippageBuffer) * 10000));
-    const acceptablePrice30 = (indexTokenPrice30 * slippageFactor) / 10000n;
-    const acceptablePrice = price30ToPrice12(acceptablePrice30);
+    const slippageBps = BigInt(Math.round(config.maxSlippage * 10000));
+    const acceptablePrice = (currentPrice12 * (10000n + slippageBps)) / 10000n;
 
     console.log(`\nCreating decrease order: size=$${ethers.formatUnits(absAdjustmentUsd, 30)}`);
 
@@ -168,7 +169,7 @@ export async function executeHedgeAdjust(
   if (!options.suppressAlert) {
     try {
       await sendSuccessAlert(
-        `🔧 Harmonia : Hedge ${direction === "increase" ? "Increased" : "Decreased"}`,
+        `🔧 Harmonia : Hedge ${direction === "increase" ? "Increase" : "Decrease"} Order Submitted`,
         "",
         [
           {

@@ -625,7 +625,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
             }
 
             await sendSuccessAlert(
-              `🔧 Harmonia : Hedge ${hedgeResult.direction === "increase" ? "Increased" : "Decreased"}`,
+              `🔧 Harmonia : Hedge ${hedgeResult.direction === "increase" ? "Increase" : "Decrease"} Order Submitted`,
               "",
               hedgeFields
             ).catch((alertError) => {
