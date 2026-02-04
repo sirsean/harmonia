@@ -726,10 +726,11 @@ export async function executeOptimize(
         wethDecimals
       ); // Add 1% buffer
 
-      const minSwapAmount = ethers.parseUnits("0.001", wethDecimals);
+      const minSwapAmount = ethers.parseUnits("0.0001", wethDecimals);
+      const excessWeth = wethAvailable - wethNeeded;
 
-      if (wethAvailable >= wethToSwap && wethToSwap >= minSwapAmount) {
-        const amountIn = wethToSwap > wethAvailable ? wethAvailable : wethToSwap;
+      if (excessWeth >= wethToSwap && wethToSwap >= minSwapAmount) {
+        const amountIn = wethToSwap > excessWeth ? excessWeth : wethToSwap;
         console.log(`\nSwapping ${ethers.formatUnits(amountIn, wethDecimals)} WETH for USDC...`);
 
         let quoteOut: bigint;
@@ -799,6 +800,16 @@ export async function executeOptimize(
         ]);
         finalBalance0 = newBalance0;
         finalBalance1 = newBalance1;
+      } else {
+        if (wethToSwap < minSwapAmount) {
+          console.log(
+            `\nSkipping WETH->USDC swap: amount ${ethers.formatUnits(wethToSwap, wethDecimals)} WETH below minimum ${ethers.formatUnits(minSwapAmount, wethDecimals)} WETH`
+          );
+        } else {
+          console.log(
+            `\nSkipping WETH->USDC swap: insufficient excess WETH (have ${ethers.formatUnits(excessWeth, wethDecimals)} excess, need ${ethers.formatUnits(wethToSwap, wethDecimals)})`
+          );
+        }
       }
     } else if (!executeFlag) {
       if (wethShortfall > 0n) {
