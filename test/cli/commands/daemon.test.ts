@@ -98,6 +98,10 @@ vi.mock("../../../src/config/strategy", () => ({
     maxRangeWidth: 0.4,
     targetLeverage: 3.0,
     minOptimizationBenefitRatio: 1.5,
+    hedgeDeltaThreshold: 0.05,
+    minHedgeInterval: 300,
+    minHedgeAdjustmentUsd: BigInt("5000000000000000000000000000000"), // 5 * 10^30
+    maxHedgeLeverage: 10.0,
   }),
 }));
 
@@ -136,6 +140,11 @@ vi.mock("../../../src/modules/uniswap/reader", () => ({
 // Mock executeOptimize
 vi.mock("../../../src/cli/commands/strategy/execute-optimize", () => ({
   executeOptimize: vi.fn(),
+}));
+
+// Mock executeHedgeAdjust
+vi.mock("../../../src/cli/commands/strategy/execute-hedge-adjust", () => ({
+  executeHedgeAdjust: vi.fn(),
 }));
 
 describe("daemon command", () => {
@@ -982,6 +991,250 @@ describe("daemon command", () => {
       // Verify that after the first failure, we had at least 2 more calls (success + another attempt)
       const totalCalls = vi.mocked(executeOptimizeFn).mock.calls.length;
       expect(totalCalls - callsAfterFirstFailure).toBeGreaterThanOrEqual(2);
+
+      exitSpy.mockRestore();
+    });
+  });
+
+  describe("auto hedge adjustment", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("should trigger hedge adjustment when recommendation is HEDGE_ADJUST", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.HEDGE_ADJUST,
+        reason: "Delta drift 7.00% exceeds hedge threshold 5.00%",
+        data: {
+          deltaDrift: 0.07,
+          anyOutOfRange: false,
+          totalFeesUsd: 0n,
+        },
+        hedgeData: {
+          currentShortSizeTokens: ethers.parseEther("0.65"),
+          targetShortSizeTokens: ethers.parseEther("0.7"),
+          adjustmentSizeUsd: ethers.parseUnits("150", 30),
+          currentLeverage: 3.0,
+          estimatedLeverageAfter: 3.2,
+        },
+      };
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+
+      const { executeHedgeAdjust } = await import(
+        "../../../src/cli/commands/strategy/execute-hedge-adjust"
+      );
+      vi.mocked(executeHedgeAdjust).mockResolvedValue({
+        txHash: "0xHedgeTx",
+        direction: "increase",
+        adjustmentSizeUsd: ethers.parseUnits("150", 30),
+      });
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: true,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      const { executeHedgeAdjust: hedgeFn } = await import(
+        "../../../src/cli/commands/strategy/execute-hedge-adjust"
+      );
+      expect(hedgeFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          account: "0x1234567890123456789012345678901234567890",
+          execute: true,
+          suppressAlert: true,
+          hedgeData: recommendation.hedgeData,
+        })
+      );
+
+      const { sendSuccessAlert } = await import("../../../src/utils/alerts");
+      expect(sendSuccessAlert).toHaveBeenCalledWith(
+        expect.stringContaining("Hedge"),
+        "",
+        expect.any(Array)
+      );
+
+      exitSpy.mockRestore();
+    });
+
+    it("should not trigger hedge adjustment when autoOptimize is disabled", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.HEDGE_ADJUST,
+        reason: "Delta drift exceeds hedge threshold",
+        hedgeData: {
+          currentShortSizeTokens: ethers.parseEther("0.65"),
+          targetShortSizeTokens: ethers.parseEther("0.7"),
+          adjustmentSizeUsd: ethers.parseUnits("150", 30),
+          currentLeverage: 3.0,
+          estimatedLeverageAfter: 3.2,
+        },
+      };
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: false,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      const { executeHedgeAdjust: hedgeFn } = await import(
+        "../../../src/cli/commands/strategy/execute-hedge-adjust"
+      );
+      expect(hedgeFn).not.toHaveBeenCalled();
+
+      exitSpy.mockRestore();
+    });
+
+    it("should not trigger hedge when optimization is in progress", async () => {
+      const status = createMockStatus();
+      // First check returns OPTIMIZE (slow running), second returns HEDGE_ADJUST
+      let callCount = 0;
+      mockCheckFn.mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            status,
+            recommendation: {
+              action: StrategyAction.OPTIMIZE,
+              reason: "Delta drift exceeds threshold",
+            },
+          };
+        }
+        return {
+          status,
+          recommendation: {
+            action: StrategyAction.HEDGE_ADJUST,
+            reason: "Delta drift exceeds hedge threshold",
+            hedgeData: {
+              currentShortSizeTokens: ethers.parseEther("0.65"),
+              targetShortSizeTokens: ethers.parseEther("0.7"),
+              adjustmentSizeUsd: ethers.parseUnits("150", 30),
+              currentLeverage: 3.0,
+              estimatedLeverageAfter: 3.2,
+            },
+          },
+        };
+      });
+
+      // Make optimization take forever
+      let resolveOpt: () => void;
+      const optPromise = new Promise<void>((r) => {
+        resolveOpt = r;
+      });
+      const { executeOptimize } = await import(
+        "../../../src/cli/commands/strategy/execute-optimize"
+      );
+      vi.mocked(executeOptimize).mockImplementation(
+        () => optPromise.then(() => ({ feesCollectedUsd: 0n }))
+      );
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: true,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(1000); // First check → OPTIMIZE starts
+      await vi.advanceTimersByTimeAsync(1000); // Second check → HEDGE_ADJUST but opt in progress
+
+      const { executeHedgeAdjust: hedgeFn } = await import(
+        "../../../src/cli/commands/strategy/execute-hedge-adjust"
+      );
+      expect(hedgeFn).not.toHaveBeenCalled();
+
+      resolveOpt!();
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      exitSpy.mockRestore();
+    });
+
+    it("should handle hedge adjustment failures and track consecutive failures", async () => {
+      const status = createMockStatus();
+      const recommendation: Recommendation = {
+        action: StrategyAction.HEDGE_ADJUST,
+        reason: "Delta drift exceeds hedge threshold",
+        hedgeData: {
+          currentShortSizeTokens: ethers.parseEther("0.65"),
+          targetShortSizeTokens: ethers.parseEther("0.7"),
+          adjustmentSizeUsd: ethers.parseUnits("150", 30),
+          currentLeverage: 3.0,
+          estimatedLeverageAfter: 3.2,
+        },
+      };
+      mockCheckFn.mockResolvedValue({ status, recommendation });
+
+      const { executeHedgeAdjust } = await import(
+        "../../../src/cli/commands/strategy/execute-hedge-adjust"
+      );
+      vi.mocked(executeHedgeAdjust).mockRejectedValue(new Error("GMX order failed"));
+
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      const options: DaemonOptions = {
+        account: "0x1234567890123456789012345678901234567890",
+        interval: 1,
+        dbPath: testDbPath,
+        autoOptimize: true,
+      };
+
+      const daemonPromise = daemon(options).catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Trigger 4 checks (3 should attempt hedge, 4th should skip due to max failures)
+      for (let i = 0; i < 5; i++) {
+        await vi.advanceTimersByTimeAsync(1000);
+        await vi.advanceTimersByTimeAsync(1000);
+      }
+
+      process.emit("SIGINT" as any, "SIGINT");
+      await vi.advanceTimersByTimeAsync(100);
+
+      const { executeHedgeAdjust: hedgeFn } = await import(
+        "../../../src/cli/commands/strategy/execute-hedge-adjust"
+      );
+      // Should have been called exactly 3 times (max failures)
+      expect(hedgeFn).toHaveBeenCalledTimes(3);
 
       exitSpy.mockRestore();
     });

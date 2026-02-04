@@ -10,6 +10,7 @@ import { MonitoringDatabase } from "../../utils/database";
 import { getLogger } from "../../utils/logger";
 import { getAPRMetrics } from "../../utils/apr";
 import { executeOptimize } from "./strategy/execute-optimize";
+import { executeHedgeAdjust } from "./strategy/execute-hedge-adjust";
 import { StrategyAction } from "../../strategy/types";
 import {
   sendErrorAlert,
@@ -228,6 +229,9 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
   let consecutiveOptimizationFailures = 0;
   const maxConsecutiveOptimizationFailures = 3; // Stop auto-optimization after 3 failures
   let isOptimizationInProgress = false; // Prevent concurrent optimizations
+  let isHedgeInProgress = false; // Prevent concurrent hedge adjustments
+  let consecutiveHedgeFailures = 0;
+  const maxConsecutiveHedgeFailures = 3;
 
   // Monitoring loop
   const monitoringLoop = async (): Promise<void> => {
@@ -511,6 +515,112 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
           } else if (consecutiveOptimizationFailures >= maxConsecutiveOptimizationFailures) {
             logger.warn("Skipping optimization - too many consecutive failures", {
               consecutiveOptimizationFailures,
+            });
+          }
+        }
+
+        // Hedge adjustment logic
+        if (
+          autoOptimize &&
+          recommendation.action === StrategyAction.HEDGE_ADJUST &&
+          recommendation.hedgeData &&
+          !isHedgeInProgress &&
+          !isOptimizationInProgress &&
+          consecutiveHedgeFailures < maxConsecutiveHedgeFailures
+        ) {
+          isHedgeInProgress = true;
+          logger.info("Hedge adjustment triggered", {
+            reason: recommendation.reason,
+            deltaDrift: status.deltaDrift,
+            direction: recommendation.hedgeData.adjustmentSizeUsd > 0n ? "increase" : "decrease",
+            adjustmentUsd: recommendation.hedgeData.adjustmentSizeUsd.toString(),
+          });
+
+          try {
+            const hedgeResult = await executeHedgeAdjust({
+              account,
+              hedgeData: recommendation.hedgeData,
+              deltaDriftBefore: status.deltaDrift,
+              execute: true,
+              suppressAlert: true,
+              dbPath,
+            });
+
+            consecutiveHedgeFailures = 0;
+            logger.info("Hedge adjustment completed successfully", {
+              direction: hedgeResult.direction,
+              adjustmentSizeUsd: hedgeResult.adjustmentSizeUsd.toString(),
+              txHash: hedgeResult.txHash,
+            });
+
+            // Send alert
+            const hedgeFields = [
+              {
+                name: "Direction",
+                value: hedgeResult.direction === "increase" ? "Increase Short" : "Decrease Short",
+                inline: true,
+              },
+              {
+                name: "Adjustment",
+                value: `$${parseFloat(ethers.formatUnits(hedgeResult.adjustmentSizeUsd, 30)).toFixed(4)}`,
+                inline: true,
+              },
+              {
+                name: "Delta Drift Before",
+                value: `${(status.deltaDrift * 100).toFixed(2)}% (${status.netDelta > 0n ? "under" : "over"}-hedged)`,
+                inline: true,
+              },
+            ];
+
+            if (recommendation.hedgeData) {
+              hedgeFields.push({
+                name: "Leverage",
+                value: `${recommendation.hedgeData.currentLeverage.toFixed(2)}x → ${recommendation.hedgeData.estimatedLeverageAfter.toFixed(2)}x`,
+                inline: true,
+              });
+            }
+
+            await sendSuccessAlert(
+              `🔧 Harmonia : Hedge ${hedgeResult.direction === "increase" ? "Increased" : "Decreased"}`,
+              "",
+              hedgeFields
+            ).catch((alertError) => {
+              logger.warn("Failed to send hedge adjustment alert", { error: alertError.message });
+            });
+          } catch (hedgeError: any) {
+            consecutiveHedgeFailures++;
+            logger.error("Hedge adjustment failed", {
+              error: hedgeError.message,
+              stack: hedgeError.stack,
+              consecutiveHedgeFailures,
+              maxFailures: maxConsecutiveHedgeFailures,
+            });
+
+            await sendErrorAlert(
+              "❌ Hedge Adjustment Failed",
+              `Daemon failed to execute hedge adjustment.`,
+              hedgeError
+            ).catch((alertError) => {
+              logger.warn("Failed to send Discord alert", { error: alertError.message });
+            });
+
+            if (consecutiveHedgeFailures >= maxConsecutiveHedgeFailures) {
+              logger.error(
+                "Hedge adjustments disabled due to consecutive failures. Will rely on full optimizations.",
+                { consecutiveHedgeFailures }
+              );
+            }
+          } finally {
+            isHedgeInProgress = false;
+          }
+        } else if (autoOptimize && recommendation.action === StrategyAction.HEDGE_ADJUST) {
+          if (isHedgeInProgress) {
+            logger.debug("Skipping hedge adjustment - already in progress");
+          } else if (isOptimizationInProgress) {
+            logger.debug("Skipping hedge adjustment - optimization in progress");
+          } else if (consecutiveHedgeFailures >= maxConsecutiveHedgeFailures) {
+            logger.warn("Skipping hedge adjustment - too many consecutive failures", {
+              consecutiveHedgeFailures,
             });
           }
         }

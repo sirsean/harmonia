@@ -82,6 +82,16 @@ export interface StrategyConfig {
   targetLeverage: number;
   /** Minimum benefit/cost ratio to optimize (e.g., 2.0 = benefit must be 2x the cost) */
   minOptimizationBenefitRatio: number;
+
+  // Hedge adjustment parameters
+  /** Delta drift threshold to trigger hedge adjustment (as decimal, e.g., 0.05 = 5%) */
+  hedgeDeltaThreshold: number;
+  /** Minimum time between hedge adjustments in seconds */
+  minHedgeInterval: number;
+  /** Minimum hedge adjustment size in USD (30 decimals) to avoid dust orders */
+  minHedgeAdjustmentUsd: bigint;
+  /** Maximum leverage allowed after a hedge adjustment (safety guard) */
+  maxHedgeLeverage: number;
 }
 
 /**
@@ -120,6 +130,12 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   // Optimization parameters
   targetLeverage: 3.0, // 3x
   minOptimizationBenefitRatio: 1.5, // Benefit must be at least 1.5x the cost
+
+  // Hedge adjustment parameters
+  hedgeDeltaThreshold: 0.05, // 5% - lighter threshold for hedge adjustments
+  minHedgeInterval: 300, // 5 minutes between hedge adjustments
+  minHedgeAdjustmentUsd: BigInt(5) * PRECISION.GMX_USD, // $5 minimum to avoid dust orders
+  maxHedgeLeverage: 10.0, // Safety guard - skip hedge if leverage would exceed 10x
 };
 
 /**
@@ -191,6 +207,20 @@ export function loadStrategyConfig(overrides?: Partial<StrategyConfig>): Strateg
   }
   if (process.env.TARGET_LEVERAGE) {
     config.targetLeverage = parseFloat(process.env.TARGET_LEVERAGE);
+  }
+  if (process.env.HEDGE_DELTA_THRESHOLD) {
+    config.hedgeDeltaThreshold = parseFloat(process.env.HEDGE_DELTA_THRESHOLD);
+  }
+  if (process.env.MIN_HEDGE_INTERVAL) {
+    config.minHedgeInterval = parseInt(process.env.MIN_HEDGE_INTERVAL, 10);
+  }
+  if (process.env.MIN_HEDGE_ADJUSTMENT_USD) {
+    const minHedge = parseFloat(process.env.MIN_HEDGE_ADJUSTMENT_USD);
+    config.minHedgeAdjustmentUsd =
+      (BigInt(Math.floor(minHedge * 1e6)) * PRECISION.GMX_USD) / BigInt(10 ** 6);
+  }
+  if (process.env.MAX_HEDGE_LEVERAGE) {
+    config.maxHedgeLeverage = parseFloat(process.env.MAX_HEDGE_LEVERAGE);
   }
 
   // Apply programmatic overrides
@@ -307,5 +337,33 @@ export function validateStrategyConfig(config: StrategyConfig): void {
   }
   if (config.defaultExecutionFee <= 0n) {
     throw new Error(`defaultExecutionFee must be positive, got ${config.defaultExecutionFee}`);
+  }
+
+  // Validate hedge parameters
+  if (config.hedgeDeltaThreshold <= 0 || config.hedgeDeltaThreshold >= 1) {
+    throw new Error(
+      `hedgeDeltaThreshold must be between 0 and 1, got ${config.hedgeDeltaThreshold}`
+    );
+  }
+  if (config.hedgeDeltaThreshold >= config.optimizationDeltaThreshold) {
+    throw new Error(
+      `hedgeDeltaThreshold (${config.hedgeDeltaThreshold}) must be less than optimizationDeltaThreshold (${config.optimizationDeltaThreshold})`
+    );
+  }
+  if (config.minHedgeInterval <= 0) {
+    throw new Error(`minHedgeInterval must be positive, got ${config.minHedgeInterval}`);
+  }
+  if (config.minHedgeInterval >= config.minOptimizationInterval) {
+    throw new Error(
+      `minHedgeInterval (${config.minHedgeInterval}) must be less than minOptimizationInterval (${config.minOptimizationInterval})`
+    );
+  }
+  if (config.minHedgeAdjustmentUsd <= 0n) {
+    throw new Error(`minHedgeAdjustmentUsd must be positive, got ${config.minHedgeAdjustmentUsd}`);
+  }
+  if (config.maxHedgeLeverage <= config.targetLeverage) {
+    throw new Error(
+      `maxHedgeLeverage (${config.maxHedgeLeverage}) must be greater than targetLeverage (${config.targetLeverage})`
+    );
   }
 }

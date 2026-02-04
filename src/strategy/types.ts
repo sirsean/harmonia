@@ -2,6 +2,7 @@ import { DeltaResult } from "../modules/math/delta";
 
 export enum StrategyAction {
   OPTIMIZE = "OPTIMIZE",
+  HEDGE_ADJUST = "HEDGE_ADJUST",
   NONE = "NONE",
 }
 
@@ -59,10 +60,24 @@ export interface RebalanceData {
   adjustmentNeededUsd: bigint;
 }
 
+export interface HedgeAdjustmentData {
+  /** Current GMX short size in tokens (18 decimals) */
+  currentShortSizeTokens: bigint;
+  /** Target GMX short size in tokens (should match LP delta) */
+  targetShortSizeTokens: bigint;
+  /** Adjustment size in USD (30 decimals), positive = increase short, negative = decrease */
+  adjustmentSizeUsd: bigint;
+  /** Current leverage of the GMX position */
+  currentLeverage: number;
+  /** Estimated leverage after hedge adjustment */
+  estimatedLeverageAfter: number;
+}
+
 export interface Recommendation {
   action: StrategyAction;
   reason: string;
   data?: OptimizationData;
+  hedgeData?: HedgeAdjustmentData;
 }
 
 export interface StrategyMonitor {
