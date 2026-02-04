@@ -92,7 +92,7 @@ vi.mock("../../../src/modules/uniswap/reader", () => ({
 }));
 
 vi.mock("../../../src/utils/reports", () => ({
-  generateDailyReport: vi.fn((account, status, recommendation, totalLpValueUsd, totalFeesUsd, aprMetrics, walletBalances, netYield24h) => ({
+  generateDailyReport: vi.fn((account, status, recommendation, totalLpValueUsd, totalFeesUsd, aprMetrics, walletBalances, walletUsd, netYield24h) => ({
     date: new Date().toISOString().split("T")[0],
     timestamp: Date.now(),
     account,
@@ -100,11 +100,13 @@ vi.mock("../../../src/utils/reports", () => ({
       totalLpValueUsd: "1000.0",
       totalGmxValueUsd: "1000.0",
       totalNetValueUsd: "2000.0",
+      totalPortfolioValueUsd: "2010.0",
       netDelta: "0.0",
       deltaDrift: 0,
       recommendation: "NONE",
       walletBalance0: walletBalances?.balance0,
       walletBalance1: walletBalances?.balance1,
+      walletBalanceEth: walletBalances?.balanceEth,
     },
     positions: {
       uniswap: [],
@@ -180,11 +182,13 @@ describe("Report Implementation", () => {
         totalLpValueUsd: "1000.50",
         totalGmxValueUsd: "500.25",
         totalNetValueUsd: "1500.75",
+        totalPortfolioValueUsd: "1500.75",
         netDelta: "0.1",
         deltaDrift: 0.03,
         recommendation: "NONE",
         walletBalance0: "1.5 WETH",
         walletBalance1: "2000.0 USDC",
+        walletBalanceEth: "0.05 ETH",
       },
       positions: {
         uniswap: [
@@ -224,14 +228,14 @@ describe("Report Implementation", () => {
     expect(summary.message).toBe("");
     
     // Check fields
-    // 1. Total Net Value
+    // 1. Total Portfolio Value
     // 2. Delta Drift
     // 3. Unclaimed Fees
     // 4. APR
     // 5. Wallet Balances
     expect(summary.fields).toHaveLength(5);
     
-    expect(summary.fields[0].name).toBe("Total Net Value");
+    expect(summary.fields[0].name).toBe("Total Portfolio Value");
     expect(summary.fields[0].value).toBe("$1500.7500");
     
     expect(summary.fields[1].name).toBe("Delta Drift");
@@ -248,6 +252,7 @@ describe("Report Implementation", () => {
     expect(summary.fields[4].name).toBe("Wallet Balances");
     expect(summary.fields[4].value).toContain("1.5 WETH");
     expect(summary.fields[4].value).toContain("2000.0 USDC");
+    expect(summary.fields[4].value).toContain("0.05 ETH");
   });
 
   it("should include net yield in Discord summary when present", async () => {
@@ -261,6 +266,7 @@ describe("Report Implementation", () => {
         totalLpValueUsd: "1000.0",
         totalGmxValueUsd: "500.0",
         totalNetValueUsd: "1500.0",
+        totalPortfolioValueUsd: "1500.0",
         netDelta: "0.0",
         deltaDrift: 0,
         recommendation: "NONE",
@@ -300,6 +306,7 @@ describe("Report Implementation", () => {
         totalLpValueUsd: "1000.0",
         totalGmxValueUsd: "500.0",
         totalNetValueUsd: "1500.0",
+        totalPortfolioValueUsd: "1500.0",
         netDelta: "-0.5",
         deltaDrift: 1.1924,
         recommendation: "OPTIMIZE",

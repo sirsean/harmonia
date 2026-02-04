@@ -14,7 +14,12 @@ import {
 } from "../../utils/reports";
 import { getLogger } from "../../utils/logger";
 import { MonitoringDatabase } from "../../utils/database";
-import { getAPRMetrics, formatAPRMetrics, formatAPRResult } from "../../utils/apr";
+import {
+  getAPRMetrics,
+  formatAPRMetrics,
+  formatAPRResult,
+  calculateAPRForPeriod,
+} from "../../utils/apr";
 
 export interface ReportOptions {
   account?: string;
@@ -71,6 +76,12 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
   const stableDecimals = isToken0Collateral ? decimals0 : decimals1;
   const riskSymbol = isToken0Collateral ? symbol1 : symbol0;
   const stableSymbol = isToken0Collateral ? symbol0 : symbol1;
+  const usdcAddress = ARBITRUM_MAINNET.usdc.toLowerCase();
+  const wethAddress = ARBITRUM_MAINNET.weth.toLowerCase();
+  const isToken0Usdc = poolToken0.toLowerCase() === usdcAddress;
+  const isToken1Usdc = poolToken1.toLowerCase() === usdcAddress;
+  const isToken0Weth = poolToken0.toLowerCase() === wethAddress;
+  const isToken1Weth = poolToken1.toLowerCase() === wethAddress;
 
   // Helper function to convert token amount to USD (30 decimals)
   const calculateUsdValue = (amount: bigint, decimals: number, price: number): bigint => {
@@ -134,20 +145,31 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
   }
 
   // Get wallet balances
-  const [balance0, balance1] = await Promise.all([
+  const [balance0, balance1, nativeEthBalance] = await Promise.all([
     token0Contract.balanceOf(account),
     token1Contract.balanceOf(account),
+    ethers.provider.getBalance(account),
   ]);
 
   const walletBalances = {
     balance0: `${ethers.formatUnits(balance0, decimals0)} ${symbol0}`,
     balance1: `${ethers.formatUnits(balance1, decimals1)} ${symbol1}`,
+    balanceEth: `${ethers.formatEther(nativeEthBalance)} ETH`,
+  };
+
+  const walletUsdcAmount = isToken0Usdc ? balance0 : isToken1Usdc ? balance1 : 0n;
+  const walletWethAmount = isToken0Weth ? balance0 : isToken1Weth ? balance1 : 0n;
+
+  const walletUsd = {
+    usdcUsd: calculateUsdValue(walletUsdcAmount, Number(stableDecimals), 1.0),
+    wethUsd: calculateUsdValue(walletWethAmount, Number(riskTokenDecimals), riskTokenPrice),
+    ethUsd: calculateUsdValue(nativeEthBalance, 18, riskTokenPrice),
   };
 
   // Get APR metrics
   const db = new MonitoringDatabase();
   let aprMetricsData: { apr1d?: number; apr7d?: number; apr30d?: number } = {};
-  let netYield24h = 0n;
+  let netYield24h: bigint | undefined;
 
   try {
     const metrics = await getAPRMetrics(db, account);
@@ -157,12 +179,11 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
       apr30d: metrics.rolling30d?.aprPercent,
     };
 
-    // Get net yield for last 24h (fees collected - costs incurred)
+    // Get net yield for last 24h based on portfolio value delta
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
-    const feesCollected24h = db.getFeesCollected(account, oneDayAgo, now);
-    const costsIncurred24h = db.getTotalCosts(account, oneDayAgo, now);
-    netYield24h = feesCollected24h - costsIncurred24h;
+    const aprResult24h = await calculateAPRForPeriod(db, account, oneDayAgo, now);
+    netYield24h = aprResult24h?.netYield;
   } catch (error) {
     logger.warn("Failed to fetch APR metrics or net yield for report", { error });
   } finally {
@@ -178,6 +199,7 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
     totalFeesUsd,
     aprMetricsData,
     walletBalances,
+    walletUsd,
     netYield24h
   );
 
@@ -211,7 +233,9 @@ export function generateDiscordSummary(report: DailyReport): {
   message: string;
   fields: Array<{ name: string; value: string; inline?: boolean }>;
 } {
-  const totalNetValue = parseFloat(report.summary.totalNetValueUsd);
+  const totalNetValue = parseFloat(
+    report.summary.totalPortfolioValueUsd ?? report.summary.totalNetValueUsd
+  );
   const deltaDriftPercent = report.summary.deltaDrift * 100;
   const feesUsd = parseFloat(report.metrics.totalFeesUsd);
   const netYield24hUsd = report.metrics.netYield24h ? parseFloat(report.metrics.netYield24h) : 0;
@@ -229,7 +253,7 @@ export function generateDiscordSummary(report: DailyReport): {
 
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [
     {
-      name: "Total Net Value",
+      name: "Total Portfolio Value",
       value: `$${totalNetValue.toFixed(4)}`,
       inline: true,
     },
@@ -273,10 +297,18 @@ export function generateDiscordSummary(report: DailyReport): {
     });
   }
 
-  if (report.summary.walletBalance0 && report.summary.walletBalance1) {
+  if (
+    report.summary.walletBalance0 ||
+    report.summary.walletBalance1 ||
+    report.summary.walletBalanceEth
+  ) {
+    const walletLines = [];
+    if (report.summary.walletBalance0) walletLines.push(report.summary.walletBalance0);
+    if (report.summary.walletBalance1) walletLines.push(report.summary.walletBalance1);
+    if (report.summary.walletBalanceEth) walletLines.push(report.summary.walletBalanceEth);
     fields.push({
       name: "Wallet Balances",
-      value: `${report.summary.walletBalance0}\n${report.summary.walletBalance1}`,
+      value: walletLines.join("\n"),
       inline: false,
     });
   }

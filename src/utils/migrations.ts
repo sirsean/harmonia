@@ -421,6 +421,47 @@ const migration008_hedge_adjustments: Migration = {
 };
 
 /**
+ * Migration: Add wallet balance USD tracking to monitoring snapshots
+ */
+const migration009_wallet_balances: Migration = {
+  version: 9,
+  name: "wallet_balances",
+  up: (db: Database.Database) => {
+    const tableInfo = db.prepare("PRAGMA table_info(monitoring_snapshots)").all() as Array<{
+      name: string;
+    }>;
+
+    const hasWalletEth = tableInfo.some((col) => col.name === "wallet_eth_usd");
+    const hasWalletWeth = tableInfo.some((col) => col.name === "wallet_weth_usd");
+    const hasWalletUsdc = tableInfo.some((col) => col.name === "wallet_usdc_usd");
+
+    if (!hasWalletEth) {
+      db.exec(`
+        ALTER TABLE monitoring_snapshots
+        ADD COLUMN wallet_eth_usd TEXT NOT NULL DEFAULT '0'
+      `);
+    }
+
+    if (!hasWalletWeth) {
+      db.exec(`
+        ALTER TABLE monitoring_snapshots
+        ADD COLUMN wallet_weth_usd TEXT NOT NULL DEFAULT '0'
+      `);
+    }
+
+    if (!hasWalletUsdc) {
+      db.exec(`
+        ALTER TABLE monitoring_snapshots
+        ADD COLUMN wallet_usdc_usd TEXT NOT NULL DEFAULT '0'
+      `);
+    }
+  },
+  down: (db: Database.Database) => {
+    // SQLite doesn't support DROP COLUMN; leave columns in place.
+  },
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
@@ -432,6 +473,7 @@ export const migrations: Migration[] = [
   migration006_cost_tracking,
   migration007_cleanup_old_costs,
   migration008_hedge_adjustments,
+  migration009_wallet_balances,
 ];
 
 /**

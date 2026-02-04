@@ -8,7 +8,7 @@ import { getSignerAndAccount } from "./base";
 import { ERC20_ABI } from "../../utils/abis";
 import { MonitoringDatabase } from "../../utils/database";
 import { getLogger } from "../../utils/logger";
-import { getAPRMetrics } from "../../utils/apr";
+import { getAPRMetrics, calculateAPRForPeriod } from "../../utils/apr";
 import { executeOptimize } from "./strategy/execute-optimize";
 import { executeHedgeAdjust } from "./strategy/execute-hedge-adjust";
 import { StrategyAction } from "../../strategy/types";
@@ -91,6 +91,12 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
   const stableDecimals = isToken0Collateral ? decimals0 : decimals1;
   const riskSymbol = isToken0Collateral ? symbol1 : symbol0;
   const stableSymbol = isToken0Collateral ? symbol0 : symbol1;
+  const usdcAddress = ARBITRUM_MAINNET.usdc.toLowerCase();
+  const wethAddress = ARBITRUM_MAINNET.weth.toLowerCase();
+  const isToken0Usdc = poolToken0.toLowerCase() === usdcAddress;
+  const isToken1Usdc = poolToken1.toLowerCase() === usdcAddress;
+  const isToken0Weth = poolToken0.toLowerCase() === wethAddress;
+  const isToken1Weth = poolToken1.toLowerCase() === wethAddress;
 
   // Helper function to convert token amount to USD (30 decimals)
   const calculateUsdValue = (amount: bigint, decimals: number, price: number): bigint => {
@@ -156,14 +162,26 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
       logger.info("Generating daily report", { account });
 
       // Get wallet balances
-      const [balance0, balance1] = await Promise.all([
+      const [balance0, balance1, nativeEthBalance] = await Promise.all([
         token0Contract.balanceOf(account),
         token1Contract.balanceOf(account),
+        ethers.provider.getBalance(account),
       ]);
 
       const walletBalances = {
         balance0: `${ethers.formatUnits(balance0, decimals0)} ${symbol0}`,
         balance1: `${ethers.formatUnits(balance1, decimals1)} ${symbol1}`,
+        balanceEth: `${ethers.formatEther(nativeEthBalance)} ETH`,
+      };
+
+      const riskTokenPrice = status.uniswap.length > 0 ? status.uniswap[0].currentPrice : 0;
+      const walletUsdcAmount = isToken0Usdc ? balance0 : isToken1Usdc ? balance1 : 0n;
+      const walletWethAmount = isToken0Weth ? balance0 : isToken1Weth ? balance1 : 0n;
+
+      const walletUsd = {
+        usdcUsd: calculateUsdValue(walletUsdcAmount, Number(stableDecimals), 1.0),
+        wethUsd: calculateUsdValue(walletWethAmount, Number(riskTokenDecimals), riskTokenPrice),
+        ethUsd: calculateUsdValue(nativeEthBalance, 18, riskTokenPrice),
       };
 
       // Get APR metrics
@@ -182,6 +200,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
       // Get collected fees for last 24h
       const now = Date.now();
       const oneDayAgo = now - 24 * 60 * 60 * 1000;
+      const aprResult24h = await calculateAPRForPeriod(db, account, oneDayAgo, now);
       const collectedFees24h = db.getFeesCollected(account, oneDayAgo, now);
 
       // Generate report
@@ -193,7 +212,8 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
         totalFeesUsd,
         aprMetricsData,
         walletBalances,
-        collectedFees24h
+        walletUsd,
+        aprResult24h?.netYield ?? collectedFees24h
       );
 
       // Save report to file
@@ -289,13 +309,34 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
           totalFeesUsd += calculateUsdValue(totalFees1, Number(decimals1), 1.0);
         }
 
+        // Get wallet balances (token0/token1 + native ETH)
+        const [balance0, balance1, nativeEthBalance] = await Promise.all([
+          token0Contract.balanceOf(account),
+          token1Contract.balanceOf(account),
+          ethers.provider.getBalance(account),
+        ]);
+
+        const walletUsdcAmount = isToken0Usdc ? balance0 : isToken1Usdc ? balance1 : 0n;
+        const walletWethAmount = isToken0Weth ? balance0 : isToken1Weth ? balance1 : 0n;
+
+        const walletUsdcUsd = calculateUsdValue(walletUsdcAmount, Number(stableDecimals), 1.0);
+        const walletWethUsd = calculateUsdValue(
+          walletWethAmount,
+          Number(riskTokenDecimals),
+          riskTokenPrice
+        );
+        const walletEthUsd = calculateUsdValue(nativeEthBalance, 18, riskTokenPrice);
+
         // Store snapshot in database
         const snapshotId = db.storeSnapshot(
           account,
           status,
           recommendation,
           totalLpValueUsd,
-          totalFeesUsd
+          totalFeesUsd,
+          walletEthUsd,
+          walletWethUsd,
+          walletUsdcUsd
         );
 
         const totalNavUsd = totalLpValueUsd + status.gmx.netValueUsd;
@@ -386,15 +427,17 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
             }
 
             try {
-              const [balance0, balance1] = await Promise.all([
+              const [balance0, balance1, nativeEthBalance] = await Promise.all([
                 token0Contract.balanceOf(account),
                 token1Contract.balanceOf(account),
+                ethers.provider.getBalance(account),
               ]);
               const balance0Str = `${ethers.formatUnits(balance0, decimals0)} ${symbol0}`;
               const balance1Str = `${ethers.formatUnits(balance1, decimals1)} ${symbol1}`;
+              const balanceEthStr = `${ethers.formatEther(nativeEthBalance)} ETH`;
               fields.push({
                 name: "Wallet Balances",
-                value: `${balance0Str}\n${balance1Str}`,
+                value: `${balance0Str}\n${balance1Str}\n${balanceEthStr}`,
                 inline: false,
               });
             } catch (error: any) {
@@ -714,10 +757,15 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
     }
   };
 
+  const handleSigint = () => shutdown("SIGINT");
+  const handleSigterm = () => shutdown("SIGTERM");
+
   // Handle graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info("Received shutdown signal", { signal });
     isRunning = false;
+    process.off("SIGINT", handleSigint);
+    process.off("SIGTERM", handleSigterm);
     db.close();
     logger.close();
     // Don't call process.exit in tests - let the promise resolve naturally
@@ -726,8 +774,8 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
     }
   };
 
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", handleSigint);
+  process.on("SIGTERM", handleSigterm);
 
   // Start monitoring loop
   logger.info("Daemon started, monitoring will begin shortly", { account, interval });

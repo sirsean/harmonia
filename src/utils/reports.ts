@@ -17,11 +17,13 @@ export interface DailyReport {
     totalLpValueUsd: string;
     totalGmxValueUsd: string;
     totalNetValueUsd: string;
+    totalPortfolioValueUsd: string;
     netDelta: string;
     deltaDrift: number;
     recommendation: string;
     walletBalance0?: string; // e.g. "1.23 WETH"
     walletBalance1?: string; // e.g. "1000.00 USDC"
+    walletBalanceEth?: string; // e.g. "0.05 ETH"
   };
   positions: {
     uniswap: Array<{
@@ -71,10 +73,22 @@ export function generateDailyReport(
   walletBalances?: {
     balance0: string;
     balance1: string;
+    balanceEth?: string;
+  },
+  walletUsd?: {
+    ethUsd: bigint;
+    wethUsd: bigint;
+    usdcUsd: bigint;
   },
   netYield24h?: bigint
 ): DailyReport {
   const totalNetValueUsd = totalLpValueUsd + status.gmx.netValueUsd;
+  const totalPortfolioValueUsd =
+    totalNetValueUsd +
+    totalFeesUsd +
+    (walletUsd?.ethUsd ?? 0n) +
+    (walletUsd?.wethUsd ?? 0n) +
+    (walletUsd?.usdcUsd ?? 0n);
 
   const report: DailyReport = {
     date: new Date().toISOString().split("T")[0],
@@ -84,11 +98,13 @@ export function generateDailyReport(
       totalLpValueUsd: ethers.formatUnits(totalLpValueUsd, 30),
       totalGmxValueUsd: ethers.formatUnits(status.gmx.netValueUsd, 30),
       totalNetValueUsd: ethers.formatUnits(totalNetValueUsd, 30),
+      totalPortfolioValueUsd: ethers.formatUnits(totalPortfolioValueUsd, 30),
       netDelta: ethers.formatEther(status.netDelta),
       deltaDrift: status.deltaDrift,
       recommendation: recommendation.action,
       walletBalance0: walletBalances?.balance0,
       walletBalance1: walletBalances?.balance1,
+      walletBalanceEth: walletBalances?.balanceEth,
     },
     positions: {
       uniswap: status.uniswap.map((pos) => ({
@@ -199,7 +215,10 @@ export function formatReportSummary(report: DailyReport): string {
   lines.push(`Account: ${report.account}`);
   lines.push(`Total LP Value: $${report.summary.totalLpValueUsd}`);
   lines.push(`Total GMX Value: $${report.summary.totalGmxValueUsd}`);
-  lines.push(`Total Net Value: $${report.summary.totalNetValueUsd}`);
+  const totalPortfolioValue =
+    report.summary.totalPortfolioValueUsd ?? report.summary.totalNetValueUsd;
+  lines.push(`Total Portfolio Value: $${totalPortfolioValue}`);
+  lines.push(`Total Net Value (Positions): $${report.summary.totalNetValueUsd}`);
   lines.push(`Net Delta: ${report.summary.netDelta} ETH`);
   const summaryDriftDir = parseFloat(report.summary.netDelta) > 0 ? "under" : "over";
   lines.push(
@@ -212,6 +231,7 @@ export function formatReportSummary(report: DailyReport): string {
     lines.push(`Wallet Balances:`);
     if (report.summary.walletBalance0) lines.push(`  ${report.summary.walletBalance0}`);
     if (report.summary.walletBalance1) lines.push(`  ${report.summary.walletBalance1}`);
+    if (report.summary.walletBalanceEth) lines.push(`  ${report.summary.walletBalanceEth}`);
   }
   lines.push("");
 
