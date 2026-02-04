@@ -86,6 +86,10 @@ function renderDashboard(
   recommendation: any,
   totalLpValueUsd: bigint,
   totalFeesUsd: bigint,
+  walletEthUsd: bigint,
+  walletWethUsd: bigint,
+  walletUsdcUsd: bigint,
+  walletBalances: { balance0: string; balance1: string; balanceEth: string },
   riskTokenPrice: number,
   riskSymbol: string,
   stableSymbol: string,
@@ -94,6 +98,8 @@ function renderDashboard(
   clearScreen();
 
   const totalNetValueUsd = totalLpValueUsd + status.gmx.netValueUsd;
+  const totalPortfolioValueUsd =
+    totalNetValueUsd + totalFeesUsd + walletEthUsd + walletWethUsd + walletUsdcUsd;
   const deltaDriftColor = getDeltaDriftColor(status.deltaDrift);
   const actionColor = getActionColor(recommendation.action);
 
@@ -116,12 +122,16 @@ function renderDashboard(
 
   // Summary Section
   console.log("┌─ SUMMARY ─" + "-".repeat(5));
-  const totalValueStr = `$${formatBigInt(totalNetValueUsd, 30, 2, "green")}`;
+  const totalValueStr = `$${formatBigInt(totalPortfolioValueUsd, 30, 2, "green")}`;
   console.log(`│ Total Portfolio Value: ${totalValueStr}`);
   const lpValueStr = `$${formatBigInt(totalLpValueUsd, 30, 2)}`;
   console.log(`│   ├─ LP Positions:     ${lpValueStr}`);
   const gmxValueStr = `$${formatBigInt(status.gmx.netValueUsd, 30, 2)}`;
-  console.log(`│   └─ GMX Position:     ${gmxValueStr}`);
+  console.log(`│   ├─ GMX Position:     ${gmxValueStr}`);
+  const feesValueStr = `$${formatBigInt(totalFeesUsd, 30, 2)}`;
+  console.log(`│   ├─ Unclaimed Fees:   ${feesValueStr}`);
+  const walletValueStr = `$${formatBigInt(walletEthUsd + walletWethUsd + walletUsdcUsd, 30, 2)}`;
+  console.log(`│   └─ Wallet Value:     ${walletValueStr}`);
   console.log("│");
   const netDeltaStr = `${formatBigInt(status.netDelta, 18, 4)} ETH`;
   console.log(`│ Net Delta:            ${netDeltaStr}`);
@@ -135,6 +145,11 @@ function renderDashboard(
   reasonLines.forEach((line: string) => {
     console.log(`│   ${line}`);
   });
+  console.log("│");
+  console.log(`│ Wallet Balances:`);
+  console.log(`│   ${walletBalances.balance0}`);
+  console.log(`│   ${walletBalances.balance1}`);
+  console.log(`│   ${walletBalances.balanceEth}`);
   console.log("");
 
   // Uniswap Positions
@@ -267,6 +282,12 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
   const stableDecimals = isToken0Collateral ? decimals0 : decimals1;
   const riskSymbol = isToken0Collateral ? symbol1 : symbol0;
   const stableSymbol = isToken0Collateral ? symbol0 : symbol1;
+  const usdcAddress = ARBITRUM_MAINNET.usdc.toLowerCase();
+  const wethAddress = ARBITRUM_MAINNET.weth.toLowerCase();
+  const isToken0Usdc = poolToken0.toLowerCase() === usdcAddress;
+  const isToken1Usdc = poolToken1.toLowerCase() === usdcAddress;
+  const isToken0Weth = poolToken0.toLowerCase() === wethAddress;
+  const isToken1Weth = poolToken1.toLowerCase() === wethAddress;
 
   // Helper function to convert token amount to USD (30 decimals)
   const calculateUsdValue = (amount: bigint, decimals: number, price: number): bigint => {
@@ -332,6 +353,30 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
         totalFeesUsd += calculateUsdValue(totalFees1, Number(decimals1), 1.0);
       }
 
+      // Wallet balances (token0/token1 + native ETH)
+      const [balance0, balance1, nativeEthBalance] = await Promise.all([
+        token0Contract.balanceOf(account),
+        token1Contract.balanceOf(account),
+        ethers.provider.getBalance(account),
+      ]);
+
+      const walletBalances = {
+        balance0: `${ethers.formatUnits(balance0, decimals0)} ${symbol0}`,
+        balance1: `${ethers.formatUnits(balance1, decimals1)} ${symbol1}`,
+        balanceEth: `${ethers.formatEther(nativeEthBalance)} ETH`,
+      };
+
+      const walletUsdcAmount = isToken0Usdc ? balance0 : isToken1Usdc ? balance1 : 0n;
+      const walletWethAmount = isToken0Weth ? balance0 : isToken1Weth ? balance1 : 0n;
+
+      const walletUsdcUsd = calculateUsdValue(walletUsdcAmount, Number(stableDecimals), 1.0);
+      const walletWethUsd = calculateUsdValue(
+        walletWethAmount,
+        Number(riskTokenDecimals),
+        riskTokenPrice
+      );
+      const walletEthUsd = calculateUsdValue(nativeEthBalance, 18, riskTokenPrice);
+
       // Render dashboard
       renderDashboard(
         account,
@@ -339,6 +384,10 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
         recommendation,
         totalLpValueUsd,
         totalFeesUsd,
+        walletEthUsd,
+        walletWethUsd,
+        walletUsdcUsd,
+        walletBalances,
         riskTokenPrice,
         riskSymbol,
         stableSymbol,
@@ -353,7 +402,14 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
           status,
           recommendation,
           totalLpValueUsd,
-          totalFeesUsd
+          totalFeesUsd,
+          undefined,
+          walletBalances,
+          {
+            ethUsd: walletEthUsd,
+            wethUsd: walletWethUsd,
+            usdcUsd: walletUsdcUsd,
+          }
         );
         const reportPath = saveDailyReport(report);
         logger.info("Daily report saved", { reportPath, date: today });

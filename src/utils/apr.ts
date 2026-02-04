@@ -4,7 +4,7 @@
  * Calculates APR based on fees collected, costs incurred, and position size over time.
  */
 
-import { MonitoringDatabase } from "./database";
+import { MonitoringDatabase, MonitoringSnapshot } from "./database";
 import { calculateAPRFromYieldMs, PRECISION } from "../modules/math/yield";
 import { ethers } from "ethers";
 
@@ -14,9 +14,42 @@ export interface APRResult {
   feesCollected: bigint;
   costsIncurred: bigint;
   netYield: bigint;
-  averageNav: bigint;
+  totalValueStart: bigint;
+  totalValueEnd: bigint;
+  totalValueChange: bigint;
+  averagePortfolioValue: bigint;
+  lpValueChange: bigint;
+  gmxValueChange: bigint;
+  unclaimedFeesChange: bigint;
+  walletEthChange: bigint;
+  walletWethChange: bigint;
+  walletUsdcChange: bigint;
   aprBps: bigint; // APR in basis points (1e18 precision)
   aprPercent: number; // APR as a percentage (e.g., 15.89)
+}
+
+const MIN_PORTFOLIO_VALUE_USD = 100n * 10n ** 30n; // $100 in 30 decimals
+const MIN_PORTFOLIO_VALUE_PERCENT = 20n; // 20% of max
+
+function getPortfolioValue(snapshot: MonitoringSnapshot): bigint {
+  return (
+    BigInt(snapshot.totalNavUsd) +
+    BigInt(snapshot.totalFeesUsd) +
+    BigInt(snapshot.walletEthUsd || "0") +
+    BigInt(snapshot.walletWethUsd || "0") +
+    BigInt(snapshot.walletUsdcUsd || "0")
+  );
+}
+
+function filterValidSnapshots(snapshots: MonitoringSnapshot[]): MonitoringSnapshot[] {
+  if (snapshots.length === 0) return snapshots;
+  const values = snapshots.map(getPortfolioValue);
+  const maxValue = values.reduce((max, value) => (value > max ? value : max), 0n);
+  const minByPercent = (maxValue * MIN_PORTFOLIO_VALUE_PERCENT) / 100n;
+  const threshold = MIN_PORTFOLIO_VALUE_USD > minByPercent ? MIN_PORTFOLIO_VALUE_USD : minByPercent;
+
+  const validSnapshots = snapshots.filter((snapshot, index) => values[index] >= threshold);
+  return validSnapshots.length > 0 ? validSnapshots : snapshots;
 }
 
 /**
@@ -30,10 +63,9 @@ export async function calculateAPRForPeriod(
 ): Promise<APRResult | null> {
   const feesCollected = db.getFeesCollected(account, startTime, endTime);
   const costsIncurred = db.getTotalCosts(account, startTime, endTime);
-  const averageNav = db.getAverageNav(account, startTime, endTime);
+  const snapshots = db.getSnapshots(account, startTime, endTime);
 
-  // Only calculate APR if we have position data
-  if (averageNav === 0n) {
+  if (snapshots.length === 0) {
     return null; // No position data available
   }
 
@@ -43,7 +75,6 @@ export async function calculateAPRForPeriod(
   // However, if there are costs but no fees, that's still activity (negative APR is valid)
   if (feesCollected === 0n && costsIncurred === 0n) {
     // Check if there are any snapshots in this period to confirm there was activity
-    const snapshots = db.getSnapshots(account, startTime, endTime);
     if (snapshots.length === 0) {
       return null; // No activity in this period (no fees, no costs, no snapshots)
     }
@@ -53,7 +84,21 @@ export async function calculateAPRForPeriod(
 
   // Get actual data period (time between first and last snapshot/fee/cost in the window)
   // This ensures APR is calculated based on actual data duration, not window size
-  const snapshots = db.getSnapshots(account, startTime, endTime);
+  const validSnapshots = filterValidSnapshots(snapshots);
+  const startSnapshot = validSnapshots[validSnapshots.length - 1];
+  const endSnapshot = validSnapshots[0];
+
+  const totalValueStart = getPortfolioValue(startSnapshot);
+  const totalValueEnd = getPortfolioValue(endSnapshot);
+  const totalValueChange = totalValueEnd - totalValueStart;
+
+  const averagePortfolioValue =
+    validSnapshots.reduce((sum, snapshot) => sum + getPortfolioValue(snapshot), 0n) /
+    BigInt(validSnapshots.length);
+
+  if (averagePortfolioValue === 0n) {
+    return null;
+  }
   const feeCollections = db
     .getDb()
     .prepare(
@@ -120,10 +165,10 @@ export async function calculateAPRForPeriod(
     return null; // Invalid time period
   }
 
-  const netYield = feesCollected - costsIncurred;
+  const netYield = totalValueChange;
 
   // Use calculated elapsed time (full window)
-  const aprBps = calculateAPRFromYieldMs(netYield, averageNav, elapsedMsForCalculation);
+  const aprBps = calculateAPRFromYieldMs(netYield, averagePortfolioValue, elapsedMsForCalculation);
   const aprPercent = (Number(aprBps) / Number(PRECISION)) * 100;
 
   return {
@@ -132,7 +177,16 @@ export async function calculateAPRForPeriod(
     feesCollected,
     costsIncurred,
     netYield,
-    averageNav,
+    totalValueStart,
+    totalValueEnd,
+    totalValueChange,
+    averagePortfolioValue,
+    lpValueChange: BigInt(endSnapshot.totalLpValueUsd) - BigInt(startSnapshot.totalLpValueUsd),
+    gmxValueChange: BigInt(endSnapshot.gmxNetValueUsd) - BigInt(startSnapshot.gmxNetValueUsd),
+    unclaimedFeesChange: BigInt(endSnapshot.totalFeesUsd) - BigInt(startSnapshot.totalFeesUsd),
+    walletEthChange: BigInt(endSnapshot.walletEthUsd) - BigInt(startSnapshot.walletEthUsd),
+    walletWethChange: BigInt(endSnapshot.walletWethUsd) - BigInt(startSnapshot.walletWethUsd),
+    walletUsdcChange: BigInt(endSnapshot.walletUsdcUsd) - BigInt(startSnapshot.walletUsdcUsd),
     aprBps,
     aprPercent,
   };
@@ -190,10 +244,22 @@ export function formatAPRResult(result: APRResult): string {
 
   lines.push(`Period: ${startDate} to ${endDate} (${days.toFixed(1)} days)`);
   lines.push("");
-  lines.push(`Fees Collected:     $${ethers.formatUnits(result.feesCollected, 30)}`);
-  lines.push(`Costs Incurred:    $${ethers.formatUnits(result.costsIncurred, 30)}`);
-  lines.push(`Net Yield:         $${ethers.formatUnits(result.netYield, 30)}`);
-  lines.push(`Average NAV:       $${ethers.formatUnits(result.averageNav, 30)}`);
+  lines.push(`Portfolio Value Start: $${ethers.formatUnits(result.totalValueStart, 30)}`);
+  lines.push(`Portfolio Value End:   $${ethers.formatUnits(result.totalValueEnd, 30)}`);
+  lines.push(`Portfolio Change:      $${ethers.formatUnits(result.totalValueChange, 30)}`);
+  lines.push("");
+  lines.push("Decomposition:");
+  lines.push(`  LP Value Change:     $${ethers.formatUnits(result.lpValueChange, 30)}`);
+  lines.push(`  GMX Net Change:      $${ethers.formatUnits(result.gmxValueChange, 30)}`);
+  lines.push(`  Unclaimed Fees Δ:    $${ethers.formatUnits(result.unclaimedFeesChange, 30)}`);
+  lines.push(`  Wallet ETH Δ:        $${ethers.formatUnits(result.walletEthChange, 30)}`);
+  lines.push(`  Wallet WETH Δ:       $${ethers.formatUnits(result.walletWethChange, 30)}`);
+  lines.push(`  Wallet USDC Δ:       $${ethers.formatUnits(result.walletUsdcChange, 30)}`);
+  lines.push("");
+  lines.push(`Fees Collected:        $${ethers.formatUnits(result.feesCollected, 30)}`);
+  lines.push(`Costs Incurred:        $${ethers.formatUnits(result.costsIncurred, 30)}`);
+  lines.push(`Net Yield (True):      $${ethers.formatUnits(result.netYield, 30)}`);
+  lines.push(`Average Portfolio:     $${ethers.formatUnits(result.averagePortfolioValue, 30)}`);
   lines.push("");
   lines.push(`Period APR:        ${result.aprPercent.toFixed(2)}%`);
   lines.push(`Annualized APR:    ${result.aprPercent.toFixed(2)}%`);

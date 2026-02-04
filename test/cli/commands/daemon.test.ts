@@ -11,7 +11,9 @@ import * as path from "path";
 // Mock hardhat
 vi.mock("hardhat", () => ({
   ethers: {
-    provider: {},
+    provider: {
+      getBalance: vi.fn().mockResolvedValue(1_000_000_000_000_000_000n),
+    },
     Contract: vi.fn().mockImplementation((address: string, abi: any, provider: any) => {
       return {
         decimals: vi.fn().mockResolvedValue(address === "0xUSDC" ? 6n : 18n),
@@ -114,6 +116,7 @@ vi.mock("../../../src/config/addresses", () => ({
     gmxDataStore: "0xDataStore",
     gmxEthUsdMarket: "0xMarket",
     usdc: "0xUSDC",
+    weth: "0xETH",
   },
 }));
 
@@ -677,7 +680,7 @@ describe("daemon command", () => {
         expect.arrayContaining([
           expect.objectContaining({
             name: "Wallet Balances",
-            value: "5000000 USDC\n2000000000000000000 ETH",
+            value: "5000000 USDC\n2000000000000000000 ETH\n1000000000000000000 ETH",
             inline: false,
           }),
         ])

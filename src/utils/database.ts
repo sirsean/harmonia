@@ -16,6 +16,9 @@ export interface MonitoringSnapshot {
   netDelta: string;
   deltaDrift: number;
   totalFeesUsd: string;
+  walletEthUsd: string;
+  walletWethUsd: string;
+  walletUsdcUsd: string;
   recommendationAction: string;
   recommendationReason: string;
 }
@@ -74,7 +77,10 @@ export class MonitoringDatabase {
     status: StrategyStatus,
     recommendation: Recommendation,
     totalLpValueUsd: bigint,
-    totalFeesUsd: bigint
+    totalFeesUsd: bigint,
+    walletEthUsd: bigint = 0n,
+    walletWethUsd: bigint = 0n,
+    walletUsdcUsd: bigint = 0n
   ): number {
     const timestamp = status.timestamp || Date.now();
     const totalNavUsd = totalLpValueUsd + status.gmx.netValueUsd;
@@ -83,8 +89,9 @@ export class MonitoringDatabase {
       INSERT INTO monitoring_snapshots (
         timestamp, account, total_nav_usd, total_lp_value_usd, gmx_net_value_usd,
         total_lp_delta, gmx_delta, net_delta, delta_drift, total_fees_usd,
+        wallet_eth_usd, wallet_weth_usd, wallet_usdc_usd,
         recommendation_action, recommendation_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = insertSnapshot.run(
@@ -98,6 +105,9 @@ export class MonitoringDatabase {
       status.netDelta.toString(),
       status.deltaDrift,
       totalFeesUsd.toString(),
+      walletEthUsd.toString(),
+      walletWethUsd.toString(),
+      walletUsdcUsd.toString(),
       recommendation.action,
       recommendation.reason
     );
@@ -201,6 +211,9 @@ export class MonitoringDatabase {
       netDelta: row.net_delta,
       deltaDrift: row.delta_drift,
       totalFeesUsd: row.total_fees_usd,
+      walletEthUsd: row.wallet_eth_usd ?? "0",
+      walletWethUsd: row.wallet_weth_usd ?? "0",
+      walletUsdcUsd: row.wallet_usdc_usd ?? "0",
       recommendationAction: row.recommendation_action,
       recommendationReason: row.recommendation_reason,
     };
@@ -316,6 +329,9 @@ export class MonitoringDatabase {
       netDelta: row.net_delta,
       deltaDrift: row.delta_drift,
       totalFeesUsd: row.total_fees_usd,
+      walletEthUsd: row.wallet_eth_usd ?? "0",
+      walletWethUsd: row.wallet_weth_usd ?? "0",
+      walletUsdcUsd: row.wallet_usdc_usd ?? "0",
       recommendationAction: row.recommendation_action,
       recommendationReason: row.recommendation_reason,
     }));

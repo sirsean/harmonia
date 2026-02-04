@@ -43,7 +43,7 @@ describe("APR calculation utilities", () => {
     }
   });
 
-  const createMockStatus = (timestamp: number, navUsd: bigint): StrategyStatus => ({
+  const createMockStatus = (timestamp: number, gmxNetValueUsd: bigint): StrategyStatus => ({
     uniswap: [
       {
         tokenId: "123",
@@ -71,7 +71,7 @@ describe("APR calculation utilities", () => {
     gmx: {
       positionSizeTokens: ethers.parseEther("0.5"),
       collateralAmount: ethers.parseUnits("1000", 6),
-      netValueUsd: navUsd / 2n, // Half of NAV
+      netValueUsd: gmxNetValueUsd,
       pendingFundingRewards: 0n,
       delta: -ethers.parseEther("0.5"),
     },
@@ -96,9 +96,9 @@ describe("APR calculation utilities", () => {
       const startTime = now - 30 * 24 * 60 * 60 * 1000; // 30 days ago
       const endTime = now + 1000; // Include a buffer to ensure current-time records are included
 
-      // Create snapshots
-      const status1 = createMockStatus(startTime, ethers.parseUnits("100000", 30));
-      const status2 = createMockStatus(endTime - 500, ethers.parseUnits("100000", 30));
+      // Create snapshots with increasing portfolio value
+      const status1 = createMockStatus(startTime, ethers.parseUnits("50000", 30));
+      const status2 = createMockStatus(endTime - 500, ethers.parseUnits("52000", 30));
       db.storeSnapshot(account, status1, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
       db.storeSnapshot(account, status2, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
@@ -113,7 +113,7 @@ describe("APR calculation utilities", () => {
       const result = await calculateAPRForPeriod(db, account, startTime, endTime);
 
       expect(result).not.toBeNull();
-      expect(result!.averageNav).toBe(ethers.parseUnits("100000", 30));
+      expect(result!.averagePortfolioValue).toBe(ethers.parseUnits("101000", 30));
       // Fees and costs should be included since endTime has a buffer
       // Account for SQLite SUM precision issues
       const expectedFees = ethers.parseUnits("1500", 30);
@@ -128,16 +128,15 @@ describe("APR calculation utilities", () => {
         : result!.costsIncurred - expectedCosts;
       expect(costsDiff).toBeLessThan(expectedCosts / 10000n);
       
-      // Net yield should be approximately fees - costs
-      const expectedNetYield = expectedFees - expectedCosts;
-      const netYieldDiff = expectedNetYield > result!.netYield 
-        ? expectedNetYield - result!.netYield 
+      // Net yield should be portfolio value change ($2,000)
+      const expectedNetYield = ethers.parseUnits("2000", 30);
+      const netYieldDiff = expectedNetYield > result!.netYield
+        ? expectedNetYield - result!.netYield
         : result!.netYield - expectedNetYield;
       expect(netYieldDiff).toBeLessThan(expectedNetYield / 10000n);
-      expect(result!.averageNav).toBe(ethers.parseUnits("100000", 30));
 
-      // APR should be approximately: (1485 / 100000) * (365 / 30) = 0.01485 * 12.1667 = 0.1807 = 18.07%
-      expect(result!.aprPercent).toBeCloseTo(18.07, 1);
+      // APR should be approximately: (2000 / 101000) * (365 / 30) = 24.09%
+      expect(result!.aprPercent).toBeCloseTo(24.09, 1);
     });
 
     it("returns null when no position data available", async () => {
@@ -155,7 +154,7 @@ describe("APR calculation utilities", () => {
       const startTime = now - 30 * 24 * 60 * 60 * 1000;
       const endTime = now;
 
-      const status = createMockStatus(startTime, ethers.parseUnits("100000", 30));
+      const status = createMockStatus(startTime, ethers.parseUnits("50000", 30));
       db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       // Don't record any fees or operations
@@ -173,26 +172,19 @@ describe("APR calculation utilities", () => {
       const startTime = now - 30 * 24 * 60 * 60 * 1000;
       const endTime = now;
 
-      const status = createMockStatus(startTime, ethers.parseUnits("100000", 30));
-      db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
-
-      // Record high gas costs but no fees
-      // Operations are recorded with current timestamp, so they should be included
-      db.recordOperation(account, "optimization", ethers.parseUnits("100", 30));
-      db.recordOperation(account, "optimization", ethers.parseUnits("50", 30));
+      const status1 = createMockStatus(startTime, ethers.parseUnits("50000", 30));
+      const status2 = createMockStatus(endTime - 500, ethers.parseUnits("49000", 30));
+      db.storeSnapshot(account, status1, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
+      db.storeSnapshot(account, status2, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       const result = await calculateAPRForPeriod(db, account, startTime, endTime);
 
       expect(result).not.toBeNull();
-      // If operations are included, netYield should be negative
-      // If they're excluded due to timestamp, netYield will be 0
-      // Just verify the structure
+      // Net yield should be negative due to portfolio value decline
       expect(result!.feesCollected).toBe(0n);
       expect(result!.costsIncurred).toBeGreaterThanOrEqual(0n);
-      expect(result!.netYield).toBeLessThanOrEqual(0n);
-      if (result!.costsIncurred > 0n) {
-        expect(result!.aprPercent).toBeLessThan(0);
-      }
+      expect(result!.netYield).toBeLessThan(0n);
+      expect(result!.aprPercent).toBeLessThan(0);
     });
 
     it("handles invalid time period", async () => {
@@ -211,22 +203,21 @@ describe("APR calculation utilities", () => {
       const startTime = now - 30 * 24 * 60 * 60 * 1000;
       const endTime = now + 1000; // Add buffer to ensure current ops are included
 
-      // Only 1 day of data (snapshot 1 day ago)
+      // Only 1 day of data (snapshots 1 day apart)
       const oneDayAgo = now - 24 * 60 * 60 * 1000;
-      const status = createMockStatus(oneDayAgo, ethers.parseUnits("100000", 30));
-      db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
-
-      // $100 yield
-      db.recordFeeCollection(account, "123", ethers.parseUnits("100", 30));
+      const status1 = createMockStatus(oneDayAgo, ethers.parseUnits("50000", 30));
+      const status2 = createMockStatus(now, ethers.parseUnits("50100", 30));
+      db.storeSnapshot(account, status1, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
+      db.storeSnapshot(account, status2, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       const result = await calculateAPRForPeriod(db, account, startTime, endTime);
 
       expect(result).not.toBeNull();
       
       // Net Yield: $100
-      // Average NAV: $100,000
+      // Average Portfolio: $100,050
       // Window: 30 days
-      // Calendar APR: (100 / 100000) * (365 / 30) = 0.001 * 12.1667 = 0.012167 = 1.22%
+      // Calendar APR: (100 / 100050) * (365 / 30) ≈ 1.22%
       
       // If it was Active APR (1 day), it would be:
       // (100 / 100000) * (365 / 1) = 0.001 * 365 = 0.365 = 36.5%
@@ -241,8 +232,10 @@ describe("APR calculation utilities", () => {
       const now = Date.now();
       const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
-      const status = createMockStatus(sevenDaysAgo, ethers.parseUnits("100000", 30));
-      db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
+      const status1 = createMockStatus(sevenDaysAgo, ethers.parseUnits("50000", 30));
+      const status2 = createMockStatus(now - 500, ethers.parseUnits("50500", 30));
+      db.storeSnapshot(account, status1, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
+      db.storeSnapshot(account, status2, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       db.recordFeeCollection(account, "123", ethers.parseUnits("200", 30));
       db.recordOperation(account, "optimization", ethers.parseUnits("5", 30));
@@ -264,8 +257,10 @@ describe("APR calculation utilities", () => {
       const now = Date.now();
       const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
-      const status = createMockStatus(thirtyDaysAgo, ethers.parseUnits("100000", 30));
-      db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
+      const status1 = createMockStatus(thirtyDaysAgo, ethers.parseUnits("50000", 30));
+      const status2 = createMockStatus(now - 500, ethers.parseUnits("51000", 30));
+      db.storeSnapshot(account, status1, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
+      db.storeSnapshot(account, status2, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       db.recordFeeCollection(account, "123", ethers.parseUnits("1000", 30));
       db.recordOperation(account, "optimization", ethers.parseUnits("10", 30));
@@ -299,11 +294,11 @@ describe("APR calculation utilities", () => {
       const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
       // Create first snapshot (oldest)
-      const status1 = createMockStatus(ninetyDaysAgo, ethers.parseUnits("100000", 30));
+      const status1 = createMockStatus(ninetyDaysAgo, ethers.parseUnits("50000", 30));
       db.storeSnapshot(account, status1, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       // Create recent snapshot
-      const status2 = createMockStatus(thirtyDaysAgo, ethers.parseUnits("100000", 30));
+      const status2 = createMockStatus(thirtyDaysAgo, ethers.parseUnits("50000", 30));
       db.storeSnapshot(account, status2, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       db.recordFeeCollection(account, "123", ethers.parseUnits("5000", 30));
@@ -330,13 +325,13 @@ describe("APR calculation utilities", () => {
       const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
 
       // Create snapshots for different periods
-      const status1 = createMockStatus(ninetyDaysAgo, ethers.parseUnits("100000", 30));
+      const status1 = createMockStatus(ninetyDaysAgo, ethers.parseUnits("50000", 30));
       db.storeSnapshot(account, status1, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
-      const status2 = createMockStatus(thirtyDaysAgo, ethers.parseUnits("100000", 30));
+      const status2 = createMockStatus(thirtyDaysAgo, ethers.parseUnits("50000", 30));
       db.storeSnapshot(account, status2, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
-      const status3 = createMockStatus(sevenDaysAgo, ethers.parseUnits("100000", 30));
+      const status3 = createMockStatus(sevenDaysAgo, ethers.parseUnits("50000", 30));
       db.storeSnapshot(account, status3, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       // Record fees
@@ -369,7 +364,16 @@ describe("APR calculation utilities", () => {
         feesCollected: ethers.parseUnits("1000", 30),
         costsIncurred: ethers.parseUnits("50", 30),
         netYield: ethers.parseUnits("950", 30),
-        averageNav: ethers.parseUnits("100000", 30),
+        totalValueStart: ethers.parseUnits("100000", 30),
+        totalValueEnd: ethers.parseUnits("100950", 30),
+        totalValueChange: ethers.parseUnits("950", 30),
+        averagePortfolioValue: ethers.parseUnits("100475", 30),
+        lpValueChange: ethers.parseUnits("500", 30),
+        gmxValueChange: ethers.parseUnits("300", 30),
+        unclaimedFeesChange: ethers.parseUnits("100", 30),
+        walletEthChange: ethers.parseUnits("25", 30),
+        walletWethChange: ethers.parseUnits("15", 30),
+        walletUsdcChange: ethers.parseUnits("10", 30),
         aprBps: ethers.parseUnits("11.5", 18), // 11.5% in 1e18 precision
         aprPercent: 11.5,
       };
@@ -379,7 +383,7 @@ describe("APR calculation utilities", () => {
       expect(formatted).toContain("Fees Collected");
       expect(formatted).toContain("Costs Incurred");
       expect(formatted).toContain("Net Yield");
-      expect(formatted).toContain("Average NAV");
+      expect(formatted).toContain("Average Portfolio");
       expect(formatted).toContain("11.50%");
     });
 
@@ -390,7 +394,16 @@ describe("APR calculation utilities", () => {
         feesCollected: ethers.parseUnits("0", 30),
         costsIncurred: ethers.parseUnits("100", 30),
         netYield: -ethers.parseUnits("100", 30),
-        averageNav: ethers.parseUnits("100000", 30),
+        totalValueStart: ethers.parseUnits("100000", 30),
+        totalValueEnd: ethers.parseUnits("99900", 30),
+        totalValueChange: -ethers.parseUnits("100", 30),
+        averagePortfolioValue: ethers.parseUnits("99950", 30),
+        lpValueChange: -ethers.parseUnits("50", 30),
+        gmxValueChange: -ethers.parseUnits("25", 30),
+        unclaimedFeesChange: -ethers.parseUnits("10", 30),
+        walletEthChange: -ethers.parseUnits("5", 30),
+        walletWethChange: -ethers.parseUnits("5", 30),
+        walletUsdcChange: -ethers.parseUnits("5", 30),
         aprBps: -ethers.parseUnits("12.17", 18),
         aprPercent: -12.17,
       };
@@ -411,7 +424,16 @@ describe("APR calculation utilities", () => {
           feesCollected: ethers.parseUnits("100", 30),
           costsIncurred: ethers.parseUnits("5", 30),
           netYield: ethers.parseUnits("95", 30),
-          averageNav: ethers.parseUnits("100000", 30),
+          totalValueStart: ethers.parseUnits("100000", 30),
+          totalValueEnd: ethers.parseUnits("100095", 30),
+          totalValueChange: ethers.parseUnits("95", 30),
+          averagePortfolioValue: ethers.parseUnits("100047", 30),
+          lpValueChange: ethers.parseUnits("50", 30),
+          gmxValueChange: ethers.parseUnits("30", 30),
+          unclaimedFeesChange: ethers.parseUnits("10", 30),
+          walletEthChange: ethers.parseUnits("3", 30),
+          walletWethChange: ethers.parseUnits("1", 30),
+          walletUsdcChange: ethers.parseUnits("1", 30),
           aprBps: ethers.parseUnits("10", 18),
           aprPercent: 10.0,
         },
@@ -421,7 +443,16 @@ describe("APR calculation utilities", () => {
           feesCollected: ethers.parseUnits("1000", 30),
           costsIncurred: ethers.parseUnits("50", 30),
           netYield: ethers.parseUnits("950", 30),
-          averageNav: ethers.parseUnits("100000", 30),
+          totalValueStart: ethers.parseUnits("100000", 30),
+          totalValueEnd: ethers.parseUnits("100950", 30),
+          totalValueChange: ethers.parseUnits("950", 30),
+          averagePortfolioValue: ethers.parseUnits("100475", 30),
+          lpValueChange: ethers.parseUnits("500", 30),
+          gmxValueChange: ethers.parseUnits("300", 30),
+          unclaimedFeesChange: ethers.parseUnits("100", 30),
+          walletEthChange: ethers.parseUnits("25", 30),
+          walletWethChange: ethers.parseUnits("15", 30),
+          walletUsdcChange: ethers.parseUnits("10", 30),
           aprBps: ethers.parseUnits("11.5", 18),
           aprPercent: 11.5,
         },
@@ -432,7 +463,16 @@ describe("APR calculation utilities", () => {
           feesCollected: ethers.parseUnits("3000", 30),
           costsIncurred: ethers.parseUnits("150", 30),
           netYield: ethers.parseUnits("2850", 30),
-          averageNav: ethers.parseUnits("100000", 30),
+          totalValueStart: ethers.parseUnits("100000", 30),
+          totalValueEnd: ethers.parseUnits("102850", 30),
+          totalValueChange: ethers.parseUnits("2850", 30),
+          averagePortfolioValue: ethers.parseUnits("101425", 30),
+          lpValueChange: ethers.parseUnits("1500", 30),
+          gmxValueChange: ethers.parseUnits("900", 30),
+          unclaimedFeesChange: ethers.parseUnits("300", 30),
+          walletEthChange: ethers.parseUnits("75", 30),
+          walletWethChange: ethers.parseUnits("50", 30),
+          walletUsdcChange: ethers.parseUnits("25", 30),
           aprBps: ethers.parseUnits("12", 18),
           aprPercent: 12.0,
         },
@@ -471,10 +511,10 @@ describe("APR calculation utilities", () => {
       const oneDayAgo = now - 24 * 60 * 60 * 1000; // Use 1 day minimum to avoid division by zero
       const endTime = now + 1000; // Buffer
 
-      const status = createMockStatus(oneDayAgo, ethers.parseUnits("100000", 30));
-      db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
-
-      db.recordFeeCollection(account, "123", ethers.parseUnits("1", 30));
+      const status1 = createMockStatus(oneDayAgo, ethers.parseUnits("50000", 30));
+      const status2 = createMockStatus(endTime - 500, ethers.parseUnits("50100", 30));
+      db.storeSnapshot(account, status1, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
+      db.storeSnapshot(account, status2, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       const result = await calculateAPRForPeriod(db, account, oneDayAgo, endTime);
 
@@ -488,7 +528,7 @@ describe("APR calculation utilities", () => {
       const startTime = now - 30 * 24 * 60 * 60 * 1000;
       const endTime = now + 1000; // Buffer to ensure records are included
 
-      const status = createMockStatus(startTime, ethers.parseUnits("100000", 30));
+      const status = createMockStatus(startTime, ethers.parseUnits("50000", 30));
       db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       // Record multiple fee collections
@@ -513,7 +553,7 @@ describe("APR calculation utilities", () => {
       const startTime = now - 30 * 24 * 60 * 60 * 1000;
       const endTime = now + 1000; // Buffer to ensure records are included
 
-      const status = createMockStatus(startTime, ethers.parseUnits("100000", 30));
+      const status = createMockStatus(startTime, ethers.parseUnits("50000", 30));
       db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       // Record multiple operations
@@ -538,7 +578,7 @@ describe("APR calculation utilities", () => {
       const startTime = now - 30 * 24 * 60 * 60 * 1000;
       const endTime = now - 15 * 24 * 60 * 60 * 1000; // 15 days ago
 
-      const status = createMockStatus(startTime, ethers.parseUnits("100000", 30));
+      const status = createMockStatus(startTime, ethers.parseUnits("50000", 30));
       db.storeSnapshot(account, status, createMockRecommendation(), ethers.parseUnits("50000", 30), 0n);
 
       // Record operation within period
