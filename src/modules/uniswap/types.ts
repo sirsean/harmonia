@@ -47,23 +47,23 @@ export interface UniswapPositionManager {
   tokenOfOwnerByIndex(owner: string, index: bigint | number): Promise<bigint>;
   mint(
     params: MintParams,
-    overrides?: { nonce?: number }
+    overrides?: { nonce?: number; gasLimit?: bigint }
   ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
   increaseLiquidity(
     params: IncreaseLiquidityParams,
-    overrides?: { nonce?: number }
+    overrides?: { nonce?: number; gasLimit?: bigint }
   ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
   decreaseLiquidity(
     params: DecreaseLiquidityParams,
-    overrides?: { nonce?: number }
+    overrides?: { nonce?: number; gasLimit?: bigint }
   ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
   collect(
     params: CollectParams,
-    overrides?: { nonce?: number }
+    overrides?: { nonce?: number; gasLimit?: bigint }
   ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
   multicall(
     data: string[],
-    overrides?: { nonce?: number }
+    overrides?: { nonce?: number; gasLimit?: bigint }
   ): Promise<{ hash: string; wait: () => Promise<unknown> }>;
 }
 

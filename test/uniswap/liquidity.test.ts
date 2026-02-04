@@ -165,4 +165,95 @@ describe("uniswap liquidity", () => {
 
     expect(manager.increaseLiquidity).toHaveBeenCalled();
   });
+
+  it("mints position with explicit gas limit", async () => {
+    const manager: UniswapPositionManager = {
+      positions: vi.fn(),
+      balanceOf: vi.fn(),
+      tokenOfOwnerByIndex: vi.fn(),
+      mint: vi.fn().mockResolvedValue({ hash: "0x1", wait: vi.fn() }),
+      increaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x2", wait: vi.fn() }),
+      decreaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x3", wait: vi.fn() }),
+      collect: vi.fn().mockResolvedValue({ hash: "0x4", wait: vi.fn() }),
+      multicall: vi.fn().mockResolvedValue({ hash: "0x5", wait: vi.fn() }),
+    };
+
+    const token: IERC20 = {
+      allowance: vi.fn().mockResolvedValue(100n),
+      approve: vi.fn().mockResolvedValue({ wait: vi.fn() }),
+    };
+
+    const params = {
+      token0: "0x0000000000000000000000000000000000000001",
+      token1: "0x0000000000000000000000000000000000000002",
+      fee: 500,
+      tickLower: -60,
+      tickUpper: 60,
+      amount0Desired: 1n,
+      amount1Desired: 2n,
+      amount0Min: 0n,
+      amount1Min: 0n,
+      recipient: "0xRecipient",
+      deadline: 123n,
+    };
+
+    await mintPosition(
+      manager,
+      token,
+      token,
+      params,
+      { owner: "0xOwner", spender: "0xSpender" }
+    );
+
+    // Verify mint was called with params and the gas limit override
+    expect(manager.mint).toHaveBeenCalledWith(
+      expect.objectContaining(params),
+      expect.objectContaining({ gasLimit: 1_000_000n })
+    );
+  });
+
+  it("increases liquidity with explicit gas limit", async () => {
+    const manager: UniswapPositionManager = {
+      positions: vi.fn(),
+      balanceOf: vi.fn(),
+      tokenOfOwnerByIndex: vi.fn(),
+      mint: vi.fn().mockResolvedValue({ hash: "0x1", wait: vi.fn() }),
+      increaseLiquidity: vi.fn().mockResolvedValue({ hash: "0x2", wait: vi.fn() }),
+      decreaseLiquidity: vi.fn().mockResolvedValue({ wait: vi.fn() }),
+      collect: vi.fn().mockResolvedValue({ wait: vi.fn() }),
+      multicall: vi.fn().mockResolvedValue({ hash: "0x5", wait: vi.fn() }),
+    };
+
+    const token: IERC20 = {
+      allowance: vi.fn().mockResolvedValue(100n),
+      approve: vi.fn().mockResolvedValue({ wait: vi.fn() }),
+    };
+
+    const params = {
+      tokenId: 1n,
+      amount0Desired: 1n,
+      amount1Desired: 2n,
+      amount0Min: 0n,
+      amount1Min: 0n,
+      deadline: 123n,
+    };
+
+    await increaseLiquidity(
+      manager,
+      token,
+      token,
+      {
+        ...params,
+        owner: "0xOwner",
+        spender: "0xSpender",
+      },
+      { performApproval: true }
+    );
+
+    // Verify increaseLiquidity was called with params and the gas limit override
+    expect(manager.increaseLiquidity).toHaveBeenCalledWith(
+      expect.objectContaining(params),
+      expect.objectContaining({ gasLimit: 1_000_000n })
+    );
+  });
 });

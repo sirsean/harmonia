@@ -80,7 +80,9 @@ export async function mintPosition(
   }
 
   // Let ethers manage nonce automatically - no manual nonce management
-  const tx = await manager.mint(buildMintParams(params));
+  // Arbitrum One can occasionally underestimate gas for complex Uniswap V3 mints
+  // Set a safe manual gas limit (1M gas) to prevent "out of gas" errors
+  const tx = await manager.mint(buildMintParams(params), { gasLimit: 1_000_000n });
   // CRITICAL: Always wait for receipt to ensure transaction is confirmed
   await tx.wait();
   return { params, txHash: tx.hash };
@@ -110,7 +112,11 @@ export async function increaseLiquidity(
 
   const { owner, spender, ...callParams } = params;
   // Let ethers manage nonce automatically - no manual nonce management
-  const tx = await manager.increaseLiquidity(buildIncreaseLiquidityParams(callParams));
+  // Arbitrum One can occasionally underestimate gas for complex Uniswap V3 operations
+  // Set a safe manual gas limit (1M gas) to prevent "out of gas" errors
+  const tx = await manager.increaseLiquidity(buildIncreaseLiquidityParams(callParams), {
+    gasLimit: 1_000_000n,
+  });
   // CRITICAL: Always wait for receipt to ensure transaction is confirmed
   await tx.wait();
 

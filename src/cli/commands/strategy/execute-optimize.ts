@@ -1,4 +1,5 @@
 import { ethers } from "hardhat";
+import { Contract, Signer } from "ethers";
 import { ARBITRUM_MAINNET } from "../../../config/addresses";
 import { DeltaNeutralMonitor } from "../../../strategy/monitor";
 import { loadStrategyConfig, DEFAULT_STRATEGY_CONFIG, PRECISION } from "../../../config/strategy";
@@ -193,6 +194,146 @@ export async function sweepIdleWethToUsdc(params: {
   await refreshNonceFn(provider, account);
 
   return { amountIn, amountOutMin };
+}
+
+/**
+ * Robust swap helper with retries and improved error handling
+ */
+export async function swapTokenToToken(params: {
+  account: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: bigint;
+  contractIn: Contract;
+  swapRouter: Contract;
+  routerAddress: string;
+  quoter: Contract;
+  fee: number;
+  slippageBps: bigint;
+  signer: Signer;
+  refreshNonceFn: (provider: any, account: string) => Promise<void>;
+  transactionReceipts?: Array<{ gasUsed: bigint; gasPrice: bigint }>;
+  executeFlag: boolean;
+  logPrefix?: string;
+}): Promise<void> {
+  const {
+    account,
+    tokenIn,
+    tokenOut,
+    amountIn,
+    contractIn,
+    swapRouter,
+    routerAddress,
+    quoter,
+    fee,
+    slippageBps,
+    signer,
+    refreshNonceFn,
+    transactionReceipts,
+    executeFlag,
+    logPrefix = "",
+  } = params;
+
+  if (!executeFlag) return;
+
+  let lastError: any;
+  const maxRetries = 3;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // 1. Get Quote with Retry Logic
+      let quoteOut: bigint;
+      try {
+        const quoteOutRaw = await quoter.quoteExactInputSingle.staticCall(
+          tokenIn,
+          tokenOut,
+          fee,
+          amountIn,
+          0
+        );
+        quoteOut = toBigInt(quoteOutRaw);
+        if (quoteOut === 0n) {
+          throw new Error("Quoter returned 0 - insufficient liquidity or invalid parameters");
+        }
+      } catch (error: any) {
+        const errorMsg = error.reason || error.message || String(error);
+        throw new Error(`Failed to get swap quote: ${errorMsg}`);
+      }
+
+      const amountOutMin = (quoteOut * (10_000n - slippageBps)) / 10_000n;
+
+      // 2. Check/Approve Allowance
+      // We check allowance every retry just in case it was consumed or reset
+      const allowance = await contractIn.allowance(account, routerAddress);
+      if (allowance < amountIn) {
+        console.log(`${logPrefix}Approving swap router...`);
+        // Let ethers manage nonce automatically
+        const approval = await contractIn.approve(routerAddress, ethers.MaxUint256);
+        // CRITICAL: Wait for approval before proceeding
+        const approvalReceipt = await approval.wait();
+
+        if (
+          approvalReceipt &&
+          approvalReceipt.gasUsed &&
+          approvalReceipt.gasPrice &&
+          transactionReceipts
+        ) {
+          transactionReceipts.push({
+            gasUsed: approvalReceipt.gasUsed,
+            gasPrice: approvalReceipt.gasPrice,
+          });
+        }
+        await refreshNonceFn(signer.provider, account);
+      }
+
+      // 3. Execute Swap
+      // Let ethers manage nonce automatically
+      const swapTx = await swapRouter.exactInputSingle({
+        tokenIn,
+        tokenOut,
+        fee,
+        recipient: account,
+        deadline: BigInt(Math.floor(Date.now() / 1000) + 600), // 10 minutes from now
+        amountIn,
+        amountOutMinimum: amountOutMin,
+        sqrtPriceLimitX96: 0,
+      });
+
+      console.log(`${logPrefix}Swap tx: ${swapTx.hash}`);
+      // CRITICAL: Wait for swap confirmation before proceeding
+      const swapReceipt = await swapTx.wait();
+
+      if (swapReceipt && swapReceipt.gasUsed && swapReceipt.gasPrice && transactionReceipts) {
+        transactionReceipts.push({
+          gasUsed: swapReceipt.gasUsed,
+          gasPrice: swapReceipt.gasPrice,
+        });
+      }
+
+      await refreshNonceFn(signer.provider, account);
+      return; // Success
+    } catch (error: any) {
+      lastError = error;
+      const errorMsg = error.reason || error.message || String(error);
+
+      // Don't retry if it's a user rejection or known fatal error
+      if (errorMsg.includes("User denied") || errorMsg.includes("insufficient funds")) {
+        throw error;
+      }
+
+      console.warn(`${logPrefix}Swap attempt ${attempt}/${maxRetries} failed: ${errorMsg}`);
+
+      if (attempt < maxRetries) {
+        const delay = 1000 * attempt; // Progressive backoff: 1s, 2s, 3s
+        console.log(`${logPrefix}Retrying in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw new Error(
+    `${logPrefix}Swap failed after ${maxRetries} attempts. Last error: ${lastError?.message || lastError}`
+  );
 }
 
 export async function executeOptimize(
@@ -649,66 +790,23 @@ export async function executeOptimize(
         const amountIn = usdcToSwap > usdcAvailable ? usdcAvailable : usdcToSwap;
         console.log(`\nSwapping ${ethers.formatUnits(amountIn, usdcDecimals)} USDC for WETH...`);
 
-        let quoteOut: bigint;
-        try {
-          const quoteOutRaw = await quoter.quoteExactInputSingle.staticCall(
-            usdcToken,
-            wethToken,
-            fee,
-            amountIn,
-            0
-          );
-          quoteOut = toBigInt(quoteOutRaw);
-          if (quoteOut === 0n) {
-            throw new Error("Quoter returned 0 - insufficient liquidity or invalid parameters");
-          }
-        } catch (error: any) {
-          const errorMsg = error.reason || error.message || String(error);
-          console.error(`  Error getting quote: ${errorMsg}`);
-          throw new Error(`Failed to get swap quote: ${errorMsg}`);
-        }
-        const amountOutMin = (quoteOut * (10_000n - slippageBps)) / 10_000n;
-
-        const allowance = await usdcContract.allowance(
+        await swapTokenToToken({
           account,
-          ARBITRUM_MAINNET.uniswapV3SwapRouter
-        );
-        if (allowance < amountIn) {
-          // Let ethers manage nonce automatically
-          const approval = await usdcContract.approve(
-            ARBITRUM_MAINNET.uniswapV3SwapRouter,
-            ethers.MaxUint256
-          );
-          // CRITICAL: Wait for approval before proceeding
-          const approvalReceipt = await approval.wait();
-          if (
-            executeFlag &&
-            approvalReceipt &&
-            approvalReceipt.gasUsed &&
-            approvalReceipt.gasPrice
-          ) {
-            transactionReceipts.push({
-              gasUsed: approvalReceipt.gasUsed,
-              gasPrice: approvalReceipt.gasPrice,
-            });
-          }
-          await refreshNonce(signer.provider, account);
-        }
-        // Let ethers manage nonce automatically
-        const swapTx = await swapRouter.exactInputSingle({
           tokenIn: usdcToken,
           tokenOut: wethToken,
-          fee,
-          recipient: account,
-          deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
           amountIn,
-          amountOutMinimum: amountOutMin,
-          sqrtPriceLimitX96: 0,
+          contractIn: usdcContract,
+          swapRouter,
+          routerAddress: ARBITRUM_MAINNET.uniswapV3SwapRouter,
+          quoter,
+          fee,
+          slippageBps,
+          signer,
+          refreshNonceFn: refreshNonce,
+          transactionReceipts,
+          executeFlag,
+          logPrefix: "  ",
         });
-        console.log(`  Swap tx: ${swapTx.hash}`);
-        // CRITICAL: Wait for swap confirmation before proceeding
-        await swapTx.wait();
-        await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),
@@ -734,66 +832,23 @@ export async function executeOptimize(
         const amountIn = wethToSwap > excessWeth ? excessWeth : wethToSwap;
         console.log(`\nSwapping ${ethers.formatUnits(amountIn, wethDecimals)} WETH for USDC...`);
 
-        let quoteOut: bigint;
-        try {
-          const quoteOutRaw = await quoter.quoteExactInputSingle.staticCall(
-            wethToken,
-            usdcToken,
-            fee,
-            amountIn,
-            0
-          );
-          quoteOut = toBigInt(quoteOutRaw);
-          if (quoteOut === 0n) {
-            throw new Error("Quoter returned 0 - insufficient liquidity or invalid parameters");
-          }
-        } catch (error: any) {
-          const errorMsg = error.reason || error.message || String(error);
-          console.error(`  Error getting quote: ${errorMsg}`);
-          throw new Error(`Failed to get swap quote: ${errorMsg}`);
-        }
-        const amountOutMin = (quoteOut * (10_000n - slippageBps)) / 10_000n;
-
-        const allowance = await wethContract.allowance(
+        await swapTokenToToken({
           account,
-          ARBITRUM_MAINNET.uniswapV3SwapRouter
-        );
-        if (allowance < amountIn) {
-          // Let ethers manage nonce automatically
-          const approval = await wethContract.approve(
-            ARBITRUM_MAINNET.uniswapV3SwapRouter,
-            ethers.MaxUint256
-          );
-          // CRITICAL: Wait for approval before proceeding
-          const approvalReceipt = await approval.wait();
-          if (
-            executeFlag &&
-            approvalReceipt &&
-            approvalReceipt.gasUsed &&
-            approvalReceipt.gasPrice
-          ) {
-            transactionReceipts.push({
-              gasUsed: approvalReceipt.gasUsed,
-              gasPrice: approvalReceipt.gasPrice,
-            });
-          }
-          await refreshNonce(signer.provider, account);
-        }
-        // Let ethers manage nonce automatically
-        const swapTx = await swapRouter.exactInputSingle({
           tokenIn: wethToken,
           tokenOut: usdcToken,
-          fee,
-          recipient: account,
-          deadline: BigInt(Math.floor(Date.now() / 1000) + 600),
           amountIn,
-          amountOutMinimum: amountOutMin,
-          sqrtPriceLimitX96: 0,
+          contractIn: wethContract,
+          swapRouter,
+          routerAddress: ARBITRUM_MAINNET.uniswapV3SwapRouter,
+          quoter,
+          fee,
+          slippageBps,
+          signer,
+          refreshNonceFn: refreshNonce,
+          transactionReceipts,
+          executeFlag,
+          logPrefix: "  ",
         });
-        console.log(`  Swap tx: ${swapTx.hash}`);
-        // CRITICAL: Wait for swap confirmation before proceeding
-        await swapTx.wait();
-        await refreshNonce(signer.provider, account);
 
         const [newBalance0, newBalance1] = await Promise.all([
           token0Contract.balanceOf(account),
