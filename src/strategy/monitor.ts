@@ -651,6 +651,36 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
       };
     };
 
+    // Priority 0: Critical State Recovery (No positions or partial positions)
+    const activeLpPositions = status.uniswap.filter((p) => p.liquidity > 0n);
+    const hasActiveLp = activeLpPositions.length > 0;
+    const hasGmxPosition =
+      status.gmx.positionSizeTokens > 0n || status.gmx.positionSizeTokens < 0n;
+
+    if (!hasActiveLp && !hasGmxPosition) {
+      return {
+        action: StrategyAction.OPTIMIZE,
+        reason: "No active positions found - strategy restart required",
+        data: optimizationData,
+      };
+    }
+
+    if (!hasActiveLp && hasGmxPosition) {
+      return {
+        action: StrategyAction.OPTIMIZE,
+        reason: "GMX short exists without active LP positions - critical recovery required",
+        data: optimizationData,
+      };
+    }
+
+    if (hasActiveLp && !hasGmxPosition) {
+      return {
+        action: StrategyAction.OPTIMIZE,
+        reason: "Active LP positions exist without GMX hedge - critical recovery required",
+        data: optimizationData,
+      };
+    }
+
     // Priority 1: CRITICAL - Positions are out of range (always optimize)
     if (anyOutOfRange) {
       return {

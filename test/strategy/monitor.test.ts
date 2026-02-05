@@ -180,7 +180,17 @@ describe("DeltaNeutralMonitor", () => {
      vi.mocked(uniswapReader.getPositionWithFees).mockResolvedValue(outOfRangePos);
      vi.mocked(uniswapReader.getActivePositionsForOwner).mockResolvedValue([{ tokenId: 123n, position: outOfRangePos }]);
  
-     vi.mocked(gmxReader.getPosition).mockResolvedValue(undefined); 
+     // Mock a valid GMX position to pass the "missing hedge" check
+     vi.mocked(gmxReader.getPosition).mockResolvedValue({
+        addresses: {} as any,
+        numbers: { 
+          sizeInTokens: 100n, // Small hedge
+          collateralAmount: 0n,
+          sizeInUsd: 0n,
+          shortTokenClaimableFundingAmountPerSize: 0n,
+        } as any,
+        flags: { isLong: false }
+     }); 
      
      const result = await monitor.check();
      
