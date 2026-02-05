@@ -229,7 +229,7 @@ describe("DeltaNeutralMonitor - Hedge Adjustments", () => {
       vi.mocked(uniswapReader.getActivePositionsForOwner).mockResolvedValue([
         { tokenId: 123n, position: outOfRangePos },
       ]);
-      vi.mocked(gmxReader.getPosition).mockResolvedValue(undefined);
+      setGmxPosition(100n);
 
       const result = await monitor.check();
       expect(result.recommendation.action).toBe(StrategyAction.OPTIMIZE);
