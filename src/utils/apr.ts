@@ -35,7 +35,6 @@ function getPortfolioValue(snapshot: MonitoringSnapshot): bigint {
   return (
     BigInt(snapshot.totalNavUsd) +
     BigInt(snapshot.totalFeesUsd) +
-    BigInt(snapshot.walletEthUsd || "0") +
     BigInt(snapshot.walletWethUsd || "0") +
     BigInt(snapshot.walletUsdcUsd || "0")
   );
@@ -252,9 +251,11 @@ export function formatAPRResult(result: APRResult): string {
   lines.push(`  LP Value Change:     $${ethers.formatUnits(result.lpValueChange, 30)}`);
   lines.push(`  GMX Net Change:      $${ethers.formatUnits(result.gmxValueChange, 30)}`);
   lines.push(`  Unclaimed Fees Δ:    $${ethers.formatUnits(result.unclaimedFeesChange, 30)}`);
-  lines.push(`  Wallet ETH Δ:        $${ethers.formatUnits(result.walletEthChange, 30)}`);
   lines.push(`  Wallet WETH Δ:       $${ethers.formatUnits(result.walletWethChange, 30)}`);
   lines.push(`  Wallet USDC Δ:       $${ethers.formatUnits(result.walletUsdcChange, 30)}`);
+  lines.push("");
+  lines.push("Non-Portfolio:");
+  lines.push(`  Wallet ETH Δ:        $${ethers.formatUnits(result.walletEthChange, 30)}`);
   lines.push("");
   lines.push(`Fees Collected:        $${ethers.formatUnits(result.feesCollected, 30)}`);
   lines.push(`Costs Incurred:        $${ethers.formatUnits(result.costsIncurred, 30)}`);

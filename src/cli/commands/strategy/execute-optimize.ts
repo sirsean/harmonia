@@ -1395,12 +1395,14 @@ export async function executeOptimize(
           }
 
           // Get updated wallet balances
-          const [balance0, balance1] = await Promise.all([
+          const [balance0, balance1, nativeEthBalance] = await Promise.all([
             token0Contract.balanceOf(account),
             token1Contract.balanceOf(account),
+            signer.provider!.getBalance(account),
           ]);
           const balance0Str = `${ethers.formatUnits(balance0, token0Decimals)} ${token0Symbol}`;
           const balance1Str = `${ethers.formatUnits(balance1, token1Decimals)} ${token1Symbol}`;
+          const balanceEthStr = `${ethers.formatEther(nativeEthBalance)} ETH`;
 
           // Calculate total NAV
           // Use current prices and balances
@@ -1446,7 +1448,7 @@ export async function executeOptimize(
 
           fields.push({
             name: "Wallet Balances",
-            value: `${balance0Str}\n${balance1Str}`,
+            value: `${balance0Str}\n${balance1Str}\n${balanceEthStr}`,
             inline: false,
           });
 

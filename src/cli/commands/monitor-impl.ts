@@ -73,6 +73,12 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
     const stableDecimals = isToken0Collateral ? decimals0 : decimals1;
     const riskSymbol = isToken0Collateral ? symbol1 : symbol0;
     const stableSymbol = isToken0Collateral ? symbol0 : symbol1;
+    const usdcAddress = ARBITRUM_MAINNET.usdc.toLowerCase();
+    const wethAddress = ARBITRUM_MAINNET.weth.toLowerCase();
+    const isToken0Usdc = poolToken0.toLowerCase() === usdcAddress;
+    const isToken1Usdc = poolToken1.toLowerCase() === usdcAddress;
+    const isToken0Weth = poolToken0.toLowerCase() === wethAddress;
+    const isToken1Weth = poolToken1.toLowerCase() === wethAddress;
 
     // Get current risk token price (from first position's currentPrice)
     const riskTokenPrice = status.uniswap.length > 0 ? status.uniswap[0].currentPrice : 0;
@@ -161,12 +167,49 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
       `  Delta Drift: ${(status.deltaDrift * 100).toFixed(2)}% (${status.netDelta > 0n ? "under" : "over"}-hedged)`
     );
 
+    // Get wallet balances (token0/token1 + native ETH)
+    const [balance0, balance1, nativeEthBalance] = await Promise.all([
+      token0Contract.balanceOf(account),
+      token1Contract.balanceOf(account),
+      ethers.provider.getBalance(account),
+    ]);
+
+    const walletUsdcAmount = isToken0Usdc ? balance0 : isToken1Usdc ? balance1 : 0n;
+    const walletWethAmount = isToken0Weth ? balance0 : isToken1Weth ? balance1 : 0n;
+
+    const walletUsdcUsd = calculateUsdValue(walletUsdcAmount, Number(stableDecimals), 1.0);
+    const walletWethUsd = calculateUsdValue(
+      walletWethAmount,
+      Number(riskTokenDecimals),
+      riskTokenPrice
+    );
+    const walletEthUsd = calculateUsdValue(nativeEthBalance, 18, riskTokenPrice);
+
+    const totalFees0Usd = isToken0Collateral
+      ? calculateUsdValue(totalFees0, Number(decimals0), 1.0)
+      : calculateUsdValue(totalFees0, Number(decimals0), riskTokenPrice);
+    const totalFees1Usd = isToken0Collateral
+      ? calculateUsdValue(totalFees1, Number(decimals1), riskTokenPrice)
+      : calculateUsdValue(totalFees1, Number(decimals1), 1.0);
+
     // Calculate and display total net value
     const totalNetValueUsd = totalLpValueUsd + status.gmx.netValueUsd;
+    const totalPortfolioValueUsd =
+      totalNetValueUsd + totalFees0Usd + totalFees1Usd + walletWethUsd + walletUsdcUsd;
+
     console.log(`\n[Total Portfolio Value]`);
-    console.log(`  LP Positions: $${ethers.formatUnits(totalLpValueUsd, 30)}`);
-    console.log(`  GMX Position: $${ethers.formatUnits(status.gmx.netValueUsd, 30)}`);
-    console.log(`  Total Net Value: $${ethers.formatUnits(totalNetValueUsd, 30)}`);
+    console.log(`  LP Positions:     $${ethers.formatUnits(totalLpValueUsd, 30)}`);
+    console.log(`  GMX Position:     $${ethers.formatUnits(status.gmx.netValueUsd, 30)}`);
+    console.log(`  Unclaimed Fees:   $${ethers.formatUnits(totalFees0Usd + totalFees1Usd, 30)}`);
+    console.log(`  Wallet (Dry):     $${ethers.formatUnits(walletWethUsd + walletUsdcUsd, 30)}`);
+    console.log(`  -----------------------------------------`);
+    console.log(`  Total Portfolio:  $${ethers.formatUnits(totalPortfolioValueUsd, 30)}`);
+    console.log(`\n[Other Balances]`);
+    console.log(
+      `  Wallet ETH (Gas): $${ethers.formatUnits(walletEthUsd, 30)} (${ethers.formatEther(nativeEthBalance)} ETH)`
+    );
+    console.log(`  Wallet ${symbol0}: ${ethers.formatUnits(balance0, Number(decimals0))}`);
+    console.log(`  Wallet ${symbol1}: ${ethers.formatUnits(balance1, Number(decimals1))}`);
 
     console.log("\n[Recommendation]");
     const color = recommendation.action === StrategyAction.NONE ? "\x1b[32m" : "\x1b[33m"; // Green for NONE, Yellow for others

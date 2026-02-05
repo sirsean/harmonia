@@ -305,7 +305,13 @@ export function generateDiscordSummary(report: DailyReport): {
     const walletLines = [];
     if (report.summary.walletBalance0) walletLines.push(report.summary.walletBalance0);
     if (report.summary.walletBalance1) walletLines.push(report.summary.walletBalance1);
-    if (report.summary.walletBalanceEth) walletLines.push(report.summary.walletBalanceEth);
+    if (report.summary.walletBalanceEth) {
+      let ethLine = report.summary.walletBalanceEth;
+      if (report.summary.walletEthUsd) {
+        ethLine += ` ($${parseFloat(report.summary.walletEthUsd).toFixed(2)})`;
+      }
+      walletLines.push(ethLine);
+    }
     fields.push({
       name: "Wallet Balances",
       value: walletLines.join("\n"),

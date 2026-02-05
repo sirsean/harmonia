@@ -24,6 +24,7 @@ export interface DailyReport {
     walletBalance0?: string; // e.g. "1.23 WETH"
     walletBalance1?: string; // e.g. "1000.00 USDC"
     walletBalanceEth?: string; // e.g. "0.05 ETH"
+    walletEthUsd?: string;
   };
   positions: {
     uniswap: Array<{
@@ -84,11 +85,7 @@ export function generateDailyReport(
 ): DailyReport {
   const totalNetValueUsd = totalLpValueUsd + status.gmx.netValueUsd;
   const totalPortfolioValueUsd =
-    totalNetValueUsd +
-    totalFeesUsd +
-    (walletUsd?.ethUsd ?? 0n) +
-    (walletUsd?.wethUsd ?? 0n) +
-    (walletUsd?.usdcUsd ?? 0n);
+    totalNetValueUsd + totalFeesUsd + (walletUsd?.wethUsd ?? 0n) + (walletUsd?.usdcUsd ?? 0n);
 
   const report: DailyReport = {
     date: new Date().toISOString().split("T")[0],
@@ -105,6 +102,7 @@ export function generateDailyReport(
       walletBalance0: walletBalances?.balance0,
       walletBalance1: walletBalances?.balance1,
       walletBalanceEth: walletBalances?.balanceEth,
+      walletEthUsd: walletUsd?.ethUsd ? ethers.formatUnits(walletUsd.ethUsd, 30) : undefined,
     },
     positions: {
       uniswap: status.uniswap.map((pos) => ({
@@ -231,7 +229,13 @@ export function formatReportSummary(report: DailyReport): string {
     lines.push(`Wallet Balances:`);
     if (report.summary.walletBalance0) lines.push(`  ${report.summary.walletBalance0}`);
     if (report.summary.walletBalance1) lines.push(`  ${report.summary.walletBalance1}`);
-    if (report.summary.walletBalanceEth) lines.push(`  ${report.summary.walletBalanceEth}`);
+    if (report.summary.walletBalanceEth) {
+      let ethLine = `  ${report.summary.walletBalanceEth}`;
+      if (report.summary.walletEthUsd) {
+        ethLine += ` ($${parseFloat(report.summary.walletEthUsd).toFixed(2)})`;
+      }
+      lines.push(ethLine);
+    }
   }
   lines.push("");
 

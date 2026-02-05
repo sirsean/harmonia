@@ -98,8 +98,7 @@ function renderDashboard(
   clearScreen();
 
   const totalNetValueUsd = totalLpValueUsd + status.gmx.netValueUsd;
-  const totalPortfolioValueUsd =
-    totalNetValueUsd + totalFeesUsd + walletEthUsd + walletWethUsd + walletUsdcUsd;
+  const totalPortfolioValueUsd = totalNetValueUsd + totalFeesUsd + walletWethUsd + walletUsdcUsd;
   const deltaDriftColor = getDeltaDriftColor(status.deltaDrift);
   const actionColor = getActionColor(recommendation.action);
 
@@ -130,8 +129,10 @@ function renderDashboard(
   console.log(`│   ├─ GMX Position:     ${gmxValueStr}`);
   const feesValueStr = `$${formatBigInt(totalFeesUsd, 30, 2)}`;
   console.log(`│   ├─ Unclaimed Fees:   ${feesValueStr}`);
-  const walletValueStr = `$${formatBigInt(walletEthUsd + walletWethUsd + walletUsdcUsd, 30, 2)}`;
-  console.log(`│   └─ Wallet Value:     ${walletValueStr}`);
+  const walletValueStr = `$${formatBigInt(walletWethUsd + walletUsdcUsd, 30, 2)}`;
+  console.log(`│   ├─ Wallet (Dry Powder): ${walletValueStr}`);
+  const ethValueStr = `$${formatBigInt(walletEthUsd, 30, 2)}`;
+  console.log(`│   └─ Wallet (ETH/Gas):   ${ethValueStr}`);
   console.log("│");
   const netDeltaStr = `${formatBigInt(status.netDelta, 18, 4)} ETH`;
   console.log(`│ Net Delta:            ${netDeltaStr}`);
