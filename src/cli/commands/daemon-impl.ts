@@ -624,11 +624,9 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               });
             }
 
-            await sendSuccessAlert(
-              `🔧 Harmonia : Hedge ${hedgeResult.direction === "increase" ? "Increase" : "Decrease"} Order Submitted`,
-              "",
-              hedgeFields
-            ).catch((alertError) => {
+            const emoji = hedgeResult.direction === "increase" ? "📈" : "📉";
+            const title = `Harmonia: ${hedgeResult.direction === "increase" ? "Increase" : "Decrease"} Hedge`;
+            await sendSuccessAlert(`${emoji} ${title}`, "", hedgeFields).catch((alertError) => {
               logger.warn("Failed to send hedge adjustment alert", { error: alertError.message });
             });
           } catch (hedgeError: any) {

@@ -168,37 +168,35 @@ export async function executeHedgeAdjust(
   // Send alert (unless suppressed)
   if (!options.suppressAlert) {
     try {
-      await sendSuccessAlert(
-        `🔧 Harmonia : Hedge ${direction === "increase" ? "Increase" : "Decrease"} Order Submitted`,
-        "",
-        [
-          {
-            name: "Direction",
-            value: direction === "increase" ? "Increase Short" : "Decrease Short",
-            inline: true,
-          },
-          {
-            name: "Adjustment",
-            value: `$${parseFloat(ethers.formatUnits(absAdjustmentUsd, 30)).toFixed(4)}`,
-            inline: true,
-          },
-          {
-            name: "Delta Drift Before",
-            value: `${(deltaDriftBefore * 100).toFixed(2)}%`,
-            inline: true,
-          },
-          {
-            name: "Leverage",
-            value: `${hedgeData.currentLeverage.toFixed(2)}x → ${hedgeData.estimatedLeverageAfter.toFixed(2)}x`,
-            inline: true,
-          },
-          {
-            name: "Tx Hash",
-            value: txHash,
-            inline: false,
-          },
-        ]
-      );
+      const emoji = direction === "increase" ? "📈" : "📉";
+      const title = `Harmonia: ${direction === "increase" ? "Increase" : "Decrease"} Hedge`;
+      await sendSuccessAlert(`${emoji} ${title}`, "", [
+        {
+          name: "Direction",
+          value: direction === "increase" ? "Increase Short" : "Decrease Short",
+          inline: true,
+        },
+        {
+          name: "Adjustment",
+          value: `$${parseFloat(ethers.formatUnits(absAdjustmentUsd, 30)).toFixed(4)}`,
+          inline: true,
+        },
+        {
+          name: "Delta Drift Before",
+          value: `${(deltaDriftBefore * 100).toFixed(2)}%`,
+          inline: true,
+        },
+        {
+          name: "Leverage",
+          value: `${hedgeData.currentLeverage.toFixed(2)}x → ${hedgeData.estimatedLeverageAfter.toFixed(2)}x`,
+          inline: true,
+        },
+        {
+          name: "Tx Hash",
+          value: txHash,
+          inline: false,
+        },
+      ]);
     } catch (alertError: any) {
       console.warn("Failed to send hedge adjustment alert:", alertError.message);
     }
