@@ -654,8 +654,7 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     // Priority 0: Critical State Recovery (No positions or partial positions)
     const activeLpPositions = status.uniswap.filter((p) => p.liquidity > 0n);
     const hasActiveLp = activeLpPositions.length > 0;
-    const hasGmxPosition =
-      status.gmx.positionSizeTokens > 0n || status.gmx.positionSizeTokens < 0n;
+    const hasGmxPosition = status.gmx.positionSizeTokens > 0n || status.gmx.positionSizeTokens < 0n;
 
     if (!hasActiveLp && !hasGmxPosition) {
       return {
