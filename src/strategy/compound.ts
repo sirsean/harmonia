@@ -197,7 +197,8 @@ export async function compoundFees(
     uniswapLiquidity.encodeIncreaseLiquidityCalldata(increaseLiquidityParams),
   ];
 
-  const multicallTx = await positionManager.multicall(multicallData);
+  // Arbitrum One can underestimate gas for Uniswap V3 multicall operations
+  const multicallTx = await positionManager.multicall(multicallData, { gasLimit: 1_000_000n });
   await multicallTx.wait();
   const multicallTxHash = multicallTx.hash;
 

@@ -22,14 +22,6 @@ describe("MonitoringDatabase - Hedge Adjustments", () => {
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath);
     }
-    try {
-      const dir = path.dirname(testDbPath);
-      if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
-        fs.rmdirSync(dir);
-      }
-    } catch (e) {
-      // Ignore
-    }
   });
 
   describe("recordHedgeAdjustment", () => {

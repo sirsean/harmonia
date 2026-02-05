@@ -26,14 +26,6 @@ describe("StateManager", () => {
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath);
     }
-    const testDataDir = path.dirname(testDbPath);
-    try {
-      if (fs.existsSync(testDataDir) && fs.readdirSync(testDataDir).length === 0) {
-        fs.rmdirSync(testDataDir);
-      }
-    } catch (e) {
-      // Ignore errors
-    }
   });
 
   describe("loadState", () => {
