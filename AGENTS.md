@@ -80,7 +80,6 @@ npm run format        # Auto-format all code
 **Transaction Confirmation Requirements:**
 - ✅ **ALWAYS wait for confirmation** - After sending any transaction (approve, transfer, mint, swap, etc.), you MUST wait for the transaction receipt before continuing
 - ✅ **Use `await tx.wait()`** - For ethers.js transactions, use `await tx.wait()` to wait for confirmation
-- ✅ **Use `await provider.waitForTransaction(txHash)`** - For transaction hashes, use `await provider.waitForTransaction(txHash)` to wait for confirmation
 - ✅ **Fetch fresh nonces** - After waiting for a transaction, fetch a fresh nonce using `await signer.getNonce("pending")` instead of manually incrementing
 - ✅ **Never manually increment nonces** - Manual nonce incrementing (`nonce += 1`) can cause "nonce too low" errors if transactions fail or other transactions occur
 
