@@ -10,6 +10,7 @@ import { HedgeAdjustmentData } from "../../../strategy/types";
 import { ERC20_ABI } from "../../../utils/abis";
 import { sendSuccessAlert } from "../../../utils/alerts";
 import { GMXRouter, IERC20 } from "../../../modules/gmx/types";
+import { TransactionReceipt } from "ethers";
 
 export interface ExecuteHedgeAdjustOptions {
   account?: string;
@@ -89,6 +90,7 @@ export async function executeHedgeAdjust(
   const executionConfig = { orderVault: ARBITRUM_MAINNET.gmxOrderVault };
 
   let txHash: string;
+  let txReceipt: TransactionReceipt | null = null;
 
   if (direction === "increase") {
     // Increase short with zero collateral (leverage floats up)
@@ -122,6 +124,9 @@ export async function executeHedgeAdjust(
     );
 
     txHash = result.txHash;
+    if (result.tx) {
+      txReceipt = (await result.tx.wait()) as TransactionReceipt;
+    }
   } else {
     // Decrease short (collateral unchanged, leverage floats down)
     const slippageBps = BigInt(Math.round(config.maxSlippage * 10000));
@@ -144,12 +149,17 @@ export async function executeHedgeAdjust(
     );
 
     txHash = result.txHash;
+    if (result.tx) {
+      txReceipt = (await result.tx.wait()) as TransactionReceipt;
+    }
   }
 
   console.log(`\nHedge adjustment tx: ${txHash}`);
 
   // Wait for transaction confirmation before recording costs and returning.
-  const receipt = await signer.provider!.waitForTransaction(txHash);
+  // Prefer tx.wait() from the submitted transaction because Hardhat's provider
+  // does not implement waitForTransaction().
+  const receipt = txReceipt ?? (await signer.provider!.getTransactionReceipt(txHash));
   if (!receipt) {
     throw new Error(`Failed to get transaction receipt for hedge adjustment: ${txHash}`);
   }

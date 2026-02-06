@@ -78,10 +78,36 @@ vi.mock("../../../../src/modules/gmx/reader", () => ({
 vi.mock("../../../../src/modules/gmx/orders", () => ({
   createRouter: vi.fn(() => ({})),
   createIncreaseOrder: vi.fn(() =>
-    Promise.resolve({ orderParams: [], multicallData: [], txHash: "0xIncreaseHash" })
+    Promise.resolve({
+      orderParams: [],
+      multicallData: [],
+      txHash: "0xIncreaseHash",
+      tx: {
+        wait: vi.fn(() =>
+          Promise.resolve({
+            gasUsed: 100000n,
+            gasPrice: 1000000000n,
+            effectiveGasPrice: 1000000000n,
+          })
+        ),
+      },
+    })
   ),
   createDecreaseOrder: vi.fn(() =>
-    Promise.resolve({ orderParams: [], multicallData: [], txHash: "0xDecreaseHash" })
+    Promise.resolve({
+      orderParams: [],
+      multicallData: [],
+      txHash: "0xDecreaseHash",
+      tx: {
+        wait: vi.fn(() =>
+          Promise.resolve({
+            gasUsed: 100000n,
+            gasPrice: 1000000000n,
+            effectiveGasPrice: 1000000000n,
+          })
+        ),
+      },
+    })
   ),
 }));
 
@@ -142,11 +168,29 @@ describe("executeHedgeAdjust", () => {
       orderParams: [] as any,
       multicallData: [],
       txHash: "0xIncreaseHash",
+      tx: {
+        wait: vi.fn(() =>
+          Promise.resolve({
+            gasUsed: 100000n,
+            gasPrice: 1000000000n,
+            effectiveGasPrice: 1000000000n,
+          })
+        ),
+      } as any,
     });
     vi.mocked(gmxOrders.createDecreaseOrder).mockResolvedValue({
       orderParams: [] as any,
       multicallData: [],
       txHash: "0xDecreaseHash",
+      tx: {
+        wait: vi.fn(() =>
+          Promise.resolve({
+            gasUsed: 100000n,
+            gasPrice: 1000000000n,
+            effectiveGasPrice: 1000000000n,
+          })
+        ),
+      } as any,
     });
 
     vi.mocked(gmxReader.createReader).mockReturnValue({} as any);
