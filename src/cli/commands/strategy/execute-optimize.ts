@@ -76,6 +76,9 @@ type SweepWethContract = {
     spender: string,
     amount: bigint
   ) => Promise<{ wait: () => Promise<{ gasUsed?: bigint; gasPrice?: bigint }> }>;
+  withdraw: (
+    amount: bigint
+  ) => Promise<{ hash?: string; wait: () => Promise<{ gasUsed?: bigint; gasPrice?: bigint }> }>;
 };
 
 type SweepSwapRouter = {
@@ -115,8 +118,9 @@ export async function sweepIdleWethToUsdc(params: {
   dustThreshold: bigint;
   refreshNonce: (provider: any, account: string) => Promise<void>;
   provider: any;
+  minEthReserveWei?: bigint;
   transactionReceipts?: Array<{ gasUsed: bigint; gasPrice: bigint }>;
-}): Promise<{ amountIn: bigint; amountOutMin: bigint } | null> {
+}): Promise<{ amountIn: bigint; amountOutMin: bigint; unwrappedForEth: bigint } | null> {
   const {
     account,
     wethContract,
@@ -129,10 +133,38 @@ export async function sweepIdleWethToUsdc(params: {
     dustThreshold,
     refreshNonce: refreshNonceFn,
     provider,
+    minEthReserveWei = ethers.parseEther("0.1"),
     transactionReceipts,
   } = params;
 
-  const amountIn = await wethContract.balanceOf(account);
+  let amountIn = await wethContract.balanceOf(account);
+  if (amountIn <= dustThreshold) {
+    return null;
+  }
+
+  let unwrappedForEth = 0n;
+
+  // Keep native ETH reserve for gas by unwrapping WETH directly when needed.
+  const nativeEthBalance = await provider.getBalance(account);
+  if (nativeEthBalance < minEthReserveWei) {
+    const neededEth = minEthReserveWei - nativeEthBalance;
+    const unwrapAmount = neededEth < amountIn ? neededEth : amountIn;
+
+    if (unwrapAmount > 0n) {
+      const unwrapTx = await wethContract.withdraw(unwrapAmount);
+      const unwrapReceipt = await unwrapTx.wait();
+      if (unwrapReceipt?.gasUsed && unwrapReceipt?.gasPrice && transactionReceipts) {
+        transactionReceipts.push({
+          gasUsed: unwrapReceipt.gasUsed,
+          gasPrice: unwrapReceipt.gasPrice,
+        });
+      }
+      await refreshNonceFn(provider, account);
+      unwrappedForEth = unwrapAmount;
+      amountIn = await wethContract.balanceOf(account);
+    }
+  }
+
   if (amountIn <= dustThreshold) {
     return null;
   }
@@ -193,7 +225,7 @@ export async function sweepIdleWethToUsdc(params: {
   }
   await refreshNonceFn(provider, account);
 
-  return { amountIn, amountOutMin };
+  return { amountIn, amountOutMin, unwrappedForEth };
 }
 
 /**
@@ -1278,11 +1310,16 @@ export async function executeOptimize(
         });
 
         if (sweepResult) {
+          if (sweepResult.unwrappedForEth > 0n) {
+            console.log(
+              `  Unwrapped ${ethers.formatUnits(sweepResult.unwrappedForEth, wethDecimals)} WETH to top up native ETH for gas`
+            );
+          }
           console.log(
             `  Swept ${ethers.formatUnits(sweepResult.amountIn, wethDecimals)} WETH for USDC (min ${ethers.formatUnits(sweepResult.amountOutMin, usdcDecimals)} USDC)`
           );
         } else {
-          console.log(`  No idle WETH above dust threshold.`);
+          console.log(`  No idle WETH above dust threshold after ETH reserve check.`);
         }
       } catch (error: any) {
         const errorMsg = error.reason || error.message || String(error);
@@ -1494,8 +1531,9 @@ export async function executeOptimize(
       console.log(
         `   - Estimated idle WETH: ${ethers.formatUnits(estimatedIdleWeth, wethDecimals)}`
       );
+      console.log(`   - Keep at least 0.1 ETH by unwrapping WETH first if needed`);
       console.log(
-        `   - Action: ${estimatedIdleWeth > wethDustThreshold ? "Convert to USDC to remove price exposure" : "Skip (below dust threshold)"}`
+        `   - Action: ${estimatedIdleWeth > wethDustThreshold ? "Top up ETH reserve, then convert remaining idle WETH to USDC" : "Skip (below dust threshold)"}`
       );
       console.log("\nTo execute, run with --execute flag");
       // Return 0 for dry-run
