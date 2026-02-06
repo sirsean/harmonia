@@ -47,6 +47,34 @@ export interface NavHistory {
   navUsd: string;
 }
 
+export type RuntimeParamSource = "manual" | "auto";
+
+export interface RuntimeParamRecord {
+  id: number;
+  account: string | null;
+  key: string;
+  value: any;
+  source: RuntimeParamSource;
+  isLocked: boolean;
+  updatedAt: number;
+  expiresAt: number | null;
+  reason: string | null;
+}
+
+export interface RuntimeParamHistoryRecord {
+  id: number;
+  timestamp: number;
+  account: string | null;
+  key: string;
+  oldValue: any | null;
+  newValue: any | null;
+  source: RuntimeParamSource;
+  action: "set" | "clear" | "expire";
+  isLocked: boolean | null;
+  expiresAt: number | null;
+  reason: string | null;
+}
+
 /**
  * Database service for storing monitoring data
  */
@@ -779,6 +807,320 @@ export class MonitoringDatabase {
   }
 
   /**
+   * Set a runtime strategy parameter override.
+   * Auto updates will not overwrite manually locked parameters.
+   */
+  setRuntimeParam(
+    account: string | null,
+    key: string,
+    value: any,
+    options: {
+      source?: RuntimeParamSource;
+      expiresAt?: number;
+      reason?: string;
+      isLocked?: boolean;
+    } = {}
+  ): { applied: boolean; reason?: string } {
+    this.cleanupExpiredRuntimeParams(account);
+
+    const source = options.source ?? "manual";
+    const isLocked = options.isLocked ?? source === "manual";
+    const now = Date.now();
+    const newValue = JSON.stringify(value);
+
+    const currentStmt = this.db.prepare(`
+      SELECT id, param_value, source, is_locked, expires_at
+      FROM runtime_params
+      WHERE account IS ? AND param_key = ?
+    `);
+
+    const existing = currentStmt.get(account, key) as
+      | {
+          id: number;
+          param_value: string;
+          source: RuntimeParamSource;
+          is_locked: number;
+          expires_at: number | null;
+        }
+      | undefined;
+
+    if (
+      source === "auto" &&
+      existing &&
+      (existing.source === "manual" || existing.is_locked === 1)
+    ) {
+      return { applied: false, reason: "manual-lock" };
+    }
+
+    const upsert = this.db.prepare(`
+      INSERT INTO runtime_params (
+        account, param_key, param_value, source, is_locked, updated_at, expires_at, reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(account, param_key) DO UPDATE SET
+        param_value = excluded.param_value,
+        source = excluded.source,
+        is_locked = excluded.is_locked,
+        updated_at = excluded.updated_at,
+        expires_at = excluded.expires_at,
+        reason = excluded.reason
+    `);
+
+    upsert.run(
+      account,
+      key,
+      newValue,
+      source,
+      isLocked ? 1 : 0,
+      now,
+      options.expiresAt ?? null,
+      options.reason ?? null
+    );
+
+    this.recordRuntimeParamHistory({
+      account,
+      key,
+      oldValue: existing?.param_value ?? null,
+      newValue,
+      source,
+      action: "set",
+      isLocked: isLocked ? 1 : 0,
+      expiresAt: options.expiresAt ?? null,
+      reason: options.reason ?? null,
+    });
+
+    return { applied: true };
+  }
+
+  /**
+   * Get a single runtime parameter override.
+   */
+  getRuntimeParam(account: string | null, key: string): RuntimeParamRecord | null {
+    this.cleanupExpiredRuntimeParams(account);
+
+    const stmt = this.db.prepare(`
+      SELECT id, account, param_key, param_value, source, is_locked, updated_at, expires_at, reason
+      FROM runtime_params
+      WHERE account IS ? AND param_key = ?
+    `);
+
+    const row = stmt.get(account, key) as
+      | {
+          id: number;
+          account: string | null;
+          param_key: string;
+          param_value: string;
+          source: RuntimeParamSource;
+          is_locked: number;
+          updated_at: number;
+          expires_at: number | null;
+          reason: string | null;
+        }
+      | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return this.mapRuntimeParamRow(row);
+  }
+
+  /**
+   * List active runtime parameters.
+   */
+  listRuntimeParams(
+    options: {
+      account?: string | null;
+      includeGlobal?: boolean;
+      key?: string;
+    } = {}
+  ): RuntimeParamRecord[] {
+    const { account, includeGlobal = false, key } = options;
+    this.cleanupExpiredRuntimeParams(account);
+
+    let query = `
+      SELECT id, account, param_key, param_value, source, is_locked, updated_at, expires_at, reason
+      FROM runtime_params
+      WHERE 1 = 1
+    `;
+    const params: any[] = [];
+
+    if (account === undefined) {
+      if (!includeGlobal) {
+        query += " AND account IS NULL";
+      }
+    } else if (includeGlobal && account !== null) {
+      query += " AND (account IS NULL OR account = ?)";
+      params.push(account);
+    } else if (account === null) {
+      query += " AND account IS NULL";
+    } else {
+      query += " AND account = ?";
+      params.push(account);
+    }
+
+    if (key) {
+      query += " AND param_key = ?";
+      params.push(key);
+    }
+
+    query += " ORDER BY CASE WHEN account IS NULL THEN 0 ELSE 1 END, updated_at DESC, id DESC";
+
+    const rows = this.db.prepare(query).all(...params) as Array<{
+      id: number;
+      account: string | null;
+      param_key: string;
+      param_value: string;
+      source: RuntimeParamSource;
+      is_locked: number;
+      updated_at: number;
+      expires_at: number | null;
+      reason: string | null;
+    }>;
+
+    return rows.map((row) => this.mapRuntimeParamRow(row));
+  }
+
+  /**
+   * Fetch global and account runtime parameters in one query.
+   */
+  getRuntimeParamSnapshot(account?: string): {
+    globalParams: RuntimeParamRecord[];
+    accountParams: RuntimeParamRecord[];
+  } {
+    if (!account) {
+      return {
+        globalParams: this.listRuntimeParams({ account: null }),
+        accountParams: [],
+      };
+    }
+
+    const allParams = this.listRuntimeParams({
+      account,
+      includeGlobal: true,
+    });
+
+    return {
+      globalParams: allParams.filter((param) => param.account === null),
+      accountParams: allParams.filter((param) => param.account === account),
+    };
+  }
+
+  /**
+   * Clear a runtime parameter override.
+   */
+  clearRuntimeParam(
+    account: string | null,
+    key: string,
+    options: { source?: RuntimeParamSource; reason?: string } = {}
+  ): boolean {
+    this.cleanupExpiredRuntimeParams(account);
+
+    const source = options.source ?? "manual";
+
+    const existingStmt = this.db.prepare(`
+      SELECT id, param_value, is_locked, expires_at, reason
+      FROM runtime_params
+      WHERE account IS ? AND param_key = ?
+    `);
+
+    const existing = existingStmt.get(account, key) as
+      | {
+          id: number;
+          param_value: string;
+          is_locked: number;
+          expires_at: number | null;
+          reason: string | null;
+        }
+      | undefined;
+
+    if (!existing) {
+      return false;
+    }
+
+    const deleteStmt = this.db.prepare(`
+      DELETE FROM runtime_params
+      WHERE account IS ? AND param_key = ?
+    `);
+    deleteStmt.run(account, key);
+
+    this.recordRuntimeParamHistory({
+      account,
+      key,
+      oldValue: existing.param_value,
+      newValue: null,
+      source,
+      action: "clear",
+      isLocked: existing.is_locked,
+      expiresAt: existing.expires_at,
+      reason: options.reason ?? existing.reason ?? null,
+    });
+
+    return true;
+  }
+
+  /**
+   * List runtime parameter history/audit trail.
+   */
+  listRuntimeParamHistory(
+    options: {
+      account?: string | null;
+      key?: string;
+      limit?: number;
+    } = {}
+  ): RuntimeParamHistoryRecord[] {
+    const { account, key, limit = 50 } = options;
+    let query = `
+      SELECT id, timestamp, account, param_key, old_value, new_value, source, action, is_locked, expires_at, reason
+      FROM runtime_param_history
+      WHERE 1 = 1
+    `;
+    const params: any[] = [];
+
+    if (account === null) {
+      query += " AND account IS NULL";
+    } else if (account !== undefined) {
+      query += " AND account = ?";
+      params.push(account);
+    }
+
+    if (key) {
+      query += " AND param_key = ?";
+      params.push(key);
+    }
+
+    query += " ORDER BY timestamp DESC, id DESC LIMIT ?";
+    params.push(limit);
+
+    const rows = this.db.prepare(query).all(...params) as Array<{
+      id: number;
+      timestamp: number;
+      account: string | null;
+      param_key: string;
+      old_value: string | null;
+      new_value: string | null;
+      source: RuntimeParamSource;
+      action: "set" | "clear" | "expire";
+      is_locked: number | null;
+      expires_at: number | null;
+      reason: string | null;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      timestamp: row.timestamp,
+      account: row.account,
+      key: row.param_key,
+      oldValue: this.parseJsonSafe(row.old_value),
+      newValue: this.parseJsonSafe(row.new_value),
+      source: row.source,
+      action: row.action,
+      isLocked: row.is_locked === null ? null : row.is_locked === 1,
+      expiresAt: row.expires_at,
+      reason: row.reason,
+    }));
+  }
+
+  /**
    * Get or initialize strategy metrics for an account
    */
   getMetrics(account: string): {
@@ -1379,6 +1721,111 @@ export class MonitoringDatabase {
     }));
   }
 
+  private mapRuntimeParamRow(row: {
+    id: number;
+    account: string | null;
+    param_key: string;
+    param_value: string;
+    source: RuntimeParamSource;
+    is_locked: number;
+    updated_at: number;
+    expires_at: number | null;
+    reason: string | null;
+  }): RuntimeParamRecord {
+    return {
+      id: row.id,
+      account: row.account,
+      key: row.param_key,
+      value: this.parseJsonSafe(row.param_value),
+      source: row.source,
+      isLocked: row.is_locked === 1,
+      updatedAt: row.updated_at,
+      expiresAt: row.expires_at,
+      reason: row.reason,
+    };
+  }
+
+  private recordRuntimeParamHistory(params: {
+    account: string | null;
+    key: string;
+    oldValue: string | null;
+    newValue: string | null;
+    source: RuntimeParamSource;
+    action: "set" | "clear" | "expire";
+    isLocked: number | null;
+    expiresAt: number | null;
+    reason: string | null;
+  }): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO runtime_param_history (
+        timestamp, account, param_key, old_value, new_value, source, action, is_locked, expires_at, reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      Date.now(),
+      params.account,
+      params.key,
+      params.oldValue,
+      params.newValue,
+      params.source,
+      params.action,
+      params.isLocked,
+      params.expiresAt,
+      params.reason
+    );
+  }
+
+  private cleanupExpiredRuntimeParams(account?: string | null): void {
+    let query = `
+      SELECT id, account, param_key, param_value, source, is_locked, expires_at, reason
+      FROM runtime_params
+      WHERE expires_at IS NOT NULL AND expires_at <= ?
+    `;
+    const params: any[] = [Date.now()];
+
+    if (account === null) {
+      query += " AND account IS NULL";
+    } else if (account !== undefined) {
+      query += " AND account = ?";
+      params.push(account);
+    }
+
+    const expiredRows = this.db.prepare(query).all(...params) as Array<{
+      id: number;
+      account: string | null;
+      param_key: string;
+      param_value: string;
+      source: RuntimeParamSource;
+      is_locked: number;
+      expires_at: number | null;
+      reason: string | null;
+    }>;
+
+    if (expiredRows.length === 0) {
+      return;
+    }
+
+    const deleteStmt = this.db.prepare(`DELETE FROM runtime_params WHERE id = ?`);
+    const cleanup = this.db.transaction(() => {
+      for (const row of expiredRows) {
+        this.recordRuntimeParamHistory({
+          account: row.account,
+          key: row.param_key,
+          oldValue: row.param_value,
+          newValue: null,
+          source: row.source,
+          action: "expire",
+          isLocked: row.is_locked,
+          expiresAt: row.expires_at,
+          reason: row.reason,
+        });
+        deleteStmt.run(row.id);
+      }
+    });
+    cleanup();
+  }
+
   /**
    * Normalize potentially mixed-scale USD values to 30 decimals.
    *
@@ -1406,6 +1853,18 @@ export class MonitoringDatabase {
       return BigInt(value);
     } catch {
       return 0n;
+    }
+  }
+
+  private parseJsonSafe(value: string | null): any {
+    if (value === null) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
     }
   }
 

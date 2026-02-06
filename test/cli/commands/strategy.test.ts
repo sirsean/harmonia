@@ -47,5 +47,6 @@ describe("Strategy Commands", () => {
     expect(subcommands).toContain("monitor");
     expect(subcommands).toContain("optimize");
     expect(subcommands).toContain("close");
+    expect(subcommands).toContain("params");
   });
 });

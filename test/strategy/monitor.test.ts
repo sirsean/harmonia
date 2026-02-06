@@ -281,6 +281,44 @@ describe("DeltaNeutralMonitor", () => {
     expect(result.recommendation.action).toBe(StrategyAction.OPTIMIZE);
   });
 
+  it("should proactively recommend OPTIMIZE when price is near range edge under default width", async () => {
+    // Keep total width near default (~6%) but shift center so current price is near upper edge.
+    // This should trigger the near-edge threshold (15% of span) before going out of range.
+    const nearEdgePos = {
+      ...mockUniswapPosition,
+      tickLower: 69080 - 550,
+      tickUpper: 69080 + 50,
+      tokensOwed0: 6000000n, // Ensure range issue is economically actionable
+    };
+
+    vi.mocked(uniswapReader.getPosition).mockResolvedValue(nearEdgePos);
+    vi.mocked(uniswapReader.getPositionWithFees).mockResolvedValue(nearEdgePos);
+    vi.mocked(uniswapReader.getActivePositionsForOwner).mockResolvedValue([
+      { tokenId: 123n, position: nearEdgePos },
+    ]);
+
+    // First compute LP delta, then set GMX to perfect hedge so range logic drives recommendation.
+    vi.mocked(gmxReader.getPosition).mockResolvedValue(undefined);
+    const initialResult = await monitor.check();
+    const lpDelta = initialResult.status.totalLpDelta;
+
+    vi.mocked(gmxReader.getPosition).mockResolvedValue({
+      addresses: {} as any,
+      numbers: {
+        sizeInTokens: lpDelta,
+        collateralAmount: 0n,
+        sizeInUsd: 0n,
+        shortTokenClaimableFundingAmountPerSize: 0n,
+      } as any,
+      flags: { isLong: false },
+    });
+
+    const result = await monitor.check();
+
+    expect(result.recommendation.action).toBe(StrategyAction.OPTIMIZE);
+    expect(result.recommendation.reason).toContain("edge");
+  });
+
   describe("token metadata caching", () => {
     it("should cache token metadata after first check()", async () => {
       const mockPoolContract = {

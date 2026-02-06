@@ -1,7 +1,6 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../config/addresses";
 import { DeltaNeutralMonitor } from "../../strategy/monitor";
-import { loadStrategyConfig } from "../../config/strategy";
 import { getAmountsForLiquidity, getSqrtRatioAtTick } from "../../modules/math/ticks";
 import * as uniswapReader from "../../modules/uniswap/reader";
 import { getSignerAndAccount } from "./base";
@@ -22,6 +21,8 @@ import {
 import { generateDailyReport, saveDailyReport } from "../../utils/reports";
 import { generateDiscordSummary } from "./report-impl";
 import { StrategyStatus, Recommendation } from "../../strategy/types";
+import { diffStrategyConfigs, loadEffectiveStrategyConfig } from "../../strategy/runtime-config";
+import { runAutoTuner } from "../../strategy/auto-tuner";
 
 export interface DaemonOptions {
   account?: string;
@@ -52,7 +53,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
   const db = new MonitoringDatabase(dbPath);
 
   // Initialize monitor
-  const config = loadStrategyConfig();
+  let effectiveConfig = loadEffectiveStrategyConfig(db, account).config;
   const context = {
     uniswap: {
       positionManager: ARBITRUM_MAINNET.uniswapV3PositionManager,
@@ -69,7 +70,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
     multicall3: ARBITRUM_MAINNET.multicall3,
   };
 
-  const monitorInstance = new DeltaNeutralMonitor(ethers.provider, config, context, db);
+  const monitorInstance = new DeltaNeutralMonitor(ethers.provider, effectiveConfig, context, db);
 
   // Get pool contract to determine token order and decimals
   const poolContract = uniswapReader.createPool(context.uniswap.pool, ethers.provider);
@@ -261,6 +262,41 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
         // Check if we should stop before starting a new check
         if (!isRunning) break;
 
+        // Refresh runtime config each cycle (manual overrides + account-specific values).
+        const refreshedConfig = loadEffectiveStrategyConfig(db, account).config;
+        const manualChanges = diffStrategyConfigs(effectiveConfig, refreshedConfig);
+        if (manualChanges.length > 0) {
+          effectiveConfig = refreshedConfig;
+          monitorInstance.setConfig(effectiveConfig);
+          logger.info("Applied runtime strategy config update", {
+            source: "manual-or-expiry",
+            changedKeys: manualChanges.map((change) => change.key),
+            changes: manualChanges,
+          });
+        }
+
+        // Run auto-tuner after manual refresh. If it applies updates, re-resolve effective config.
+        const autoTuneResult = runAutoTuner({
+          db,
+          account,
+          effectiveConfig,
+        });
+        if (autoTuneResult.applied) {
+          const autoTunedConfig = loadEffectiveStrategyConfig(db, account).config;
+          const autoChanges = diffStrategyConfigs(effectiveConfig, autoTunedConfig);
+          if (autoChanges.length > 0) {
+            effectiveConfig = autoTunedConfig;
+            monitorInstance.setConfig(effectiveConfig);
+            logger.info("Applied auto-tuner strategy config update", {
+              regime: autoTuneResult.regime,
+              candidateRegime: autoTuneResult.candidateRegime,
+              metrics: autoTuneResult.metrics,
+              changedKeys: autoChanges.map((change) => change.key),
+              changes: autoChanges,
+            });
+          }
+        }
+
         logger.debug("Running monitoring check", { account, timestamp: Date.now() });
 
         // Perform monitoring check
@@ -380,6 +416,8 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               account,
               execute: true,
               suppressAlert: true,
+              strategyConfig: effectiveConfig,
+              dbPath,
             });
 
             // Optimization succeeded - reset failure counter
@@ -452,7 +490,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
 
             // Record successful optimization in database
             try {
-              const gasCostUsd = config.estimatedOptimizationGasCostUsd;
+              const gasCostUsd = effectiveConfig.estimatedOptimizationGasCostUsd;
               const benefitUsd = recommendation.data?.estimatedBenefitUsd || totalFeesUsd;
               db.recordOptimization(
                 account,
@@ -588,6 +626,7 @@ export async function daemon(options: DaemonOptions = {}): Promise<void> {
               execute: true,
               suppressAlert: true,
               dbPath,
+              strategyConfig: effectiveConfig,
             });
 
             consecutiveHedgeFailures = 0;

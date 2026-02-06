@@ -119,8 +119,8 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   estimatedOptimizationGasCostUsd: BigInt(2) * PRECISION.GMX_USD, // ~$2 in gas costs (30 decimals)
 
   // Range adjustment parameters
-  rangeAdjustmentThreshold: 0.02, // 2%
-  rangeCenterDriftThreshold: 0.05, // 5%
+  rangeAdjustmentThreshold: 0.15, // Trigger when price is within 15% of range span from either edge
+  rangeCenterDriftThreshold: 0.02, // Trigger when price drifts 2% from center (proactive for 6% width)
 
   // Range size parameters
   defaultRangeWidth: 0.06, // 6% total width (±3% on each side) - tighter range for higher capital efficiency
@@ -289,6 +289,11 @@ export function validateStrategyConfig(config: StrategyConfig): void {
       `rangeAdjustmentThreshold must be between 0 and 1, got ${config.rangeAdjustmentThreshold}`
     );
   }
+  if (config.rangeAdjustmentThreshold >= 0.5) {
+    throw new Error(
+      `rangeAdjustmentThreshold (${config.rangeAdjustmentThreshold}) must be less than 0.5 (distance-to-edge ratio)`
+    );
+  }
   if (config.rangeCenterDriftThreshold <= 0 || config.rangeCenterDriftThreshold >= 1) {
     throw new Error(
       `rangeCenterDriftThreshold must be between 0 and 1, got ${config.rangeCenterDriftThreshold}`
@@ -305,6 +310,14 @@ export function validateStrategyConfig(config: StrategyConfig): void {
   if (config.maxRangeWidth <= config.defaultRangeWidth) {
     throw new Error(
       `maxRangeWidth (${config.maxRangeWidth}) must be greater than defaultRangeWidth (${config.defaultRangeWidth})`
+    );
+  }
+  if (config.maxRangeWidth >= 1) {
+    throw new Error(`maxRangeWidth must be less than 1, got ${config.maxRangeWidth}`);
+  }
+  if (config.rangeCenterDriftThreshold >= config.defaultRangeWidth / 2) {
+    throw new Error(
+      `rangeCenterDriftThreshold (${config.rangeCenterDriftThreshold}) must be less than half of defaultRangeWidth (${config.defaultRangeWidth / 2})`
     );
   }
 

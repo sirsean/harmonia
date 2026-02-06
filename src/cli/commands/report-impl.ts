@@ -1,7 +1,6 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../config/addresses";
 import { DeltaNeutralMonitor } from "../../strategy/monitor";
-import { loadStrategyConfig } from "../../config/strategy";
 import { getAmountsForLiquidity, getSqrtRatioAtTick } from "../../modules/math/ticks";
 import * as uniswapReader from "../../modules/uniswap/reader";
 import { getSignerAndAccount } from "./base";
@@ -25,6 +24,7 @@ import {
   formatUsd30,
   projectCapitalBands,
 } from "../../utils/capital-bands";
+import { loadEffectiveStrategyConfig } from "../../strategy/runtime-config";
 
 export interface ReportOptions {
   account?: string;
@@ -42,7 +42,8 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
   logger.info("Generating daily report", { account, date: options.date });
 
   // Configuration
-  const config = loadStrategyConfig();
+  const db = new MonitoringDatabase();
+  const config = loadEffectiveStrategyConfig(db, account).config;
   const context = {
     uniswap: {
       positionManager: ARBITRUM_MAINNET.uniswapV3PositionManager,
@@ -172,7 +173,6 @@ export async function generateReport(options: ReportOptions = {}): Promise<void>
   };
 
   // Get APR metrics
-  const db = new MonitoringDatabase();
   let aprMetricsData: { apr1d?: number; apr7d?: number; apr30d?: number } = {};
   let netYield24h: bigint | undefined;
 

@@ -2,13 +2,14 @@ import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../config/addresses";
 import { DeltaNeutralMonitor } from "../../strategy/monitor";
 import { StrategyAction } from "../../strategy/types";
-import { loadStrategyConfig } from "../../config/strategy";
 import { getAmountsForLiquidity, getSqrtRatioAtTick } from "../../modules/math/ticks";
 import * as uniswapReader from "../../modules/uniswap/reader";
 import { getSignerAndAccount } from "./base";
 import { ERC20_ABI } from "../../utils/abis";
 import { getLogger } from "../../utils/logger";
 import { generateDailyReport, saveDailyReport, formatReportSummary } from "../../utils/reports";
+import { MonitoringDatabase } from "../../utils/database";
+import { diffStrategyConfigs, loadEffectiveStrategyConfig } from "../../strategy/runtime-config";
 
 export interface DashboardOptions {
   account?: string;
@@ -243,7 +244,8 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
 
   logger.info("Starting dashboard", { account, refreshInterval, autoRefresh });
 
-  const config = loadStrategyConfig();
+  const runtimeDb = new MonitoringDatabase();
+  let effectiveConfig = loadEffectiveStrategyConfig(runtimeDb, account).config;
 
   const context = {
     uniswap: {
@@ -261,7 +263,7 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
     multicall3: ARBITRUM_MAINNET.multicall3,
   };
 
-  const monitorInstance = new DeltaNeutralMonitor(ethers.provider, config, context);
+  const monitorInstance = new DeltaNeutralMonitor(ethers.provider, effectiveConfig, context);
 
   // Get pool contract to determine token order and decimals
   const poolContract = uniswapReader.createPool(context.uniswap.pool, ethers.provider);
@@ -309,6 +311,16 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
 
   const updateDashboard = async () => {
     try {
+      const refreshedConfig = loadEffectiveStrategyConfig(runtimeDb, account).config;
+      const changes = diffStrategyConfigs(effectiveConfig, refreshedConfig);
+      if (changes.length > 0) {
+        effectiveConfig = refreshedConfig;
+        monitorInstance.setConfig(effectiveConfig);
+        logger.info("Dashboard applied runtime strategy config update", {
+          changedKeys: changes.map((change) => change.key),
+        });
+      }
+
       const { status, recommendation } = await monitorInstance.check();
 
       // Get current risk token price
@@ -441,6 +453,7 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
     // Handle graceful shutdown
     process.on("SIGINT", () => {
       clearInterval(intervalId);
+      runtimeDb.close();
       logger.info("Dashboard stopped");
       logger.close();
       clearScreen();
@@ -448,6 +461,7 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
       process.exit(0);
     });
   } else {
+    runtimeDb.close();
     logger.close();
   }
 }

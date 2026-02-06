@@ -536,6 +536,100 @@ npm run cli -- strategy monitor --network arbitrum --token-id 12345
 NETWORK=arbitrum npm run cli -- strategy monitor --token-id 12345
 ```
 
+### Optimize Position
+
+Execute full optimization (collect fees, reset LP range, update hedge):
+
+```bash
+npm run cli -- strategy optimize [options]
+```
+
+Options:
+- `--token-id <id>` - Optional Uniswap token ID
+- `--range-width <number>` - Optional explicit range width override
+- `--price-lower <number>` - Optional lower price override
+- `--price-upper <number>` - Optional upper price override
+- `--slippage-bps <number>` - Slippage tolerance (default: 50)
+- `--db-path <path>` - Runtime params DB path (default: `./data/monitoring.db`)
+- `--execute` - Actually execute transactions (default: dry-run)
+
+Notes:
+- If `--range-width` is omitted, optimize uses the **effective runtime** `defaultRangeWidth` (account/global overrides included).
+
+### Runtime Strategy Params
+
+Manage runtime-tunable strategy parameters:
+
+```bash
+npm run cli -- strategy params <subcommand> [options]
+```
+
+#### `show`
+
+Show effective runtime strategy parameters:
+
+```bash
+npm run cli -- strategy params show --network arbitrum
+npm run cli -- strategy params show --network arbitrum --global
+```
+
+Options:
+- `--global` - Show global scope only
+- `--db-path <path>` - Custom database path
+
+#### `set`
+
+Set a runtime strategy parameter (manual lock by default):
+
+```bash
+npm run cli -- strategy params set --network arbitrum --key defaultRangeWidth --value 0.08
+npm run cli -- strategy params set --network arbitrum --key hedgeDeltaThreshold --value 0.04 --ttl 3600 --reason \"temporary tighter hedge\"
+```
+
+Options:
+- `--key <key>` - Parameter key
+- `--value <value>` - Numeric value
+- `--ttl <seconds>` - Optional TTL
+- `--reason <text>` - Optional audit reason
+- `--global` - Write to global scope
+- `--db-path <path>` - Custom database path
+
+Supported runtime strategy keys:
+- `defaultRangeWidth`
+- `rangeAdjustmentThreshold`
+- `rangeCenterDriftThreshold`
+- `hedgeDeltaThreshold`
+- `optimizationDeltaThreshold`
+- `emergencyDeltaThreshold`
+- `minRangeWidth`
+- `maxRangeWidth`
+
+#### `clear`
+
+Clear a runtime parameter:
+
+```bash
+npm run cli -- strategy params clear --network arbitrum --key hedgeDeltaThreshold
+```
+
+#### `history`
+
+Query runtime parameter audit history:
+
+```bash
+npm run cli -- strategy params history --network arbitrum --limit 50
+npm run cli -- strategy params history --network arbitrum --key defaultRangeWidth
+```
+
+#### `auto`
+
+Enable/disable auto regime tuning:
+
+```bash
+npm run cli -- strategy params auto --network arbitrum --enable
+npm run cli -- strategy params auto --network arbitrum --disable
+```
+
 ## Extending the CLI
 
 The CLI is designed to be easily extensible. To add a new command:

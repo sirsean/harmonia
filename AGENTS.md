@@ -237,41 +237,49 @@ npm run cli -- gmx read-position
 npm run cli -- uniswap read-position
 ```
 
-## Important Constants
+## Runtime Strategy Parameters
 
-Contract addresses and strategy parameters are defined in `src/config/`:
+Strategy config is now runtime-tunable via SQLite-backed params.
 
-**Addresses** (`src/config/addresses.ts`):
-```typescript
-import { ARBITRUM_MAINNET, STRATEGY_PARAMS } from './config/addresses';
+### Parameter precedence
 
-// Key addresses
-ARBITRUM_MAINNET.usdc              // "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
-ARBITRUM_MAINNET.weth              // "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"
-ARBITRUM_MAINNET.gmxExchangeRouter // "0x1C3fa76e6E1088bCE750f23a5BFcffa1efEF6A41"
-ARBITRUM_MAINNET.uniswapV3PositionManager // "0xC36442b4a4522E871399CD717aBDD847Ab11FE88"
+1. Account runtime param override
+2. Global runtime param override
+3. Environment/default config from `src/config/strategy.ts`
 
-// Strategy parameters (BigInt values)
-STRATEGY_PARAMS.DELTA_THRESHOLD    // 5e16 (5%) - trigger rebalance
-STRATEGY_PARAMS.MAX_LEVERAGE       // 3e18 (3x) - max leverage on perps
-STRATEGY_PARAMS.MAX_SLIPPAGE       // 1e16 (1%) - slippage tolerance
-STRATEGY_PARAMS.EMERGENCY_THRESHOLD // 20e16 (20%) - emergency alert threshold
+### CLI commands
+
+```bash
+# Show effective params (account scope by default)
+npm run cli -- strategy params show --network arbitrum
+
+# Show global scope only
+npm run cli -- strategy params show --network arbitrum --global
+
+# Set runtime param (manual lock by default)
+npm run cli -- strategy params set --network arbitrum --key defaultRangeWidth --value 0.08 --reason "widen for volatility"
+
+# Set runtime param with TTL
+npm run cli -- strategy params set --network arbitrum --key hedgeDeltaThreshold --value 0.04 --ttl 3600 --reason "temporary tighter hedge"
+
+# Clear runtime param
+npm run cli -- strategy params clear --network arbitrum --key hedgeDeltaThreshold
+
+# View runtime param history
+npm run cli -- strategy params history --network arbitrum --limit 50
+
+# Enable/disable auto-tuning
+npm run cli -- strategy params auto --network arbitrum --enable
+npm run cli -- strategy params auto --network arbitrum --disable
 ```
 
-**Range Configuration** (`src/config/markets.ts` or `src/config/strategy.ts`):
-```typescript
-import { RANGE_CONFIG, getDefaultRangeBounds } from './config/range';
+### Source of truth
 
-RANGE_CONFIG.DEFAULT_RANGE_WIDTH              // 0.2 (20% total = ±10%)
-RANGE_CONFIG.MIN_RANGE_WIDTH                 // 0.1 (10% minimum = ±5%)
-RANGE_CONFIG.MAX_RANGE_WIDTH                 // 0.4 (40% maximum = ±20%)
-RANGE_CONFIG.RANGE_ADJUSTMENT_THRESHOLD      // 0.02 (2% - adjust if near edge)
-RANGE_CONFIG.RANGE_CENTER_DRIFT_THRESHOLD   // 0.05 (5% - adjust if drifted from center)
-RANGE_CONFIG.MIN_RANGE_ADJUSTMENT_INTERVAL   // 3600 (1 hour minimum)
-
-// Helper function to get default range bounds
-const bounds = getDefaultRangeBounds(currentPrice, rangeWidth);
-```
+- Contract addresses: `src/config/addresses.ts`
+- Static strategy defaults + validation: `src/config/strategy.ts`
+- Runtime merge/precedence logic: `src/strategy/runtime-config.ts`
+- Auto regime tuning: `src/strategy/auto-tuner.ts`
+- Runtime param storage + audit: `src/utils/database.ts`, `src/utils/migrations.ts`
 
 ## Documentation
 

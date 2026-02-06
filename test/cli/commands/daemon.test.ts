@@ -107,6 +107,60 @@ vi.mock("../../../src/config/strategy", () => ({
   }),
 }));
 
+// Mock runtime config resolver
+vi.mock("../../../src/strategy/runtime-config", () => ({
+  loadEffectiveStrategyConfig: vi.fn().mockReturnValue({
+    config: {
+      optimizationDeltaThreshold: 0.1,
+      emergencyDeltaThreshold: 0.2,
+      minOptimizationInterval: 3600,
+      maxOptimizationInterval: 86400,
+      maxLeverage: 3.0,
+      minPositionSizeUsd: BigInt("10000000000000000000000000000"),
+      maxPositionSizeUsd: BigInt("50000000000000000000000000000"),
+      maxSlippage: 0.01,
+      slippageBuffer: 0.005,
+      minOptimizationFeeThresholdUsd: BigInt("5000000000000000000000000000"),
+      defaultExecutionFee: BigInt("1000000000000000"),
+      estimatedOptimizationGasCostUsd: BigInt("2000000000000000000000000000"),
+      rangeAdjustmentThreshold: 0.15,
+      rangeCenterDriftThreshold: 0.02,
+      defaultRangeWidth: 0.06,
+      minRangeWidth: 0.04,
+      maxRangeWidth: 0.4,
+      targetLeverage: 3.0,
+      minOptimizationBenefitRatio: 1.5,
+      hedgeDeltaThreshold: 0.05,
+      minHedgeInterval: 300,
+      minHedgeAdjustmentUsd: BigInt("5000000000000000000000000000000"),
+      maxHedgeLeverage: 10.0,
+    },
+    appliedParams: [],
+    globalParams: [],
+    accountParams: [],
+  }),
+  diffStrategyConfigs: vi.fn().mockReturnValue([]),
+}));
+
+// Mock auto tuner
+vi.mock("../../../src/strategy/auto-tuner", () => ({
+  runAutoTuner: vi.fn().mockReturnValue({
+    enabled: false,
+    applied: false,
+    regime: "normal",
+    candidateRegime: "normal",
+    metrics: {
+      volatility1h: 0,
+      volatility24h: 0,
+      outOfRangeFrequency24h: 0,
+      hedgeAdjustmentsPerHour: 0,
+      optimizationsPerHour: 0,
+      feeToCostRatio24h: 0,
+    },
+    changes: [],
+  }),
+}));
+
 // Mock addresses
 vi.mock("../../../src/config/addresses", () => ({
   ARBITRUM_MAINNET: {
@@ -125,6 +179,7 @@ const mockCheckFn = vi.fn();
 vi.mock("../../../src/strategy/monitor", () => ({
   DeltaNeutralMonitor: vi.fn().mockImplementation(() => ({
     check: mockCheckFn,
+    setConfig: vi.fn(),
   })),
 }));
 
@@ -307,6 +362,48 @@ describe("daemon command", () => {
     expect(snapshot).not.toBeNull();
     expect(snapshot!.account).toBe("0x1234567890123456789012345678901234567890");
     expect(snapshot!.recommendationAction).toBe(StrategyAction.NONE);
+  });
+
+  it("should hot-reload runtime config changes without restart", async () => {
+    const status = createMockStatus();
+    const recommendation = createMockRecommendation();
+    mockCheckFn.mockResolvedValue({ status, recommendation });
+
+    const { diffStrategyConfigs } = await import("../../../src/strategy/runtime-config");
+    vi.mocked(diffStrategyConfigs)
+      .mockReturnValueOnce([
+        {
+          key: "defaultRangeWidth",
+          before: "0.06",
+          after: "0.08",
+        },
+      ] as any)
+      .mockReturnValue([]);
+
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+
+    const daemonPromise = daemon({
+      account: "0x1234567890123456789012345678901234567890",
+      interval: 1,
+      dbPath: testDbPath,
+    }).catch(() => {});
+
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const { DeltaNeutralMonitor } = await import("../../../src/strategy/monitor");
+    const monitorInstance = vi.mocked(DeltaNeutralMonitor).mock.results[0]?.value as {
+      setConfig: ReturnType<typeof vi.fn>;
+    };
+
+    expect(monitorInstance.setConfig).toHaveBeenCalled();
+
+    process.emit("SIGINT" as any, "SIGINT");
+    await vi.advanceTimersByTimeAsync(100);
+    await daemonPromise;
+    exitSpy.mockRestore();
   });
 
   it("should handle errors gracefully with exponential backoff", async () => {
@@ -659,11 +756,13 @@ describe("daemon command", () => {
 
       // Verify optimization was called
       const { executeOptimize: executeOptimizeFn } = await import("../../../src/cli/commands/strategy/execute-optimize");
-      expect(executeOptimizeFn).toHaveBeenCalledWith({
-        account: "0x1234567890123456789012345678901234567890",
-        execute: true,
-        suppressAlert: true,
-      });
+      expect(executeOptimizeFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          account: "0x1234567890123456789012345678901234567890",
+          execute: true,
+          suppressAlert: true,
+        })
+      );
 
       const { sendSuccessAlert } = await import("../../../src/utils/alerts");
       expect(sendSuccessAlert).toHaveBeenCalledWith(

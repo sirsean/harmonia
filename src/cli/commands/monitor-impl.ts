@@ -2,12 +2,13 @@ import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../config/addresses";
 import { DeltaNeutralMonitor } from "../../strategy/monitor";
 import { StrategyAction } from "../../strategy/types";
-import { loadStrategyConfig } from "../../config/strategy";
 import { getAmountsForLiquidity, getSqrtRatioAtTick } from "../../modules/math/ticks";
 import * as uniswapReader from "../../modules/uniswap/reader";
 import { getSignerAndAccount } from "./base";
 import { ERC20_ABI } from "../../utils/abis";
 import { sendErrorAlert, sendWarningAlert } from "../../utils/alerts";
+import { MonitoringDatabase } from "../../utils/database";
+import { loadEffectiveStrategyConfig } from "../../strategy/runtime-config";
 
 export interface MonitorOptions {
   account?: string;
@@ -18,6 +19,7 @@ export interface MonitorOptions {
 export async function monitor(options: MonitorOptions = {}): Promise<void> {
   const { account } = await getSignerAndAccount(options.account);
   console.log("Monitoring account:", account);
+  const runtimeDb = new MonitoringDatabase();
 
   // Configuration from environment or defaults
   const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
@@ -26,9 +28,11 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
     ? ethers.parseUnits(options.minFeeThreshold, 30)
     : ethers.parseUnits("10", 30); // $10 worth of fees (USD 30 decimals)
 
-  const config = loadStrategyConfig({
+  const effectiveConfig = loadEffectiveStrategyConfig(runtimeDb, account).config;
+  const config = {
+    ...effectiveConfig,
     minOptimizationFeeThresholdUsd,
-  });
+  };
 
   const context = {
     uniswap: {
@@ -344,5 +348,7 @@ export async function monitor(options: MonitorOptions = {}): Promise<void> {
     });
 
     throw error;
+  } finally {
+    runtimeDb.close();
   }
 }

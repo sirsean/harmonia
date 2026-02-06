@@ -82,6 +82,8 @@ describe("Database Migrations", () => {
       expect(tableNames).toContain("monitoring_snapshots");
       expect(tableNames).toContain("position_snapshots");
       expect(tableNames).toContain("nav_history");
+      expect(tableNames).toContain("runtime_params");
+      expect(tableNames).toContain("runtime_param_history");
       expect(tableNames).toContain("schema_migrations");
     });
 
