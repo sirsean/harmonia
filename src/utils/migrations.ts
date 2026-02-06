@@ -462,6 +462,39 @@ const migration009_wallet_balances: Migration = {
 };
 
 /**
+ * Migration: Add cost columns to hedge adjustment history
+ */
+const migration010_hedge_cost_columns: Migration = {
+  version: 10,
+  name: "hedge_cost_columns",
+  up: (db: Database.Database) => {
+    const tableInfo = db.prepare("PRAGMA table_info(hedge_adjustment_history)").all() as Array<{
+      name: string;
+    }>;
+
+    const hasGasCost = tableInfo.some((col) => col.name === "gas_cost_usd");
+    const hasGmxExecutionFee = tableInfo.some((col) => col.name === "gmx_execution_fee_usd");
+
+    if (!hasGasCost) {
+      db.exec(`
+        ALTER TABLE hedge_adjustment_history
+        ADD COLUMN gas_cost_usd TEXT
+      `);
+    }
+
+    if (!hasGmxExecutionFee) {
+      db.exec(`
+        ALTER TABLE hedge_adjustment_history
+        ADD COLUMN gmx_execution_fee_usd TEXT
+      `);
+    }
+  },
+  down: (db: Database.Database) => {
+    // SQLite doesn't support DROP COLUMN; leave columns in place.
+  },
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
@@ -474,6 +507,7 @@ export const migrations: Migration[] = [
   migration007_cleanup_old_costs,
   migration008_hedge_adjustments,
   migration009_wallet_balances,
+  migration010_hedge_cost_columns,
 ];
 
 /**

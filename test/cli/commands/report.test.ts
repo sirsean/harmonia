@@ -168,6 +168,15 @@ describe("Report Command", () => {
     expect(hasDateOption).toBe(true);
     expect(hasReportsDirOption).toBe(true);
   });
+
+  it("should register capital-bands command", () => {
+    registerReportCommand(program);
+    const cmd = program.commands.find((c) => c.name() === "capital-bands");
+    expect(cmd).toBeDefined();
+    expect(cmd?.description()).toBe(
+      "Estimate break-even capital and scaling effects from recent performance"
+    );
+  });
 });
 
 describe("Report Implementation", () => {

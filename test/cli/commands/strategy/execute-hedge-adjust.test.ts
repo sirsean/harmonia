@@ -9,6 +9,13 @@ vi.mock("hardhat", () => ({
         provider: {
           getBlockNumber: vi.fn(() => Promise.resolve(1000)),
           getTransactionCount: vi.fn(() => Promise.resolve(0)),
+          waitForTransaction: vi.fn(() =>
+            Promise.resolve({
+              gasUsed: 100000n,
+              gasPrice: 1000000000n,
+              effectiveGasPrice: 1000000000n,
+            })
+          ),
         },
       },
     ]),
@@ -16,10 +23,20 @@ vi.mock("hardhat", () => ({
       getBlockNumber: vi.fn(() => Promise.resolve(1000)),
     },
     parseUnits: vi.fn((val: string, decimals: number) => {
-      return BigInt(val) * 10n ** BigInt(decimals);
+      const negative = val.startsWith("-");
+      const abs = negative ? val.slice(1) : val;
+      const [whole, frac = ""] = abs.split(".");
+      const fracPadded = frac.padEnd(decimals, "0").slice(0, decimals);
+      const wholePart = BigInt(whole || "0") * 10n ** BigInt(decimals);
+      const fracPart = BigInt(fracPadded || "0");
+      const parsed = wholePart + fracPart;
+      return negative ? -parsed : parsed;
     }),
     formatUnits: vi.fn((val: bigint, decimals: number) => {
       return (Number(val) / Number(10n ** BigInt(decimals))).toString();
+    }),
+    formatEther: vi.fn((val: bigint) => {
+      return (Number(val) / 1e18).toString();
     }),
     parseEther: vi.fn((val: string) => {
       const num = parseFloat(val);
@@ -36,6 +53,13 @@ vi.mock("../../../../src/cli/commands/base", () => ({
       provider: {
         getBlockNumber: vi.fn(() => Promise.resolve(1000)),
         getTransactionCount: vi.fn(() => Promise.resolve(0)),
+        waitForTransaction: vi.fn(() =>
+          Promise.resolve({
+            gasUsed: 100000n,
+            gasPrice: 1000000000n,
+            effectiveGasPrice: 1000000000n,
+          })
+        ),
       },
     },
     account: account || "0xAccount",

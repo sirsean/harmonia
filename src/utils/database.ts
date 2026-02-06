@@ -52,6 +52,8 @@ export interface NavHistory {
  */
 export class MonitoringDatabase {
   private db: Database.Database;
+  private static readonly USD_30_SCALE_THRESHOLD = 10n ** 24n;
+  private static readonly USD_18_TO_30_MULTIPLIER = 10n ** 12n;
 
   constructor(dbPath?: string) {
     const defaultPath = path.join(process.cwd(), "data", "monitoring.db");
@@ -1040,26 +1042,61 @@ export class MonitoringDatabase {
 
     for (const row of rows) {
       if (row.gas_cost_usd) {
-        // Handle potential huge values or garbage by wrapping in try/catch if necessary
-        // but BigInt constructor should handle valid numeric strings
-        try {
-          totalGas += BigInt(row.gas_cost_usd);
-        } catch (e) {
-          // Ignore invalid values
-        }
+        totalGas += this.parseBigIntSafe(row.gas_cost_usd);
       }
       if (row.gmx_execution_fee_usd) {
-        try {
-          totalGmxFees += BigInt(row.gmx_execution_fee_usd);
-        } catch (e) {
-          // Ignore invalid values
+        totalGmxFees += this.normalizeUsdValue(row.gmx_execution_fee_usd, true);
+      }
+    }
+
+    // Add hedge adjustment costs if columns exist (newer schema).
+    const tableInfo = this.db
+      .prepare("PRAGMA table_info(hedge_adjustment_history)")
+      .all() as Array<{
+      name: string;
+    }>;
+    const hasGasColumn = tableInfo.some((col) => col.name === "gas_cost_usd");
+    const hasGmxColumn = tableInfo.some((col) => col.name === "gmx_execution_fee_usd");
+
+    let totalHedgeGas = 0n;
+    let totalHedgeGmxFees = 0n;
+
+    if (hasGasColumn || hasGmxColumn) {
+      let hedgeQuery = `
+        SELECT gas_cost_usd, gmx_execution_fee_usd
+        FROM hedge_adjustment_history
+        WHERE account = ?
+      `;
+      const hedgeParams: any[] = [account];
+
+      if (startTime !== undefined) {
+        hedgeQuery += " AND timestamp >= ?";
+        hedgeParams.push(startTime);
+      }
+
+      if (endTime !== undefined) {
+        hedgeQuery += " AND timestamp <= ?";
+        hedgeParams.push(endTime);
+      }
+
+      const hedgeRows = this.db.prepare(hedgeQuery).all(...hedgeParams) as Array<{
+        gas_cost_usd: string | null;
+        gmx_execution_fee_usd: string | null;
+      }>;
+
+      for (const row of hedgeRows) {
+        if (row.gas_cost_usd) {
+          totalHedgeGas += this.parseBigIntSafe(row.gas_cost_usd);
+        }
+        if (row.gmx_execution_fee_usd) {
+          totalHedgeGmxFees += this.normalizeUsdValue(row.gmx_execution_fee_usd, true);
         }
       }
     }
 
     // TODO: Add funding fee calculation from snapshot deltas
     // For now, return gas costs + GMX execution fees
-    return totalGas + totalGmxFees;
+    return totalGas + totalGmxFees + totalHedgeGas + totalHedgeGmxFees;
   }
 
   /**
@@ -1234,14 +1271,16 @@ export class MonitoringDatabase {
     deltaDriftBefore: number,
     currentLeverage?: number,
     estimatedLeverageAfter?: number,
-    txHash?: string
+    txHash?: string,
+    gasCostUsd?: bigint,
+    gmxExecutionFeeUsd?: bigint
   ): number {
     const timestamp = Date.now();
     const insert = this.db.prepare(`
       INSERT INTO hedge_adjustment_history (
         timestamp, account, direction, adjustment_size_usd, delta_drift_before,
-        current_leverage, estimated_leverage_after, tx_hash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        current_leverage, estimated_leverage_after, tx_hash, gas_cost_usd, gmx_execution_fee_usd
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = insert.run(
@@ -1252,7 +1291,9 @@ export class MonitoringDatabase {
       deltaDriftBefore,
       currentLeverage ?? null,
       estimatedLeverageAfter ?? null,
-      txHash ?? null
+      txHash ?? null,
+      gasCostUsd?.toString() || null,
+      gmxExecutionFeeUsd?.toString() || null
     );
 
     return Number(result.lastInsertRowid);
@@ -1299,10 +1340,12 @@ export class MonitoringDatabase {
     currentLeverage?: number;
     estimatedLeverageAfter?: number;
     txHash?: string;
+    gasCostUsd?: string;
+    gmxExecutionFeeUsd?: string;
   }> {
     const stmt = this.db.prepare(`
       SELECT id, timestamp, direction, adjustment_size_usd, delta_drift_before,
-             current_leverage, estimated_leverage_after, tx_hash
+             current_leverage, estimated_leverage_after, tx_hash, gas_cost_usd, gmx_execution_fee_usd
       FROM hedge_adjustment_history
       WHERE account = ?
       ORDER BY timestamp DESC
@@ -1318,6 +1361,8 @@ export class MonitoringDatabase {
       current_leverage: number | null;
       estimated_leverage_after: number | null;
       tx_hash: string | null;
+      gas_cost_usd: string | null;
+      gmx_execution_fee_usd: string | null;
     }>;
 
     return rows.map((row) => ({
@@ -1329,7 +1374,39 @@ export class MonitoringDatabase {
       currentLeverage: row.current_leverage ?? undefined,
       estimatedLeverageAfter: row.estimated_leverage_after ?? undefined,
       txHash: row.tx_hash ?? undefined,
+      gasCostUsd: row.gas_cost_usd ?? undefined,
+      gmxExecutionFeeUsd: row.gmx_execution_fee_usd ?? undefined,
     }));
+  }
+
+  /**
+   * Normalize potentially mixed-scale USD values to 30 decimals.
+   *
+   * Historically, some values were stored as 18-decimal USD amounts.
+   * This heuristic treats values below 1e24 as 18-decimal and upscales to 30 decimals.
+   */
+  normalizeUsdValue(value: string, allowMixedScale: boolean = false): bigint {
+    try {
+      const parsed = BigInt(value);
+      if (!allowMixedScale) return parsed;
+      const abs = parsed < 0n ? -parsed : parsed;
+
+      if (abs === 0n) return 0n;
+      if (abs < MonitoringDatabase.USD_30_SCALE_THRESHOLD) {
+        return parsed * MonitoringDatabase.USD_18_TO_30_MULTIPLIER;
+      }
+      return parsed;
+    } catch {
+      return 0n;
+    }
+  }
+
+  private parseBigIntSafe(value: string): bigint {
+    try {
+      return BigInt(value);
+    } catch {
+      return 0n;
+    }
   }
 
   /**

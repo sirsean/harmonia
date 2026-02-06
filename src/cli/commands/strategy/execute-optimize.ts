@@ -1336,9 +1336,10 @@ export async function executeOptimize(
         // GMX execution fee: ~0.00011 ETH (net after refund)
         // This is the actual cost, not the full execution fee sent
         const gmxExecutionFeeEth = ethers.parseEther("0.00011");
-        gmxExecutionFeeUsd =
-          (gmxExecutionFeeEth * BigInt(Math.floor(ethPriceUsd * 1e12)) * 10n ** 18n) /
-          (10n ** 18n * 10n ** 12n);
+        gmxExecutionFeeUsd = ethers.parseUnits(
+          (Number(ethers.formatEther(gmxExecutionFeeEth)) * ethPriceUsd).toFixed(18),
+          30
+        );
 
         // Only add GMX execution fee if we actually created a GMX order
         const actualGmxExecutionFeeUsd = allocation.gmxShortSizeUsd > 0n ? gmxExecutionFeeUsd : 0n;

@@ -148,6 +148,25 @@ export async function executeHedgeAdjust(
 
   console.log(`\nHedge adjustment tx: ${txHash}`);
 
+  // Wait for transaction confirmation before recording costs and returning.
+  const receipt = await signer.provider!.waitForTransaction(txHash);
+  if (!receipt) {
+    throw new Error(`Failed to get transaction receipt for hedge adjustment: ${txHash}`);
+  }
+
+  const ethPriceUsd = Number(ethers.formatUnits(currentPrice12, 12));
+  const gasPriceWei = (receipt as any).gasPrice ?? (receipt as any).effectiveGasPrice ?? 0n;
+  const gasCostWei = receipt.gasUsed * gasPriceWei;
+  const gasCostEth = Number(ethers.formatEther(gasCostWei));
+  const gasCostUsd = ethers.parseUnits((gasCostEth * ethPriceUsd).toFixed(18), 30);
+
+  // Match optimization accounting: net GMX execution fee cost after refund.
+  const gmxExecutionFeeEth = ethers.parseEther("0.00011");
+  const gmxExecutionFeeUsd = ethers.parseUnits(
+    (Number(ethers.formatEther(gmxExecutionFeeEth)) * ethPriceUsd).toFixed(18),
+    30
+  );
+
   // Record in database
   try {
     const db = new MonitoringDatabase(options.dbPath);
@@ -158,7 +177,9 @@ export async function executeHedgeAdjust(
       deltaDriftBefore,
       hedgeData.currentLeverage,
       hedgeData.estimatedLeverageAfter,
-      txHash
+      txHash,
+      gasCostUsd,
+      gmxExecutionFeeUsd
     );
     db.close();
   } catch (dbError: any) {

@@ -20,6 +20,11 @@ import {
   formatAPRResult,
   calculateAPRForPeriod,
 } from "../../utils/apr";
+import {
+  calculateCapitalBandsReport,
+  formatUsd30,
+  projectCapitalBands,
+} from "../../utils/capital-bands";
 
 export interface ReportOptions {
   account?: string;
@@ -327,6 +332,16 @@ export interface APRReportOptions {
   period?: string; // "1d", "7d", "30d", "90d", or "lifetime"
 }
 
+export interface CapitalBandsReportOptions {
+  account?: string;
+  windowHours?: number;
+  dbPath?: string;
+  includeEth?: boolean;
+  allocations?: string;
+  hedgeGasUsd?: string;
+  hedgeExecFeeUsd?: string;
+}
+
 /**
  * Generate an APR report for the strategy
  */
@@ -384,6 +399,143 @@ export async function generateAPRReport(options: APRReportOptions = {}): Promise
   } catch (error: any) {
     logger.error("Failed to generate APR report", { account, error: error.message });
     console.error("\nError generating APR report:");
+    console.error(error);
+    throw error;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Generate capital bands and break-even projections from recent realized data.
+ */
+export async function generateCapitalBandsReport(
+  options: CapitalBandsReportOptions = {}
+): Promise<void> {
+  const account = options.account || (await getSignerAndAccount()).account;
+  const logger = getLogger();
+
+  const windowHours = options.windowHours ?? 24;
+  if (!Number.isFinite(windowHours) || windowHours <= 0) {
+    throw new Error(`Invalid --window-hours value: ${options.windowHours}`);
+  }
+  const endTime = Date.now();
+  const startTime = endTime - windowHours * 60 * 60 * 1000;
+  const db = new MonitoringDatabase(options.dbPath);
+
+  logger.info("Generating capital bands report", {
+    account,
+    windowHours,
+    includeEth: options.includeEth ?? false,
+  });
+
+  try {
+    const hedgeGasAssumption = options.hedgeGasUsd
+      ? ethers.parseUnits(String(options.hedgeGasUsd), 30)
+      : undefined;
+    const hedgeExecAssumption = options.hedgeExecFeeUsd
+      ? ethers.parseUnits(String(options.hedgeExecFeeUsd), 30)
+      : undefined;
+
+    const report = calculateCapitalBandsReport(db, account, {
+      startTime,
+      endTime,
+      includeEthWallet: options.includeEth ?? false,
+      hedgeGasCostAssumptionUsd30: hedgeGasAssumption,
+      hedgeExecutionFeeAssumptionUsd30: hedgeExecAssumption,
+    });
+
+    const parsedAllocations = (options.allocations || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+      .map((value) => ethers.parseUnits(value, 30));
+
+    const defaultMultiples = [1, 2, 3, 5, 10].map(
+      (m) => (report.averageCapitalUsd30 * BigInt(m)) / 1n
+    );
+    const allocationSet = new Set<string>([
+      report.averageCapitalUsd30.toString(),
+      ...defaultMultiples.map((v) => v.toString()),
+      ...parsedAllocations.map((v) => v.toString()),
+    ]);
+    const allocationsUsd30 = Array.from(allocationSet)
+      .map((value) => BigInt(value))
+      .sort((a, b) => (a < b ? -1 : 1));
+
+    const projections = projectCapitalBands(report, allocationsUsd30);
+
+    console.log("\nCapital Bands Report");
+    console.log("=".repeat(80));
+    console.log(`Account: ${account}`);
+    console.log(
+      `Window: ${new Date(report.periodStart).toISOString()} -> ${new Date(report.periodEnd).toISOString()}`
+    );
+    console.log(`Days: ${report.periodDays.toFixed(4)}`);
+    console.log("");
+    console.log(`Average Capital:         $${formatUsd30(report.averageCapitalUsd30)}`);
+    console.log(`Start Capital:           $${formatUsd30(report.startCapitalUsd30)}`);
+    console.log(`End Capital:             $${formatUsd30(report.endCapitalUsd30)}`);
+    console.log(`Portfolio Change:        $${formatUsd30(report.portfolioChangeUsd30)}`);
+    console.log("");
+    console.log(`Fees Collected:          $${formatUsd30(report.feesCollectedUsd30)}`);
+    console.log(`Recorded Op Costs:       $${formatUsd30(report.recordedOperationCostsUsd30)}`);
+    console.log(`Recorded Hedge Costs:    $${formatUsd30(report.recordedHedgeCostsUsd30)}`);
+    console.log(`Estimated Missing Hedge: $${formatUsd30(report.estimatedMissingHedgeCostsUsd30)}`);
+    console.log(`Total Estimated Costs:   $${formatUsd30(report.totalEstimatedCostsUsd30)}`);
+    console.log(`Unexplained PnL:         $${formatUsd30(report.unexplainedPnlUsd30)}`);
+    console.log("");
+    console.log(`Optimizations:           ${report.optimizationCount}`);
+    console.log(`Hedge Adjustments:       ${report.hedgeAdjustmentCount}`);
+    console.log(`Avg Hedge Adjustment:    $${formatUsd30(report.averageHedgeNotionalUsd30)}`);
+    console.log(
+      `Assumed Hedge Gas:       $${formatUsd30(report.hedgeGasCostAssumptionUsd30, 6)} / tx`
+    );
+    console.log(
+      `Assumed Hedge Exec Fee:  $${formatUsd30(report.hedgeExecutionFeeAssumptionUsd30, 6)} / tx`
+    );
+    console.log("");
+    console.log("Break-even Capital (Window Model):");
+    console.log(
+      "- optimistic (residual drag fixed): " +
+        (projections[0].scenarios[0].breakEvenCapitalUsd30
+          ? `$${formatUsd30(projections[0].scenarios[0].breakEvenCapitalUsd30!)}`
+          : "not reachable")
+    );
+    console.log(
+      "- base (50% residual scales): " +
+        (projections[0].scenarios[1].breakEvenCapitalUsd30
+          ? `$${formatUsd30(projections[0].scenarios[1].breakEvenCapitalUsd30!)}`
+          : "not reachable")
+    );
+    console.log(
+      "- conservative (100% residual scales): " +
+        (projections[0].scenarios[2].breakEvenCapitalUsd30
+          ? `$${formatUsd30(projections[0].scenarios[2].breakEvenCapitalUsd30!)}`
+          : "not reachable")
+    );
+
+    console.log("\nProjected Net PnL Per Day by Allocation:");
+    console.log("allocation_usd | optimistic | base | conservative");
+    console.log("-".repeat(80));
+    for (const projection of projections) {
+      const optimisticDaily =
+        Number(ethers.formatUnits(projection.scenarios[0].projectedWindowPnlUsd30, 30)) /
+        report.periodDays;
+      const baseDaily =
+        Number(ethers.formatUnits(projection.scenarios[1].projectedWindowPnlUsd30, 30)) /
+        report.periodDays;
+      const conservativeDaily =
+        Number(ethers.formatUnits(projection.scenarios[2].projectedWindowPnlUsd30, 30)) /
+        report.periodDays;
+
+      console.log(
+        `${formatUsd30(projection.allocationUsd30, 2).padStart(13)} | ${optimisticDaily.toFixed(2).padStart(10)} | ${baseDaily.toFixed(2).padStart(6)} | ${conservativeDaily.toFixed(2).padStart(12)}`
+      );
+    }
+  } catch (error: any) {
+    logger.error("Failed to generate capital bands report", { account, error: error.message });
+    console.error("\nError generating capital bands report:");
     console.error(error);
     throw error;
   } finally {
