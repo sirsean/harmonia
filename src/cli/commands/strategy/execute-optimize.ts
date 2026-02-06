@@ -37,6 +37,7 @@ import { getAPRMetrics } from "../../../utils/apr";
 import { IERC20 as UniswapIERC20 } from "../../../modules/uniswap/types";
 import {
   ERC20_ABI,
+  WETH_ABI,
   UNISWAP_POOL_ABI,
   UNISWAP_ROUTER_ABI,
   UNISWAP_QUOTER_ABI,
@@ -799,7 +800,8 @@ export async function executeOptimize(
     );
     const wethToken = isToken0Weth ? token0 : token1;
     const usdcToken = isToken0Usdc ? token0 : token1;
-    const wethContract = isToken0Weth ? token0Contract : token1Contract;
+    // Use WETH ABI for sweep unwrapping support (withdraw).
+    const wethContract = new ethers.Contract(wethToken, WETH_ABI, signer);
     const usdcContract = isToken0Usdc ? token0Contract : token1Contract;
     const fee = 500; // 0.05% fee tier
     const slippageBps = options.slippageBps ?? 50n; // 0.5% slippage

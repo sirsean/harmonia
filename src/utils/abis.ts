@@ -22,6 +22,16 @@ export const ERC20_ABI = [
   "function balanceOf(address account) view returns (uint256)",
 ] as const;
 
+/**
+ * WETH ABI
+ * ERC20-compatible plus native wrapping/unwrapping.
+ */
+export const WETH_ABI = [
+  ...ERC20_ABI,
+  "function deposit() payable",
+  "function withdraw(uint256 amount)",
+] as const;
+
 // ============================================================================
 // Uniswap V3 ABIs
 // ============================================================================
