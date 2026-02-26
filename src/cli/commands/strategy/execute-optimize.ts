@@ -2,7 +2,7 @@ import { ethers } from "hardhat";
 import { Contract, Signer } from "ethers";
 import { ARBITRUM_MAINNET } from "../../../config/addresses";
 import { DeltaNeutralMonitor } from "../../../strategy/monitor";
-import { loadStrategyConfig, DEFAULT_STRATEGY_CONFIG, PRECISION } from "../../../config/strategy";
+import { loadStrategyConfig, PRECISION, StrategyConfig } from "../../../config/strategy";
 import { getDefaultRangeBounds } from "../../../config/markets";
 import { createPositionManager, getPosition } from "../../../modules/uniswap/reader";
 import {
@@ -45,6 +45,8 @@ import {
 
 import { toBigInt, refreshNonce } from "../../../utils/helpers";
 import { sendErrorAlert, sendSuccessAlert } from "../../../utils/alerts";
+import { loadEffectiveStrategyConfig } from "../../../strategy/runtime-config";
+import { resolveOptimizationRangeWidth } from "../../../strategy/optimize-defaults";
 
 export interface ExecuteOptimizeOptions {
   account?: string;
@@ -55,6 +57,8 @@ export interface ExecuteOptimizeOptions {
   slippageBps?: bigint;
   execute?: boolean;
   suppressAlert?: boolean;
+  strategyConfig?: StrategyConfig;
+  dbPath?: string;
 }
 
 /**
@@ -384,7 +388,20 @@ export async function executeOptimize(
     // 1. Check Strategy Status (for information, but don't gate execution)
     const tokenIds = options.tokenId ? [BigInt(options.tokenId)] : undefined;
 
+    let effectiveStrategyConfig: StrategyConfig;
+    if (options.strategyConfig) {
+      effectiveStrategyConfig = options.strategyConfig;
+    } else {
+      const runtimeDb = new MonitoringDatabase(options.dbPath);
+      try {
+        effectiveStrategyConfig = loadEffectiveStrategyConfig(runtimeDb, account).config;
+      } finally {
+        runtimeDb.close();
+      }
+    }
+
     const monitorConfig = loadStrategyConfig({
+      ...effectiveStrategyConfig,
       minOptimizationFeeThresholdUsd: ethers.parseUnits("10", 30),
     });
 
@@ -472,7 +489,7 @@ export async function executeOptimize(
     const priceUsdcPerWeth = isToken0Weth ? priceToken1PerToken0 : 1 / priceToken1PerToken0;
 
     // Calculate new range bounds using configured default (centered on current price)
-    const rangeWidth = options.rangeWidth ?? Number(DEFAULT_STRATEGY_CONFIG.defaultRangeWidth);
+    const rangeWidth = resolveOptimizationRangeWidth(options.rangeWidth, monitorConfig);
     const defaultBounds = getDefaultRangeBounds(priceUsdcPerWeth, rangeWidth);
     const lowerPrice = options.priceLower ?? Number(defaultBounds.lower.toFixed(6));
     const upperPrice = options.priceUpper ?? Number(defaultBounds.upper.toFixed(6));
@@ -652,7 +669,7 @@ export async function executeOptimize(
     // Note: We calculate tokens before closing (above) so we can plan the new position
     // The closePositions function handles the actual closing logic
     // Create database instance for recording fee collections (will be reused later for optimization recording)
-    const db = new MonitoringDatabase();
+    const db = new MonitoringDatabase(options.dbPath);
 
     // Track transaction receipts for gas cost calculation
     const transactionReceipts: Array<{ gasUsed: bigint; gasPrice: bigint }> = [];

@@ -966,6 +966,82 @@ describe("MonitoringDatabase", () => {
     });
   });
 
+  describe("runtime params", () => {
+    it("should set and get runtime params with metadata", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      const expiresAt = Date.now() + 60_000;
+
+      const result = db.setRuntimeParam(account, "defaultRangeWidth", 0.08, {
+        source: "manual",
+        isLocked: true,
+        reason: "operator override",
+        expiresAt,
+      });
+
+      expect(result.applied).toBe(true);
+
+      const runtimeParam = db.getRuntimeParam(account, "defaultRangeWidth");
+      expect(runtimeParam).not.toBeNull();
+      expect(runtimeParam?.value).toBe(0.08);
+      expect(runtimeParam?.source).toBe("manual");
+      expect(runtimeParam?.isLocked).toBe(true);
+      expect(runtimeParam?.reason).toBe("operator override");
+      expect(runtimeParam?.expiresAt).toBe(expiresAt);
+    });
+
+    it("should return global + account params in one snapshot call", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.setRuntimeParam(null, "defaultRangeWidth", 0.07, { source: "manual", isLocked: true });
+      db.setRuntimeParam(account, "defaultRangeWidth", 0.09, {
+        source: "manual",
+        isLocked: true,
+      });
+
+      const snapshot = db.getRuntimeParamSnapshot(account);
+      expect(snapshot.globalParams).toHaveLength(1);
+      expect(snapshot.accountParams).toHaveLength(1);
+      expect(snapshot.globalParams[0].value).toBe(0.07);
+      expect(snapshot.accountParams[0].value).toBe(0.09);
+    });
+
+    it("should prevent auto updates from overwriting manual locks", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.setRuntimeParam(account, "defaultRangeWidth", 0.08, {
+        source: "manual",
+        isLocked: true,
+      });
+
+      const autoUpdate = db.setRuntimeParam(account, "defaultRangeWidth", 0.12, {
+        source: "auto",
+        isLocked: false,
+      });
+
+      expect(autoUpdate.applied).toBe(false);
+      expect(autoUpdate.reason).toBe("manual-lock");
+      expect(db.getRuntimeParam(account, "defaultRangeWidth")?.value).toBe(0.08);
+    });
+
+    it("should record runtime param history for set and clear", () => {
+      const account = "0x1234567890123456789012345678901234567890";
+      db.setRuntimeParam(account, "hedgeDeltaThreshold", 0.04, {
+        source: "manual",
+        isLocked: true,
+      });
+      db.clearRuntimeParam(account, "hedgeDeltaThreshold");
+
+      const history = db.listRuntimeParamHistory({
+        account,
+        key: "hedgeDeltaThreshold",
+        limit: 10,
+      });
+
+      expect(history.length).toBeGreaterThanOrEqual(2);
+      expect(history[0].action).toBe("clear");
+      expect(history[1].action).toBe("set");
+      expect(history[1].newValue).toBe(0.04);
+    });
+  });
+
   describe("strategy metrics", () => {
     it("should initialize metrics on first access", () => {
       const account = "0x1234567890123456789012345678901234567890";

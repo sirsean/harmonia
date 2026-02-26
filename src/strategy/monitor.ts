@@ -60,6 +60,14 @@ export class DeltaNeutralMonitor implements StrategyMonitor {
     private database?: MonitoringDatabase
   ) {}
 
+  setConfig(config: StrategyConfig): void {
+    this.config = config;
+  }
+
+  getConfig(): StrategyConfig {
+    return this.config;
+  }
+
   async check(): Promise<{ status: StrategyStatus; recommendation: Recommendation }> {
     const { uniswap, gmx } = this.context;
 

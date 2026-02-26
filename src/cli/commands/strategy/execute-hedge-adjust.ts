@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { ARBITRUM_MAINNET } from "../../../config/addresses";
-import { loadStrategyConfig } from "../../../config/strategy";
+import { StrategyConfig } from "../../../config/strategy";
 import * as gmxReader from "../../../modules/gmx/reader";
 import * as gmxOrders from "../../../modules/gmx/orders";
 import { getLatestPrice } from "../../../modules/chainlink/price";
@@ -11,6 +11,7 @@ import { ERC20_ABI } from "../../../utils/abis";
 import { sendSuccessAlert } from "../../../utils/alerts";
 import { GMXRouter, IERC20 } from "../../../modules/gmx/types";
 import { TransactionReceipt } from "ethers";
+import { loadEffectiveStrategyConfig } from "../../../strategy/runtime-config";
 
 export interface ExecuteHedgeAdjustOptions {
   account?: string;
@@ -19,6 +20,7 @@ export interface ExecuteHedgeAdjustOptions {
   execute?: boolean;
   suppressAlert?: boolean;
   dbPath?: string;
+  strategyConfig?: StrategyConfig;
 }
 
 export interface ExecuteHedgeAdjustResult {
@@ -38,7 +40,17 @@ export async function executeHedgeAdjust(
   options: ExecuteHedgeAdjustOptions
 ): Promise<ExecuteHedgeAdjustResult> {
   const { signer, account } = await getSignerAndAccount(options.account);
-  const config = loadStrategyConfig();
+  let config: StrategyConfig;
+  if (options.strategyConfig) {
+    config = options.strategyConfig;
+  } else {
+    const runtimeDb = new MonitoringDatabase(options.dbPath);
+    try {
+      config = loadEffectiveStrategyConfig(runtimeDb, account).config;
+    } finally {
+      runtimeDb.close();
+    }
+  }
   const { hedgeData, deltaDriftBefore } = options;
 
   const adjustmentSizeUsd = hedgeData.adjustmentSizeUsd;

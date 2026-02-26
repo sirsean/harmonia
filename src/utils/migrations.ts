@@ -495,6 +495,64 @@ const migration010_hedge_cost_columns: Migration = {
 };
 
 /**
+ * Migration: Add runtime strategy parameters and audit history
+ */
+const migration011_runtime_params: Migration = {
+  version: 11,
+  name: "runtime_params",
+  up: (db: Database.Database) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS runtime_params (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account TEXT,
+        param_key TEXT NOT NULL,
+        param_value TEXT NOT NULL,
+        source TEXT NOT NULL CHECK(source IN ('manual', 'auto')),
+        is_locked INTEGER NOT NULL DEFAULT 0 CHECK(is_locked IN (0, 1)),
+        updated_at INTEGER NOT NULL,
+        expires_at INTEGER,
+        reason TEXT,
+        created_at INTEGER DEFAULT (strftime('%s', 'now')),
+        UNIQUE(account, param_key)
+      )
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS runtime_param_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        account TEXT,
+        param_key TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        source TEXT NOT NULL CHECK(source IN ('manual', 'auto')),
+        action TEXT NOT NULL CHECK(action IN ('set', 'clear', 'expire')),
+        is_locked INTEGER CHECK(is_locked IN (0, 1)),
+        expires_at INTEGER,
+        reason TEXT,
+        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+      )
+    `);
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_runtime_params_account_key
+      ON runtime_params(account, param_key);
+      CREATE INDEX IF NOT EXISTS idx_runtime_params_expires
+      ON runtime_params(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_runtime_param_history_account_key_time
+      ON runtime_param_history(account, param_key, timestamp DESC);
+    `);
+  },
+  down: (db: Database.Database) => {
+    db.exec(`DROP INDEX IF EXISTS idx_runtime_param_history_account_key_time`);
+    db.exec(`DROP INDEX IF EXISTS idx_runtime_params_expires`);
+    db.exec(`DROP INDEX IF EXISTS idx_runtime_params_account_key`);
+    db.exec(`DROP TABLE IF EXISTS runtime_param_history`);
+    db.exec(`DROP TABLE IF EXISTS runtime_params`);
+  },
+};
+
+/**
  * All migrations in order
  */
 export const migrations: Migration[] = [
@@ -508,6 +566,7 @@ export const migrations: Migration[] = [
   migration008_hedge_adjustments,
   migration009_wallet_balances,
   migration010_hedge_cost_columns,
+  migration011_runtime_params,
 ];
 
 /**

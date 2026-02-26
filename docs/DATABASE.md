@@ -8,6 +8,8 @@ The monitoring database stores:
 - **Monitoring snapshots**: Complete strategy status at each monitoring check
 - **Position snapshots**: Detailed tracking of Uniswap LP and GMX hedge positions
 - **NAV history**: Time series data for Net Asset Value tracking
+- **Runtime strategy params**: Live tunable strategy keys with global/account scope
+- **Runtime param history**: Audit trail for set/clear/expire events
 
 ## Database Location
 
@@ -90,6 +92,42 @@ Time series NAV tracking for analysis.
 
 **Unique constraint**: `(timestamp, account)` - one NAV entry per account per timestamp
 
+#### `runtime_params`
+Active runtime strategy parameters used for hot-reload configuration.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PRIMARY KEY | Auto-incrementing ID |
+| `account` | TEXT nullable | Scope (`NULL` = global, otherwise account-specific) |
+| `param_key` | TEXT | Runtime parameter key |
+| `param_value` | TEXT | JSON-encoded value |
+| `source` | TEXT | `manual` or `auto` |
+| `is_locked` | INTEGER | Lock flag (`1` prevents auto overwrite) |
+| `updated_at` | INTEGER | Last update timestamp (ms) |
+| `expires_at` | INTEGER nullable | Optional expiration timestamp (ms) |
+| `reason` | TEXT nullable | Optional audit reason |
+| `created_at` | INTEGER | Record creation timestamp |
+
+**Unique constraint**: `(account, param_key)`
+
+#### `runtime_param_history`
+Audit trail for runtime parameter mutations.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER PRIMARY KEY | Auto-incrementing ID |
+| `timestamp` | INTEGER | Event timestamp (ms) |
+| `account` | TEXT nullable | Scope (`NULL` = global) |
+| `param_key` | TEXT | Runtime parameter key |
+| `old_value` | TEXT nullable | Previous JSON value |
+| `new_value` | TEXT nullable | New JSON value |
+| `source` | TEXT | `manual` or `auto` |
+| `action` | TEXT | `set`, `clear`, or `expire` |
+| `is_locked` | INTEGER nullable | Lock flag at event time |
+| `expires_at` | INTEGER nullable | Expiry at event time |
+| `reason` | TEXT nullable | Optional reason |
+| `created_at` | INTEGER | Record creation timestamp |
+
 #### `schema_migrations`
 Tracks applied database migrations.
 
@@ -109,6 +147,9 @@ The following indexes are created for query performance:
 - `idx_positions_token_id` on `position_snapshots(token_id)`
 - `idx_nav_history_timestamp` on `nav_history(timestamp)`
 - `idx_nav_history_account` on `nav_history(account)`
+- `idx_runtime_params_account_key` on `runtime_params(account, param_key)`
+- `idx_runtime_params_expires` on `runtime_params(expires_at)`
+- `idx_runtime_param_history_account_key_time` on `runtime_param_history(account, param_key, timestamp DESC)`
 
 ## Migrations
 
@@ -219,6 +260,16 @@ const snapshots = db.getSnapshots("0x...", startTime, endTime, limit);
 
 // Get position snapshots for a snapshot
 const positions = db.getPositionSnapshots(snapshotId);
+
+// Runtime params: set/list/clear/history
+db.setRuntimeParam("0x...", "defaultRangeWidth", 0.08, {
+  source: "manual",
+  isLocked: true,
+  reason: "widen range during volatility",
+});
+const runtimeParams = db.listRuntimeParams({ account: "0x...", includeGlobal: true });
+const history = db.listRuntimeParamHistory({ account: "0x...", limit: 50 });
+db.clearRuntimeParam("0x...", "defaultRangeWidth");
 
 db.close();
 ```

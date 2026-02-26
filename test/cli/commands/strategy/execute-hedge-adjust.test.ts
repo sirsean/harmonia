@@ -112,11 +112,25 @@ vi.mock("../../../../src/modules/gmx/orders", () => ({
 }));
 
 vi.mock("../../../../src/config/strategy", () => ({
+  DEFAULT_STRATEGY_CONFIG: {
+    defaultRangeWidth: 0.06,
+    minRangeWidth: 0.04,
+    maxRangeWidth: 0.4,
+  },
   loadStrategyConfig: vi.fn(() => ({
     maxSlippage: 0.01,
     slippageBuffer: 0.005,
+    defaultRangeWidth: 0.06,
+    minRangeWidth: 0.04,
+    maxRangeWidth: 0.4,
+    rangeAdjustmentThreshold: 0.15,
+    rangeCenterDriftThreshold: 0.02,
+    hedgeDeltaThreshold: 0.05,
+    optimizationDeltaThreshold: 0.1,
+    emergencyDeltaThreshold: 0.2,
     defaultExecutionFee: 1000000000000000n,
   })),
+  validateStrategyConfig: vi.fn(),
 }));
 
 vi.mock("../../../../src/utils/database", () => ({

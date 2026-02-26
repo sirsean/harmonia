@@ -196,6 +196,23 @@ describe("Strategy Configuration", () => {
       expect(() => validateStrategyConfig(invalid)).toThrow();
     });
 
+    it("should reject max range width >= 1", () => {
+      const invalid = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        maxRangeWidth: 1.0,
+      };
+      expect(() => validateStrategyConfig(invalid)).toThrow(/maxRangeWidth/);
+    });
+
+    it("should reject range center drift threshold outside half-width", () => {
+      const invalid = {
+        ...DEFAULT_STRATEGY_CONFIG,
+        defaultRangeWidth: 0.06,
+        rangeCenterDriftThreshold: 0.03,
+      };
+      expect(() => validateStrategyConfig(invalid)).toThrow(/rangeCenterDriftThreshold/);
+    });
+
     it("should reject zero or negative bigint values", () => {
       const invalid = {
         ...DEFAULT_STRATEGY_CONFIG,

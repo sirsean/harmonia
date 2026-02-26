@@ -90,21 +90,17 @@ describe("Range Configuration Optimization (Issue #41)", () => {
   });
 
   describe("Range Adjustment Thresholds", () => {
-    it("should have appropriate adjustment thresholds for ±7.5% range", () => {
+    it("should have proactive adjustment thresholds for 6% default width", () => {
       const { rangeAdjustmentThreshold, rangeCenterDriftThreshold, defaultRangeWidth } =
         DEFAULT_STRATEGY_CONFIG;
 
-      // Edge threshold: 2% - adjust when within 2% of range edge
-      // For ±7.5% range, this means adjusting when price is within ~13% of range width
-      expect(rangeAdjustmentThreshold).toBe(0.02);
+      // Edge threshold: 15% of range span from the nearest edge
+      expect(rangeAdjustmentThreshold).toBe(0.15);
 
-      // Center drift threshold: 5% - adjust when price drifts >5% from center
-      // This is ~33% of the half-width (7.5%), which is reasonable
-      expect(rangeCenterDriftThreshold).toBe(0.05);
+      // Center drift threshold must stay strictly below half-width for proactive recentering
+      expect(rangeCenterDriftThreshold).toBe(0.02);
 
-      // Thresholds should be proportional to range width
-      // Edge threshold should be less than half the range width
-      expect(rangeAdjustmentThreshold * 2).toBeLessThan(defaultRangeWidth);
+      expect(rangeCenterDriftThreshold).toBeLessThan(defaultRangeWidth / 2);
     });
 
     it("should allow environment variable overrides for thresholds", () => {
